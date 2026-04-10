@@ -1,5 +1,12 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { RestaurantFilters, SortMode } from '../types/restaurant';
+import { RestaurantFilters, SortMode, Restaurant } from '../types/restaurant';
+
+export interface CachePayload {
+  restaurants: Restaurant[];
+  lat: number | null;
+  lng: number | null;
+  timestamp: number;
+}
 
 const KEYS = {
   FILTERS: 'restaurant_filters',
@@ -85,11 +92,11 @@ export const SettingsManager = {
   },
 
   // ─── Restaurant cache ───────────────────────────────────────
-  async saveCache(data: object): Promise<void> {
+  async saveCache(data: CachePayload): Promise<void> {
     await AsyncStorage.setItem(KEYS.CACHE, JSON.stringify(data));
   },
 
-  async loadCache(): Promise<any | null> {
+  async loadCache(): Promise<CachePayload | null> {
     try {
       const raw = await AsyncStorage.getItem(KEYS.CACHE);
       if (raw) return JSON.parse(raw);

@@ -14,7 +14,7 @@ import {
 } from 'react-native';
 import { Colors, Spacing, Radius, FontSize, FontWeight } from '../theme/colors';
 import { useRestaurants } from '../context/RestaurantContext';
-import { Restaurant } from '../types/restaurant';
+import { Restaurant, RestaurantFilters } from '../types/restaurant';
 import { SettingsManager } from '../util/SettingsManager';
 import RestaurantDetailModal from './components/RestaurantDetailModal';
 
@@ -310,8 +310,8 @@ function FilterPanel({
   setFilters,
   useMiles,
 }: {
-  filters: any;
-  setFilters: (p: any) => void;
+  filters: RestaurantFilters;
+  setFilters: (p: Partial<RestaurantFilters>) => void;
   useMiles: boolean;
 }) {
   const maxKm = useMiles ? 12 : 20;

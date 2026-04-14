@@ -5,7 +5,7 @@ import {
   StyleSheet,
   Modal,
   ScrollView,
-  TouchableOpacity,
+  Pressable,
   TextInput,
   ActivityIndicator,
 } from 'react-native';
@@ -108,9 +108,9 @@ export default function MenuAnalysisSheet({ restaurantName, menuText, onClose }:
                 {restaurantName}
               </Text>
             </View>
-            <TouchableOpacity style={styles.closeBtn} onPress={onClose}>
+            <Pressable style={styles.closeBtn} onPress={onClose} accessibilityRole="button" accessibilityLabel="Close">
               <Text style={styles.closeBtnText}>✕</Text>
-            </TouchableOpacity>
+            </Pressable>
           </View>
         </View>
 
@@ -134,17 +134,19 @@ export default function MenuAnalysisSheet({ restaurantName, menuText, onClose }:
             />
           </View>
 
-          <TouchableOpacity
+          <Pressable
             style={[styles.analyseBtn, isAnalyzing && styles.analyseBtnDisabled]}
             onPress={() => runAnalysis(editableText)}
             disabled={isAnalyzing}
+            accessibilityRole="button"
+            accessibilityLabel="Analyze menu for gluten-free options"
           >
             {isAnalyzing ? (
               <ActivityIndicator color={Colors.textInverse} />
             ) : (
               <Text style={styles.analyseBtnText}>🤖 Analyse for Gluten-Free Safety</Text>
             )}
-          </TouchableOpacity>
+          </Pressable>
 
           {error && (
             <View style={styles.errorCard}>
@@ -183,7 +185,7 @@ export default function MenuAnalysisSheet({ restaurantName, menuText, onClose }:
               {analysisResult.glutenFreeItems.length > 0 && (
                 <ResultSection title={`✅ GF Items Found (${analysisResult.glutenFreeItems.length})`}>
                   {analysisResult.glutenFreeItems.map((item, i) => (
-                    <View key={i} style={styles.listItem}>
+                    <View key={`gf-${item.slice(0, 20)}-${i}`} style={styles.listItem}>
                       <Text style={styles.bullet}>•</Text>
                       <Text style={styles.listItemText}>{item}</Text>
                     </View>
@@ -195,7 +197,7 @@ export default function MenuAnalysisSheet({ restaurantName, menuText, onClose }:
               {analysisResult.warnings.length > 0 && (
                 <ResultSection title={`🔶 Warnings (${analysisResult.warnings.length})`}>
                   {analysisResult.warnings.map((w, i) => (
-                    <View key={i} style={styles.listItem}>
+                    <View key={`warn-${w.slice(0, 20)}-${i}`} style={styles.listItem}>
                       <Text style={[styles.bullet, { color: Colors.warning }]}>⚠</Text>
                       <Text style={[styles.listItemText, { color: Colors.warning }]}>{w}</Text>
                     </View>
@@ -237,7 +239,6 @@ function analyseMenuText(text: string): AnalysisResult {
     /celiac[\s-]?friendly/gi,
     /coeliac[\s-]?friendly/gi,
     /no[\s-]gluten/gi,
-    /gluten[\s-]free options/gi,
   ];
 
   const GLUTEN_SOURCES = [
@@ -267,28 +268,33 @@ function analyseMenuText(text: string): AnalysisResult {
     /share[\s\w]{0,30}kitchen/gi,
     /cross[\s-]?contamin/gi,
     /same[\s\w]{0,20}fryer/gi,
-    /not[\s\w]{0,15}celiac[\s-]?safe/gi,
+    /not[\s-]?celiac[\s-]?safe/gi,
     /may contain wheat/gi,
     /processed in a facility/gi,
   ];
 
-  // Find GF-positive sentences
-  const sentences = text.split(/[.\n;!?]+/);
+  const lines = text.split(/[\n\r]+/);
   const glutenFreeItems: string[] = [];
-  for (const s of sentences) {
-    if (GF_POSITIVE.some((p) => p.test(s)) && s.trim().length > 5) {
-      const trimmed = s.trim().slice(0, 200);
-      if (!glutenFreeItems.includes(trimmed)) glutenFreeItems.push(trimmed);
+  
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (trimmed.length < 10 || trimmed.length > 200) continue;
+    
+    if (GF_POSITIVE.some((p) => p.test(trimmed))) {
+      const cleaned = extractGfItem(trimmed);
+      if (cleaned && !glutenFreeItems.some(g => g.toLowerCase() === cleaned.toLowerCase())) {
+        glutenFreeItems.push(cleaned);
+      }
     }
     if (glutenFreeItems.length >= 12) break;
   }
-  // Reset test index for global regexes
+  
   GF_POSITIVE.forEach((r) => { r.lastIndex = 0; });
 
   const warnings: string[] = [];
   const foundGlutenSources = GLUTEN_SOURCES.filter((g) => lower.includes(g));
   if (foundGlutenSources.length > 0) {
-    warnings.push(`Gluten-containing ingredients detected: ${foundGlutenSources.slice(0, 8).join(', ')}`);
+    warnings.push(`Gluten-containing: ${foundGlutenSources.slice(0, 6).join(', ')}`);
   }
 
   let crossContamRisk = '';
@@ -296,7 +302,7 @@ function analyseMenuText(text: string): AnalysisResult {
   CC_PATTERNS.forEach((r) => { r.lastIndex = 0; });
   if (ccMatches.length > 0) {
     crossContamRisk = ccMatches.slice(0, 3).join('; ');
-    warnings.push('Cross-contamination risk mentioned in menu text');
+    warnings.push('Cross-contamination risk detected');
   }
 
   const hasPositive = glutenFreeItems.length > 0;
@@ -308,19 +314,40 @@ function analyseMenuText(text: string): AnalysisResult {
 
   if (hasPositive && !hasCrossContam && !hasWarnings) {
     overallSafety = 'safe';
-    summary = `Found ${glutenFreeItems.length} gluten-free reference${glutenFreeItems.length !== 1 ? 's' : ''} with no obvious cross-contamination risks.`;
+    summary = `Found ${glutenFreeItems.length} gluten-free option${glutenFreeItems.length !== 1 ? 's' : ''} with no detected risks.`;
   } else if (hasPositive && (hasCrossContam || hasWarnings)) {
     overallSafety = 'caution';
-    summary = 'GF options appear available but some risk factors were detected. Consult staff before ordering.';
+    summary = 'GF options found but risk factors detected. Consult staff before ordering.';
   } else if (!hasPositive && hasWarnings) {
     overallSafety = 'unsafe';
-    summary = 'No explicit GF options detected and gluten-containing ingredients are present.';
+    summary = 'No explicit GF options found. Gluten-containing items are present.';
   } else {
     overallSafety = 'unknown';
-    summary = 'Insufficient menu information to determine gluten-free safety. Contact the restaurant directly.';
+    summary = 'Insufficient menu information. Contact restaurant directly.';
   }
 
   return { overallSafety, glutenFreeItems, warnings, crossContamRisk, summary };
+}
+
+function extractGfItem(line: string): string {
+  let cleaned = line.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
+  
+  if (cleaned.length > 80) {
+    const parts = cleaned.split(/[,;]/);
+    for (const part of parts) {
+      const trimmed = part.trim();
+      if (trimmed.length > 10 && trimmed.length < 60) {
+        return capitalizeFirst(trimmed);
+      }
+    }
+    return cleaned.slice(0, 80);
+  }
+  
+  return capitalizeFirst(cleaned);
+}
+
+function capitalizeFirst(str: string): string {
+  return str.charAt(0).toUpperCase() + str.slice(1);
 }
 
 // ── Styles ────────────────────────────────────────────────────────────────────

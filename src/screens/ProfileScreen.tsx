@@ -105,7 +105,7 @@ export default function ProfileScreen() {
               '🔍 Smart filters by distance, rating, and hours',
               '💾 Offline cache with 3-day scan TTL',
             ].map((f, i) => (
-              <Text key={i} style={styles.featureItem}>{f}</Text>
+              <Text key={`feature-${f.slice(0, 10)}-${i}`} style={styles.featureItem}>{f}</Text>
             ))}
           </View>
         </View>

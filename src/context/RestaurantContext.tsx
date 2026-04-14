@@ -166,40 +166,49 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
     async (restaurant: Restaurant) => {
       if (!MAPS_API_KEY) return;
 
-      restaurant.menuScanStatus = 'FETCHING';
+      const idx = rawRestaurants.current.findIndex((r) => r.placeId === restaurant.placeId);
+      if (idx >= 0) {
+        rawRestaurants.current[idx] = { ...rawRestaurants.current[idx], menuScanStatus: 'FETCHING' };
+      }
       emitFilteredState();
 
       const website = await fetchWebsiteForPlace(restaurant.placeId, MAPS_API_KEY);
       if (!website) {
-        restaurant.menuScanStatus = 'NO_WEBSITE';
-        restaurant.menuScanTimestamp = Date.now();
+        if (idx >= 0) {
+          rawRestaurants.current[idx] = {
+            ...rawRestaurants.current[idx],
+            menuScanStatus: 'NO_WEBSITE',
+            menuScanTimestamp: Date.now(),
+          };
+        }
         emitFilteredState();
         return;
       }
 
-      restaurant.menuUrl = website;
+      let menuUrl = website;
       let html = await fetchHtml(website);
       if (html) {
         const menuLink = findMenuLink(html, website);
         if (menuLink && menuLink !== website) {
-          restaurant.menuUrl = menuLink;
+          menuUrl = menuLink;
           const menuHtml = await fetchHtml(menuLink);
           if (menuHtml) html = menuHtml;
         }
       }
 
-      const evidence = html ? extractGfEvidence(html) : [];
-      restaurant.gfMenu = evidence;
-      if (html) {
-        restaurant.rawMenuText = extractRawMenuText(html);
-      }
+      const gfMenu = html ? extractGfEvidence(html) : [];
+      const rawMenuText = html ? extractRawMenuText(html) : null;
 
-      restaurant.menuScanTimestamp = Date.now();
-      restaurant.menuScanStatus = !website
-        ? 'NO_WEBSITE'
-        : !html
-        ? 'FAILED'
-        : 'SUCCESS';
+      if (idx >= 0) {
+        rawRestaurants.current[idx] = {
+          ...rawRestaurants.current[idx],
+          menuUrl,
+          gfMenu,
+          rawMenuText,
+          menuScanTimestamp: Date.now(),
+          menuScanStatus: html ? 'SUCCESS' : 'FAILED',
+        };
+      }
 
       emitFilteredState();
       await SettingsManager.saveCache({
@@ -237,12 +246,13 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
   }, []);
 
   const applyFavorites = useCallback((restaurants: Restaurant[]) => {
-    for (const r of restaurants) {
+    return restaurants.map((r) => {
       const key = favoriteKey(r);
       if (key && favoriteMap.current[key]) {
-        r.favoriteStatus = favoriteMap.current[key] as FavoriteStatus;
+        return { ...r, favoriteStatus: favoriteMap.current[key] as FavoriteStatus };
       }
-    }
+      return r;
+    });
   }, [favoriteKey]);
 
   // ─── Load cached data ────────────────────────────────────────
@@ -252,8 +262,8 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
     const cached = await SettingsManager.loadCache();
     if (!cached?.restaurants?.length) return;
 
-    rawRestaurants.current = cached.restaurants;
-    applyFavorites(rawRestaurants.current);
+    const withFavorites = applyFavorites(cached.restaurants);
+    rawRestaurants.current = withFavorites;
     userLat.current = cached.lat;
     userLng.current = cached.lng;
 
@@ -308,12 +318,13 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
       const restaurants = await fetchNearbyRestaurants(latitude, longitude, MAPS_API_KEY);
 
       // Apply distances and favorites
-      applyFavorites(restaurants);
-      for (const r of restaurants) {
-        r.distanceMeters = distanceBetween(latitude, longitude, r.latitude, r.longitude);
-      }
+      const restaurantsWithFavorites = applyFavorites(restaurants);
+      const restaurantsWithDistance = restaurantsWithFavorites.map((r) => ({
+        ...r,
+        distanceMeters: distanceBetween(latitude, longitude, r.latitude, r.longitude),
+      }));
 
-      rawRestaurants.current = restaurants;
+      rawRestaurants.current = restaurantsWithDistance;
       userLat.current = latitude;
       userLng.current = longitude;
 
@@ -383,14 +394,17 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
   // ─── Manual rescan ───────────────────────────────────────────
   const requestMenuRescan = useCallback(
     (restaurant: Restaurant) => {
-      const target =
-        rawRestaurants.current.find((r) => r.placeId === restaurant.placeId) ??
-        restaurant;
-      target.menuScanStatus = 'FETCHING';
-      target.menuScanTimestamp = Date.now();
-      target.gfMenu = [];
+      const idx = rawRestaurants.current.findIndex((r) => r.placeId === restaurant.placeId);
+      if (idx >= 0) {
+        rawRestaurants.current[idx] = {
+          ...rawRestaurants.current[idx],
+          menuScanStatus: 'FETCHING',
+          menuScanTimestamp: Date.now(),
+          gfMenu: [],
+        };
+      }
       emitFilteredState();
-      scanMenu(target);
+      scanMenu(restaurant);
     },
     [emitFilteredState, scanMenu]
   );

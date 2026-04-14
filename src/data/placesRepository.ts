@@ -130,26 +130,45 @@ export async function fetchHtml(url: string): Promise<string | null> {
  * Mirrors MenuScannerRepository.java extractGfEvidence().
  */
 export function extractGfEvidence(html: string): string[] {
-  const gfKeywords = /gluten[\s-]?free|gf menu|celiac|coeliac|\bGF\b/gi;
+  const gfKeywords = /gluten[\s-]?free|\bgf\b|celiac|coeliac/gi;
   const text = html
     .replace(/<script[\s\S]*?<\/script>/gi, '')
     .replace(/<style[\s\S]*?<\/style>/gi, '')
+    .replace(/<nav[\s\S]*?<\/nav>/gi, ' ')
+    .replace(/<footer[\s\S]*?<\/footer>/gi, ' ')
+    .replace(/<header[\s\S]*?<\/header>/gi, ' ')
+    .replace(/<aside[\s\S]*?<\/aside>/gi, ' ')
     .replace(/<[^>]+>/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
 
-  const sentences = text.split(/[.!?\n;]+/);
+  const lines = text.split(/[\n\r]+/);
   const evidence: string[] = [];
-  for (const sentence of sentences) {
-    if (gfKeywords.test(sentence)) {
-      const trimmed = sentence.trim();
-      if (trimmed.length > 5 && trimmed.length < 300) {
-        evidence.push(trimmed);
-        if (evidence.length >= 15) break;
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (gfKeywords.test(trimmed) && trimmed.length > 10 && trimmed.length < 250) {
+      const cleaned = cleanMenuLine(trimmed);
+      if (cleaned && !evidence.some(e => e.toLowerCase() === cleaned.toLowerCase())) {
+        evidence.push(cleaned);
       }
+      if (evidence.length >= 15) break;
     }
   }
   return evidence;
+}
+
+function cleanMenuLine(line: string): string {
+  let cleaned = line.replace(/<[^>]*>/g, '').trim();
+  cleaned = cleaned.replace(/\s+/g, ' ');
+  if (cleaned.length > 100) {
+    const sentences = cleaned.split(/[.!?]/);
+    for (const s of sentences) {
+      if (/gluten[\s-]?free|\bgf\b|celiac|coeliac/i.test(s) && s.trim().length > 15) {
+        return s.trim().slice(0, 200);
+      }
+    }
+  }
+  return cleaned.slice(0, 200);
 }
 
 /**
@@ -157,12 +176,34 @@ export function extractGfEvidence(html: string): string[] {
  * Mirrors MenuScannerRepository.java extractRawMenuText().
  */
 export function extractRawMenuText(html: string): string {
-  const text = html
+  let text = html
     .replace(/<script[\s\S]*?<\/script>/gi, '')
     .replace(/<style[\s\S]*?<\/style>/gi, '')
+    .replace(/<nav[\s\S]*?<\/nav>/gi, ' ')
+    .replace(/<footer[\s\S]*?<\/footer>/gi, ' ')
+    .replace(/<header[\s\S]*?<\/header>/gi, ' ')
+    .replace(/<aside[\s\S]*?<\/aside>/gi, ' ')
     .replace(/<[^>]+>/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
+
+  const menuSection = findMainContent(text);
+  return menuSection.slice(0, 3000);
+}
+
+function findMainContent(text: string): string {
+  const menuIndicators = ['menu', 'food', 'dining', 'entree', 'appetizer', 'dessert'];
+  const lines = text.split('\n');
+  
+  for (let i = 0; i < lines.length; i++) {
+    const lower = lines[i].toLowerCase();
+    if (menuIndicators.some(m => lower.includes(m)) && lines[i].length < 50) {
+      const start = i;
+      const end = Math.min(i + 200, lines.length);
+      return lines.slice(start, end).join('\n');
+    }
+  }
+  
   return text.slice(0, 3000);
 }
 

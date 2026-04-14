@@ -5,7 +5,7 @@ import {
   StyleSheet,
   Modal,
   ScrollView,
-  TouchableOpacity,
+  Pressable,
   Linking,
   Platform,
   ActivityIndicator,
@@ -69,9 +69,9 @@ export default function RestaurantDetailModal({ restaurant: initial, useMiles, o
         {/* Handle + close */}
         <View style={styles.handleRow}>
           <View style={styles.handle} />
-          <TouchableOpacity style={styles.closeBtn} onPress={onClose}>
+          <Pressable style={styles.closeBtn} onPress={onClose} accessibilityRole="button" accessibilityLabel="Close">
             <Text style={styles.closeBtnText}>✕</Text>
-          </TouchableOpacity>
+          </Pressable>
         </View>
 
         <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
@@ -124,7 +124,7 @@ export default function RestaurantDetailModal({ restaurant: initial, useMiles, o
             {restaurant.gfMenu.length > 0 && (
               <View style={styles.menuItems}>
                 {restaurant.gfMenu.map((item, i) => (
-                  <View key={i} style={styles.menuItem}>
+                  <View key={`${item}-${i}`} style={styles.menuItem}>
                     <Text style={styles.bulletDot}>•</Text>
                     <Text style={styles.menuItemText}>{item}</Text>
                   </View>
@@ -252,7 +252,7 @@ function FavButton({
 }) {
   const active = current === status;
   return (
-    <TouchableOpacity
+    <Pressable
       style={[
         favStyles.btn,
         active && {
@@ -271,6 +271,9 @@ function FavButton({
         },
       ]}
       onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityState={{ selected: active }}
     >
       <Text
         style={[
@@ -287,7 +290,7 @@ function FavButton({
       >
         {label}
       </Text>
-    </TouchableOpacity>
+    </Pressable>
   );
 }
 
@@ -305,7 +308,7 @@ function ActionButton({
   primary?: boolean;
 }) {
   return (
-    <TouchableOpacity
+    <Pressable
       style={[
         actionStyles.btn,
         primary && actionStyles.primaryBtn,
@@ -313,13 +316,16 @@ function ActionButton({
       ]}
       onPress={onPress}
       disabled={disabled}
-      activeOpacity={0.75}
+      pressedStyle={actionStyles.pressedBtn}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityState={{ disabled }}
     >
       <Text style={actionStyles.icon}>{icon}</Text>
       <Text style={[actionStyles.label, primary && actionStyles.primaryLabel, disabled && actionStyles.disabledLabel]}>
         {label}
       </Text>
-    </TouchableOpacity>
+    </Pressable>
   );
 }
 
@@ -442,4 +448,5 @@ const actionStyles = StyleSheet.create({
   label: { color: Colors.textSecondary, fontSize: FontSize.sm, fontWeight: FontWeight.medium },
   primaryLabel: { color: Colors.primary },
   disabledLabel: { color: Colors.textMuted },
+  pressedBtn: { opacity: 0.75 },
 });

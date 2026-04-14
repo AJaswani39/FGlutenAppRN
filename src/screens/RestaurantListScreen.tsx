@@ -4,7 +4,7 @@ import {
   Text,
   StyleSheet,
   FlatList,
-  TouchableOpacity,
+  Pressable,
   TextInput,
   ActivityIndicator,
   RefreshControl,
@@ -61,17 +61,17 @@ export default function RestaurantListScreen() {
             onChangeText={(t) => setFilters({ searchQuery: t })}
           />
           {filters.searchQuery.length > 0 && (
-            <TouchableOpacity onPress={() => setFilters({ searchQuery: '' })}>
+            <Pressable onPress={() => setFilters({ searchQuery: '' })}>
               <Text style={styles.clearSearch}>✕</Text>
-            </TouchableOpacity>
+            </Pressable>
           )}
         </View>
-        <TouchableOpacity
+        <Pressable
           style={[styles.filterBtn, showFilters && styles.filterBtnActive]}
           onPress={() => setShowFilters((v) => !v)}
         >
           <Text style={styles.filterBtnText}>⚙️</Text>
-        </TouchableOpacity>
+        </Pressable>
       </View>
 
       {/* ── Filter panel ── */}
@@ -95,12 +95,12 @@ export default function RestaurantListScreen() {
           active={viewMode === 'map'}
           onPress={() => setViewMode('map')}
         />
-        <TouchableOpacity
+        <Pressable
           style={styles.refreshBtn}
           onPress={loadNearbyRestaurants}
         >
           <Text style={styles.refreshBtnText}>↻</Text>
-        </TouchableOpacity>
+        </Pressable>
       </View>
 
       {/* ── Results count ── */}
@@ -189,7 +189,7 @@ function RestaurantCard({
   const dist = SettingsManager.formatDistance(r.distanceMeters, useMiles);
 
   return (
-    <TouchableOpacity style={cardStyles.card} onPress={onPress} activeOpacity={0.75}>
+    <Pressable style={cardStyles.card} onPress={onPress}>
       {/* Header row */}
       <View style={cardStyles.headerRow}>
         <Text style={cardStyles.name} numberOfLines={1}>
@@ -258,7 +258,7 @@ function RestaurantCard({
           </Text>
         </View>
       )}
-    </TouchableOpacity>
+    </Pressable>
   );
 }
 
@@ -358,7 +358,7 @@ function FilterPanel({
             : `${Math.round(filters.maxDistanceMeters / 1000)} km`}
         </Text>
         <View style={filterStyles.stepRow}>
-          <TouchableOpacity
+          <Pressable
             style={filterStyles.stepBtn}
             onPress={() =>
               setFilters({
@@ -370,8 +370,8 @@ function FilterPanel({
             }
           >
             <Text style={filterStyles.stepBtnText}>−</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
+          </Pressable>
+          <Pressable
             style={filterStyles.stepBtn}
             onPress={() =>
               setFilters({
@@ -383,14 +383,14 @@ function FilterPanel({
             }
           >
             <Text style={filterStyles.stepBtnText}>+</Text>
-          </TouchableOpacity>
+          </Pressable>
           {filters.maxDistanceMeters > 0 && (
-            <TouchableOpacity
+            <Pressable
               style={filterStyles.stepBtn}
               onPress={() => setFilters({ maxDistanceMeters: 0 })}
             >
               <Text style={[filterStyles.stepBtnText, { color: Colors.error }]}>✕</Text>
-            </TouchableOpacity>
+            </Pressable>
           )}
         </View>
       </View>
@@ -401,25 +401,25 @@ function FilterPanel({
           Min rating: {filters.minRating <= 0 ? 'Any' : `${filters.minRating.toFixed(1)} ★`}
         </Text>
         <View style={filterStyles.stepRow}>
-          <TouchableOpacity
+          <Pressable
             style={filterStyles.stepBtn}
             onPress={() => setFilters({ minRating: Math.max(0, filters.minRating - 0.5) })}
           >
             <Text style={filterStyles.stepBtnText}>−</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
+          </Pressable>
+          <Pressable
             style={filterStyles.stepBtn}
             onPress={() => setFilters({ minRating: Math.min(5, filters.minRating + 0.5) })}
           >
             <Text style={filterStyles.stepBtnText}>+</Text>
-          </TouchableOpacity>
+          </Pressable>
           {filters.minRating > 0 && (
-            <TouchableOpacity
+            <Pressable
               style={filterStyles.stepBtn}
               onPress={() => setFilters({ minRating: 0 })}
             >
               <Text style={[filterStyles.stepBtnText, { color: Colors.error }]}>✕</Text>
-            </TouchableOpacity>
+            </Pressable>
           )}
         </View>
       </View>
@@ -437,14 +437,14 @@ function FilterChip({
   onToggle: () => void;
 }) {
   return (
-    <TouchableOpacity
+    <Pressable
       style={[filterStyles.chip, active && filterStyles.chipActive]}
       onPress={onToggle}
     >
       <Text style={[filterStyles.chipText, active && filterStyles.chipTextActive]}>
         {label}
       </Text>
-    </TouchableOpacity>
+    </Pressable>
   );
 }
 
@@ -485,10 +485,9 @@ function MapPlaceholder({
         data={restaurants}
         keyExtractor={(r) => r.placeId}
         renderItem={({ item: r }) => (
-          <TouchableOpacity
+          <Pressable
             style={mapStyles.row}
             onPress={() => onRestaurantPress(r)}
-            activeOpacity={0.75}
           >
             <View style={mapStyles.pin}>
               <Text style={mapStyles.pinText}>📍</Text>
@@ -501,10 +500,10 @@ function MapPlaceholder({
                 {SettingsManager.formatDistance(r.distanceMeters, useMiles)}
               </Text>
             </View>
-            <TouchableOpacity style={mapStyles.dirBtn} onPress={() => openInMaps(r)}>
+            <Pressable style={mapStyles.dirBtn} onPress={() => openInMaps(r)}>
               <Text style={mapStyles.dirText}>Navigate</Text>
-            </TouchableOpacity>
-          </TouchableOpacity>
+            </Pressable>
+          </Pressable>
         )}
         contentContainerStyle={{ padding: Spacing.md }}
         showsVerticalScrollIndicator={false}
@@ -539,11 +538,11 @@ function StateMessage({
         {message ??
           (isIdle ? 'Tap the button below to find restaurants near you.' : 'Something went wrong.')}
       </Text>
-      <TouchableOpacity style={stateStyles.button} onPress={onAction}>
+      <Pressable style={stateStyles.button} onPress={onAction}>
         <Text style={stateStyles.buttonText}>
           {isPermission ? 'Enable Location' : 'Find Restaurants'}
         </Text>
-      </TouchableOpacity>
+      </Pressable>
     </View>
   );
 }
@@ -560,14 +559,14 @@ function ToggleButton({
   onPress: () => void;
 }) {
   return (
-    <TouchableOpacity
+    <Pressable
       style={[styles.toggleBtn, active && styles.toggleBtnActive]}
       onPress={onPress}
     >
       <Text style={[styles.toggleBtnText, active && styles.toggleBtnTextActive]}>
         {label}
       </Text>
-    </TouchableOpacity>
+    </Pressable>
   );
 }
 

@@ -3,7 +3,7 @@ import {
   View,
   Text,
   StyleSheet,
-  TouchableOpacity,
+  Pressable,
   ScrollView,
   Dimensions,
 } from 'react-native';
@@ -48,13 +48,12 @@ export default function HomeScreen() {
           Discover nearby restaurants with gluten-free menus, AI-powered menu
           scanning, and community-verified options — all nearby.
         </Text>
-        <TouchableOpacity
+        <Pressable
           style={styles.ctaButton}
           onPress={loadNearbyRestaurants}
-          activeOpacity={0.8}
         >
           <Text style={styles.ctaText}>🔍  Find Restaurants Near Me</Text>
-        </TouchableOpacity>
+        </Pressable>
       </View>
 
       {/* Stats chips */}

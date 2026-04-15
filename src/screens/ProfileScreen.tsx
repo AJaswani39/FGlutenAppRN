@@ -8,9 +8,11 @@ import {
 } from 'react-native';
 import { Colors, Spacing, Radius, FontSize, FontWeight } from '../theme/colors';
 import { useRestaurants } from '../context/RestaurantContext';
+import { useSettings } from '../context/SettingsContext';
 
 export default function ProfileScreen() {
-  const { useMiles, strictCeliac, setUseMiles, setStrictCeliac, uiState } = useRestaurants();
+  const { uiState } = useRestaurants();
+  const { useMiles, strictCeliac, setUseMiles, setStrictCeliac } = useSettings();
 
   const stats = React.useMemo(() => {
     const restaurants = uiState.restaurants;

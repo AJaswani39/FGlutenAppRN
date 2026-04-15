@@ -24,6 +24,8 @@ import {
   distanceBetween,
 } from '../data/placesRepository';
 import { SettingsManager } from '../util/SettingsManager';
+import { useSettings } from './SettingsContext';
+import { useFilters } from './FiltersContext';
 
 const MENU_SCAN_TTL_MS = 3 * 24 * 60 * 60 * 1000; // 3 days
 const MAX_SCANS_PER_BATCH = 5;
@@ -36,15 +38,9 @@ const MAPS_API_KEY =
 
 interface RestaurantContextValue {
   uiState: RestaurantUiState;
-  filters: RestaurantFilters;
-  useMiles: boolean;
-  strictCeliac: boolean;
   loadNearbyRestaurants: () => Promise<void>;
-  setFilters: (partial: Partial<RestaurantFilters>) => void;
   setFavoriteStatus: (restaurant: Restaurant, status: FavoriteStatus) => void;
   requestMenuRescan: (restaurant: Restaurant) => void;
-  setUseMiles: (val: boolean) => void;
-  setStrictCeliac: (val: boolean) => void;
 }
 
 const RestaurantContext = createContext<RestaurantContextValue | null>(null);
@@ -58,6 +54,9 @@ export function useRestaurants(): RestaurantContextValue {
 // ─── Provider ────────────────────────────────────────────────────────────────
 
 export function RestaurantProvider({ children }: { children: React.ReactNode }) {
+  const { strictCeliac } = useSettings();
+  const { filters } = useFilters();
+
   const [uiState, setUiState] = useState<RestaurantUiState>({
     status: 'idle',
     restaurants: [],
@@ -65,18 +64,6 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
     userLatitude: null,
     userLongitude: null,
   });
-
-  const [filters, setFiltersState] = useState<RestaurantFilters>({
-    gfOnly: false,
-    openNowOnly: false,
-    sortMode: 'distance',
-    maxDistanceMeters: 0,
-    minRating: 0,
-    searchQuery: '',
-  });
-
-  const [useMiles, setUseMilesState] = useState(false);
-  const [strictCeliac, setStrictCeliacState] = useState(false);
 
   // Raw restaurant data (before filtering)
   const rawRestaurants = useRef<Restaurant[]>([]);
@@ -94,12 +81,7 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
   // ─── Init: load persisted data ──────────────────────────────
   useEffect(() => {
     (async () => {
-      const savedFilters = await SettingsManager.loadFilters();
-      setFiltersState(savedFilters);
-      filtersRef.current = savedFilters;
       favoriteMap.current = await SettingsManager.loadFavorites();
-      setUseMilesState(await SettingsManager.useMiles());
-      setStrictCeliacState(await SettingsManager.isStrictCeliac());
     })();
   }, []);
 
@@ -331,13 +313,13 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
       emitFilteredState();
 
       await SettingsManager.saveCache({
-        restaurants,
+        restaurants: restaurantsWithDistance,
         lat: latitude,
         lng: longitude,
         timestamp: Date.now(),
       });
 
-      kickOffMenuScans(restaurants);
+      kickOffMenuScans(restaurantsWithDistance);
     } catch (err: any) {
       const errmsg = `Could not load restaurants: ${err?.message ?? 'Unknown error'}`;
       if (rawRestaurants.current.length > 0 && userLat.current != null) {
@@ -354,21 +336,6 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
     }
   }, [loadCachedIfAvailable, emitFilteredState, kickOffMenuScans, applyFavorites]);
 
-  // ─── Filter setters ──────────────────────────────────────────
-  const setFilters = useCallback(
-    (partial: Partial<RestaurantFilters>) => {
-      setFiltersState((prev) => {
-        const next = { ...prev, ...partial };
-        filtersRef.current = next;
-        SettingsManager.saveFilters(next);
-        return next;
-      });
-      // Re-emit after state update tick
-      setTimeout(() => emitFilteredState(), 0);
-    },
-    [emitFilteredState]
-  );
-
   // ─── Favorites ───────────────────────────────────────────────
   const setFavoriteStatus = useCallback(
     (restaurant: Restaurant, status: FavoriteStatus) => {
@@ -379,12 +346,14 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
       } else {
         favoriteMap.current[key] = status;
       }
-      restaurant.favoriteStatus = status;
-      // Apply to raw list as well
-      const match = rawRestaurants.current.find(
+
+      const idx = rawRestaurants.current.findIndex(
         (r) => r.placeId === restaurant.placeId
       );
-      if (match) match.favoriteStatus = status;
+      if (idx >= 0) {
+        rawRestaurants.current[idx] = { ...rawRestaurants.current[idx], favoriteStatus: status };
+      }
+
       SettingsManager.saveFavorites(favoriteMap.current);
       emitFilteredState();
     },
@@ -409,34 +378,13 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
     [emitFilteredState, scanMenu]
   );
 
-  // ─── Settings toggles ────────────────────────────────────────
-  const setUseMiles = useCallback((val: boolean) => {
-    setUseMilesState(val);
-    SettingsManager.setUseMiles(val);
-  }, []);
-
-  const setStrictCeliac = useCallback(
-    (val: boolean) => {
-      setStrictCeliacState(val);
-      SettingsManager.setStrictCeliac(val);
-      setTimeout(() => emitFilteredState(), 0);
-    },
-    [emitFilteredState]
-  );
-
   return (
     <RestaurantContext.Provider
       value={{
         uiState,
-        filters,
-        useMiles,
-        strictCeliac,
         loadNearbyRestaurants,
-        setFilters,
         setFavoriteStatus,
         requestMenuRescan,
-        setUseMiles,
-        setStrictCeliac,
       }}
     >
       {children}

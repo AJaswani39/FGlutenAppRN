@@ -6,19 +6,24 @@ import {
   Pressable,
   ScrollView,
   Dimensions,
+  ActivityIndicator,
 } from 'react-native';
 import { Colors, Spacing, Radius, FontSize, FontWeight } from '../theme/colors';
 import { useRestaurants } from '../context/RestaurantContext';
+import { useSettings } from '../context/SettingsContext';
 import { Restaurant } from '../types/restaurant';
 import { SettingsManager } from '../util/SettingsManager';
+import { RestaurantCardSkeleton } from '../components/Skeleton';
 
 const { width } = Dimensions.get('window');
 
 export default function HomeScreen() {
-  const { uiState, useMiles, loadNearbyRestaurants } = useRestaurants();
+  const { uiState, loadNearbyRestaurants } = useRestaurants();
+  const { useMiles } = useSettings();
 
   const cached = uiState.restaurants;
   const hasData = cached.length > 0;
+  const isLoading = uiState.status === 'loading';
 
   const stats = React.useMemo(() => {
     let favorites = 0;
@@ -49,10 +54,15 @@ export default function HomeScreen() {
           scanning, and community-verified options — all nearby.
         </Text>
         <Pressable
-          style={styles.ctaButton}
+          style={[styles.ctaButton, isLoading && styles.ctaButtonDisabled]}
           onPress={loadNearbyRestaurants}
+          disabled={isLoading}
         >
-          <Text style={styles.ctaText}>🔍  Find Restaurants Near Me</Text>
+          {isLoading ? (
+            <ActivityIndicator color={Colors.textInverse} size="small" />
+          ) : (
+            <Text style={styles.ctaText}>🔍  Find Restaurants Near Me</Text>
+          )}
         </Pressable>
       </View>
 
@@ -222,6 +232,9 @@ const styles = StyleSheet.create({
     borderRadius: Radius.full,
     paddingVertical: 15,
     alignItems: 'center',
+  },
+  ctaButtonDisabled: {
+    opacity: 0.6,
   },
   ctaText: {
     color: Colors.textInverse,

@@ -1,5 +1,26 @@
 import { Restaurant } from '../types/restaurant';
 
+const DEFAULT_TIMEOUT_MS = 10000;
+
+async function fetchWithTimeout(
+  url: string,
+  options: RequestInit = {},
+  timeoutMs = DEFAULT_TIMEOUT_MS
+): Promise<Response> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  
+  try {
+    const res = await fetch(url, {
+      ...options,
+      signal: controller.signal,
+    });
+    return res;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
 const PLACES_API_BASE = 'https://places.googleapis.com/v1/places:searchNearby';
 const PLACE_DETAIL_BASE = 'https://places.googleapis.com/v1/places';
 
@@ -36,7 +57,7 @@ export async function fetchNearbyRestaurants(
     },
   };
 
-  const res = await fetch(PLACES_API_BASE, {
+  const res = await fetchWithTimeout(PLACES_API_BASE, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -92,16 +113,21 @@ export async function fetchWebsiteForPlace(
   apiKey: string
 ): Promise<string | null> {
   try {
-    const res = await fetch(`${PLACE_DETAIL_BASE}/${placeId}`, {
+    const res = await fetchWithTimeout(`${PLACE_DETAIL_BASE}/${placeId}`, {
       headers: {
         'X-Goog-Api-Key': apiKey,
         'X-Goog-FieldMask': 'websiteUri',
       },
     });
-    if (!res.ok) return null;
+    if (!res.ok) {
+      console.warn(`fetchWebsiteForPlace: HTTP ${res.status} for place ${placeId}`);
+      return null;
+    }
     const json = await res.json();
     return json.websiteUri ?? null;
-  } catch {
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`fetchWebsiteForPlace failed for ${placeId}: ${msg}`);
     return null;
   }
 }
@@ -111,16 +137,21 @@ export async function fetchWebsiteForPlace(
  */
 export async function fetchHtml(url: string): Promise<string | null> {
   try {
-    const res = await fetch(url, {
+    const res = await fetchWithTimeout(url, {
       headers: {
         'User-Agent':
           'Mozilla/5.0 (compatible; FGlutenBot/1.0; +https://fgluten.io)',
         Accept: 'text/html',
       },
     });
-    if (!res.ok) return null;
+    if (!res.ok) {
+      console.warn(`fetchHtml: HTTP ${res.status} for ${url}`);
+      return null;
+    }
     return await res.text();
-  } catch {
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`fetchHtml failed for ${url}: ${msg}`);
     return null;
   }
 }
@@ -220,7 +251,8 @@ export function findMenuLink(html: string, baseUrl: string): string | null {
     try {
       const base = new URL(baseUrl);
       return new URL(href, base).toString();
-    } catch {
+    } catch (err) {
+      console.warn(`findMenuLink: failed to parse URL ${href}: ${err}`);
       continue;
     }
   }
@@ -236,7 +268,7 @@ export function distanceBetween(
   lat2: number,
   lon2: number
 ): number {
-  const R = 6371000; // Earth radius in meters
+  const R = 6371000;
   const dLat = ((lat2 - lat1) * Math.PI) / 180;
   const dLon = ((lon2 - lon1) * Math.PI) / 180;
   const a =

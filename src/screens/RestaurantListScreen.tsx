@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -11,28 +11,41 @@ import {
   Platform,
   Linking,
   ScrollView,
+  Keyboard,
 } from 'react-native';
 import { Colors, Spacing, Radius, FontSize, FontWeight } from '../theme/colors';
 import { useRestaurants } from '../context/RestaurantContext';
-import { Restaurant, RestaurantFilters } from '../types/restaurant';
+import { useFilters } from '../context/FiltersContext';
+import { useSettings } from '../context/SettingsContext';
+import { Restaurant } from '../types/restaurant';
 import { SettingsManager } from '../util/SettingsManager';
 import RestaurantDetailModal from './components/RestaurantDetailModal';
+import { RestaurantCardSkeleton } from '../components/Skeleton';
+import { useDebounce } from '../hooks/useDebounce';
 
 type ViewMode = 'list' | 'map';
 
 export default function RestaurantListScreen() {
-  const {
-    uiState,
-    filters,
-    useMiles,
-    loadNearbyRestaurants,
-    setFilters,
-  } = useRestaurants();
+  const { uiState, loadNearbyRestaurants } = useRestaurants();
+  const { filters, setFilters } = useFilters();
+  const { useMiles } = useSettings();
 
   const [viewMode, setViewMode] = useState<ViewMode>('list');
   const [selectedRestaurant, setSelectedRestaurant] = useState<Restaurant | null>(null);
   const [showFilters, setShowFilters] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [searchInputText, setSearchInputText] = useState(filters.searchQuery);
+
+  const searchInputRef = useRef<TextInput>(null);
+
+  // Sync local state with external filter changes
+  React.useEffect(() => {
+    setSearchInputText(filters.searchQuery);
+  }, [filters.searchQuery]);
+
+  const debouncedSetFilters = useDebounce((t: string) => {
+    setFilters({ searchQuery: t });
+  }, 300);
 
   const { status, restaurants, message } = uiState;
   const isLoading = status === 'loading';
@@ -44,6 +57,7 @@ export default function RestaurantListScreen() {
   }, [loadNearbyRestaurants]);
 
   const handleRestaurantPress = useCallback((r: Restaurant) => {
+    Keyboard.dismiss();
     setSelectedRestaurant(r);
   }, []);
 
@@ -53,15 +67,25 @@ export default function RestaurantListScreen() {
       <View style={styles.searchRow}>
         <View style={styles.searchBox}>
           <Text style={styles.searchIcon}>🔍</Text>
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Search restaurants or menu items…"
-            placeholderTextColor={Colors.textMuted}
-            value={filters.searchQuery}
-            onChangeText={(t) => setFilters({ searchQuery: t })}
-          />
-          {filters.searchQuery.length > 0 && (
-            <Pressable onPress={() => setFilters({ searchQuery: '' })}>
+        <TextInput
+          ref={searchInputRef}
+          style={styles.searchInput}
+          placeholder="Search restaurants or menu items…"
+          placeholderTextColor={Colors.textMuted}
+          value={searchInputText}
+          onChangeText={(t) => {
+            setSearchInputText(t);
+            debouncedSetFilters(t);
+          }}
+          onSubmitEditing={Keyboard.dismiss}
+          returnKeyType="search"
+          blurOnSubmit
+        />
+          {searchInputText.length > 0 && (
+            <Pressable onPress={() => {
+              setSearchInputText('');
+              setFilters({ searchQuery: '' });
+            }}>
               <Text style={styles.clearSearch}>✕</Text>
             </Pressable>
           )}
@@ -113,8 +137,9 @@ export default function RestaurantListScreen() {
       {/* ── Loading skeleton ── */}
       {isLoading && (
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={Colors.primary} />
-          <Text style={styles.loadingText}>{message ?? 'Loading…'}</Text>
+          {Array.from({ length: 5 }).map((_, i) => (
+            <RestaurantCardSkeleton key={i} />
+          ))}
         </View>
       )}
 
@@ -148,6 +173,7 @@ export default function RestaurantListScreen() {
             />
           }
           showsVerticalScrollIndicator={false}
+          onScrollBeginDrag={Keyboard.dismiss}
         />
       )}
 
@@ -656,10 +682,7 @@ const styles = StyleSheet.create({
   },
   listContent: { padding: Spacing.md, paddingTop: 0 },
   loadingContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: Spacing.md,
+    padding: Spacing.md,
   },
   loadingText: { color: Colors.textSecondary, fontSize: FontSize.md },
 });

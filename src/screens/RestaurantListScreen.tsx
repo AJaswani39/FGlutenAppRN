@@ -188,14 +188,10 @@ export default function RestaurantListScreen() {
         />
       )}
 
-      {/* ── Detail Modal ── */}
-      {selectedRestaurant && (
-        <RestaurantDetailModal
-          restaurant={selectedRestaurant}
-          useMiles={useMiles}
-          onClose={() => setSelectedRestaurant(null)}
-        />
-      )}
+      {/* ── Detail Stack ── */}
+      <Stack.Navigator screenOptions={{ headerShown: false }}>
+        <Stack.Screen name="RestaurantDetail" component={RestaurantDetailScreen} />
+      </Stack.Navigator>
     </View>
   );
 }

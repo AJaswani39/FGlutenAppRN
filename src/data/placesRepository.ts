@@ -1,11 +1,11 @@
 import { Restaurant } from '../types/restaurant';
-
-const DEFAULT_TIMEOUT_MS = 10000;
+import { API_ENDPOINTS, API_TIMEOUTS } from '../constants';
+import { logger } from '../util/logger';
 
 async function fetchWithTimeout(
   url: string,
   options: RequestInit = {},
-  timeoutMs = DEFAULT_TIMEOUT_MS
+  timeoutMs = API_TIMEOUTS.DEFAULT
 ): Promise<Response> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
@@ -20,9 +20,6 @@ async function fetchWithTimeout(
     clearTimeout(timeoutId);
   }
 }
-
-const PLACES_API_BASE = 'https://places.googleapis.com/v1/places:searchNearby';
-const PLACE_DETAIL_BASE = 'https://places.googleapis.com/v1/places';
 
 interface PlacesNearbyResult {
   places?: Array<{
@@ -57,7 +54,7 @@ export async function fetchNearbyRestaurants(
     },
   };
 
-  const res = await fetchWithTimeout(PLACES_API_BASE, {
+  const res = await fetchWithTimeout(API_ENDPOINTS.PLACES_NEARBY, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -113,21 +110,21 @@ export async function fetchWebsiteForPlace(
   apiKey: string
 ): Promise<string | null> {
   try {
-    const res = await fetchWithTimeout(`${PLACE_DETAIL_BASE}/${placeId}`, {
+    const res = await fetchWithTimeout(`${API_ENDPOINTS.PLACE_DETAILS}/${placeId}`, {
       headers: {
         'X-Goog-Api-Key': apiKey,
         'X-Goog-FieldMask': 'websiteUri',
       },
     });
     if (!res.ok) {
-      console.warn(`fetchWebsiteForPlace: HTTP ${res.status} for place ${placeId}`);
+      logger.warn(`fetchWebsiteForPlace: HTTP ${res.status} for place ${placeId}`);
       return null;
     }
     const json = await res.json();
     return json.websiteUri ?? null;
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    console.error(`fetchWebsiteForPlace failed for ${placeId}: ${msg}`);
+    logger.error(`fetchWebsiteForPlace failed for ${placeId}: ${msg}`);
     return null;
   }
 }
@@ -145,13 +142,13 @@ export async function fetchHtml(url: string): Promise<string | null> {
       },
     });
     if (!res.ok) {
-      console.warn(`fetchHtml: HTTP ${res.status} for ${url}`);
+      logger.warn(`fetchHtml: HTTP ${res.status} for ${url}`);
       return null;
     }
     return await res.text();
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    console.error(`fetchHtml failed for ${url}: ${msg}`);
+    logger.error(`fetchHtml failed for ${url}: ${msg}`);
     return null;
   }
 }
@@ -252,7 +249,7 @@ export function findMenuLink(html: string, baseUrl: string): string | null {
       const base = new URL(baseUrl);
       return new URL(href, base).toString();
     } catch (err) {
-      console.warn(`findMenuLink: failed to parse URL ${href}: ${err}`);
+      logger.warn(`findMenuLink: failed to parse URL ${href}: ${err}`);
       continue;
     }
   }

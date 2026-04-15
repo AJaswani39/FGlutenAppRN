@@ -3,11 +3,11 @@ import { Restaurant } from './restaurant';
 export type RootTabParamList = {
   Home: undefined;
   Restaurants: undefined;
-  Profile: undefined;
+  Filter: undefined;
+  Settings: undefined;
 };
 
-export type RestaurantStackParamList = {
-  RestaurantList: undefined;
-  RestaurantDetail: { restaurant: Restaurant };
-  MenuAnalysis: { restaurantName: string; menuText: string };
+export type RootStackParamList = {
+  AppTabs: undefined;
+  Details: undefined;
 };

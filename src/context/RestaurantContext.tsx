@@ -31,8 +31,12 @@ const MENU_SCAN_TTL_MS = 3 * 24 * 60 * 60 * 1000; // 3 days
 const MAX_SCANS_PER_BATCH = 5;
 
 // Get API key from app.json extra
+interface ExpoConfigExtra {
+  MAPS_API_KEY?: string;
+}
+
 const MAPS_API_KEY =
-  (Constants.expoConfig?.extra as any)?.MAPS_API_KEY ?? '';
+  (Constants.expoConfig?.extra as ExpoConfigExtra)?.MAPS_API_KEY ?? '';
 
 // ─── Context types ───────────────────────────────────────────────────────────
 

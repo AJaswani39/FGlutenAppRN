@@ -309,14 +309,14 @@ function ActionButton({
 }) {
   return (
     <Pressable
-      style={[
+      style={({ pressed }) => [
         actionStyles.btn,
         primary && actionStyles.primaryBtn,
         disabled && actionStyles.disabledBtn,
+        pressed && !disabled && actionStyles.pressedBtn,
       ]}
       onPress={onPress}
       disabled={disabled}
-      pressedStyle={actionStyles.pressedBtn}
       accessibilityRole="button"
       accessibilityLabel={label}
       accessibilityState={{ disabled }}

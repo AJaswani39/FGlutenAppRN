@@ -17,7 +17,7 @@ import { Colors, Spacing, Radius, FontSize, FontWeight } from '../theme/colors';
 import { useRestaurants } from '../context/RestaurantContext';
 import { useFilters } from '../context/FiltersContext';
 import { useSettings } from '../context/SettingsContext';
-import { Restaurant } from '../types/restaurant';
+import { Restaurant, RestaurantFilters } from '../types/restaurant';
 import { SettingsManager } from '../util/SettingsManager';
 import RestaurantDetailModal from './components/RestaurantDetailModal';
 import { RestaurantCardSkeleton } from '../components/Skeleton';
@@ -48,6 +48,7 @@ export default function RestaurantListScreen() {
   }, 300);
 
   const { status, restaurants, message } = uiState;
+  const hasResults = restaurants.length > 0;
   const isLoading = status === 'loading';
 
   const onRefresh = useCallback(async () => {
@@ -67,25 +68,28 @@ export default function RestaurantListScreen() {
       <View style={styles.searchRow}>
         <View style={styles.searchBox}>
           <Text style={styles.searchIcon}>🔍</Text>
-        <TextInput
-          ref={searchInputRef}
-          style={styles.searchInput}
-          placeholder="Search restaurants or menu items…"
-          placeholderTextColor={Colors.textMuted}
-          value={searchInputText}
-          onChangeText={(t) => {
-            setSearchInputText(t);
-            debouncedSetFilters(t);
-          }}
-          onSubmitEditing={Keyboard.dismiss}
-          returnKeyType="search"
-          blurOnSubmit
-        />
+          <TextInput
+            ref={searchInputRef}
+            style={styles.searchInput}
+            placeholder="Search restaurants or menu items…"
+            placeholderTextColor={Colors.textMuted}
+            value={searchInputText}
+            onChangeText={(t) => {
+              setSearchInputText(t);
+              debouncedSetFilters(t);
+            }}
+            onSubmitEditing={() => Keyboard.dismiss()}
+            returnKeyType="search"
+            blurOnSubmit
+          />
           {searchInputText.length > 0 && (
-            <Pressable onPress={() => {
-              setSearchInputText('');
-              setFilters({ searchQuery: '' });
-            }}>
+            <Pressable
+              onPress={() => {
+                setSearchInputText('');
+                debouncedSetFilters('');
+                setFilters({ searchQuery: '' });
+              }}
+            >
               <Text style={styles.clearSearch}>✕</Text>
             </Pressable>
           )}
@@ -128,14 +132,16 @@ export default function RestaurantListScreen() {
       </View>
 
       {/* ── Results count ── */}
-      {status === 'success' && restaurants.length > 0 && (
+      {(hasResults || (status === 'success' && message)) && (
         <Text style={styles.resultsCount}>
-          {restaurants.length} restaurant{restaurants.length !== 1 ? 's' : ''} found
+          {hasResults
+            ? `${restaurants.length} restaurant${restaurants.length !== 1 ? 's' : ''} found`
+            : message}
         </Text>
       )}
 
       {/* ── Loading skeleton ── */}
-      {isLoading && (
+      {isLoading && !hasResults && (
         <View style={styles.loadingContainer}>
           {Array.from({ length: 5 }).map((_, i) => (
             <RestaurantCardSkeleton key={i} />
@@ -144,7 +150,7 @@ export default function RestaurantListScreen() {
       )}
 
       {/* ── Permission / Error state ── */}
-      {!isLoading && (status === 'permission_required' || status === 'error' || status === 'idle') && (
+      {!isLoading && (!hasResults || status === 'permission_required' || status === 'error' || status === 'idle') && (
         <StateMessage
           status={status}
           message={message}
@@ -153,10 +159,10 @@ export default function RestaurantListScreen() {
       )}
 
       {/* ── List view ── */}
-      {!isLoading && status === 'success' && viewMode === 'list' && (
+      {hasResults && viewMode === 'list' && (
         <FlatList
           data={restaurants}
-          keyExtractor={(r) => r.placeId}
+          keyExtractor={(r) => r.placeId || `${r.name}-${r.address}`}
           renderItem={({ item }) => (
             <RestaurantCard
               restaurant={item}
@@ -178,7 +184,7 @@ export default function RestaurantListScreen() {
       )}
 
       {/* ── Map placeholder (react-native-maps requires native build) ── */}
-      {!isLoading && status === 'success' && viewMode === 'map' && (
+      {hasResults && viewMode === 'map' && (
         <MapPlaceholder
           restaurants={restaurants}
           userLat={uiState.userLatitude}
@@ -188,10 +194,13 @@ export default function RestaurantListScreen() {
         />
       )}
 
-      {/* ── Detail Stack ── */}
-      <Stack.Navigator screenOptions={{ headerShown: false }}>
-        <Stack.Screen name="RestaurantDetail" component={RestaurantDetailScreen} />
-      </Stack.Navigator>
+      {selectedRestaurant ? (
+        <RestaurantDetailModal
+          restaurant={selectedRestaurant}
+          useMiles={useMiles}
+          onClose={() => setSelectedRestaurant(null)}
+        />
+      ) : null}
     </View>
   );
 }
@@ -505,7 +514,7 @@ function MapPlaceholder({
       </View>
       <FlatList
         data={restaurants}
-        keyExtractor={(r) => r.placeId}
+        keyExtractor={(r) => r.placeId || `${r.name}-${r.address}`}
         renderItem={({ item: r }) => (
           <Pressable
             style={mapStyles.row}
@@ -522,7 +531,13 @@ function MapPlaceholder({
                 {SettingsManager.formatDistance(r.distanceMeters, useMiles)}
               </Text>
             </View>
-            <Pressable style={mapStyles.dirBtn} onPress={() => openInMaps(r)}>
+            <Pressable
+              style={mapStyles.dirBtn}
+              onPress={(event) => {
+                event.stopPropagation();
+                openInMaps(r);
+              }}
+            >
               <Text style={mapStyles.dirText}>Navigate</Text>
             </Pressable>
           </Pressable>
@@ -550,19 +565,24 @@ function StateMessage({
 }) {
   const isPermission = status === 'permission_required';
   const isIdle = status === 'idle';
+  const isEmptySuccess = status === 'success';
 
   return (
     <View style={stateStyles.container}>
       <Text style={stateStyles.emoji}>
-        {isPermission ? '📍' : isIdle ? '🌾' : '⚠️'}
+        {isPermission ? '📍' : isIdle ? '🌾' : isEmptySuccess ? '🔎' : '⚠️'}
       </Text>
       <Text style={stateStyles.message}>
         {message ??
-          (isIdle ? 'Tap the button below to find restaurants near you.' : 'Something went wrong.')}
+          (isIdle
+            ? 'Tap the button below to find restaurants near you.'
+            : isEmptySuccess
+            ? 'No restaurants match your current search.'
+            : 'Something went wrong.')}
       </Text>
       <Pressable style={stateStyles.button} onPress={onAction}>
         <Text style={stateStyles.buttonText}>
-          {isPermission ? 'Enable Location' : 'Find Restaurants'}
+          {isPermission ? 'Enable Location' : isEmptySuccess ? 'Refresh Results' : 'Find Restaurants'}
         </Text>
       </Pressable>
     </View>

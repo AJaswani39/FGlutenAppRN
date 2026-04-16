@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { RestaurantFilters, SortMode, Restaurant } from '../types/restaurant';
+import { FavoriteStatus, RestaurantFilters, SortMode, Restaurant } from '../types/restaurant';
 
 export interface CachePayload {
   restaurants: Restaurant[];
@@ -8,12 +8,160 @@ export interface CachePayload {
   timestamp: number;
 }
 
+export const DEFAULT_FILTERS: RestaurantFilters = {
+  gfOnly: false,
+  openNowOnly: false,
+  sortMode: 'distance',
+  maxDistanceMeters: 0,
+  minRating: 0,
+  searchQuery: '',
+};
+
 const KEYS = {
   FILTERS: 'restaurant_filters',
   FAVORITES: 'restaurant_favorites',
   CACHE: 'restaurant_cache',
   SETTINGS: 'fg_settings',
 };
+
+type JsonRecord = Record<string, unknown>;
+
+const MENU_SCAN_STATUSES = new Set<Restaurant['menuScanStatus']>([
+  'NOT_STARTED',
+  'FETCHING',
+  'SUCCESS',
+  'NO_WEBSITE',
+  'FAILED',
+]);
+
+const FAVORITE_STATUSES = new Set<Exclude<FavoriteStatus, null>>([
+  'safe',
+  'try',
+  'avoid',
+]);
+
+function isRecord(value: unknown): value is JsonRecord {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function normalizeBoolean(value: unknown, fallback = false): boolean {
+  return typeof value === 'boolean' ? value : fallback;
+}
+
+function normalizeString(value: unknown, fallback = ''): string {
+  return typeof value === 'string' ? value : fallback;
+}
+
+function normalizeFiniteNumber(value: unknown, fallback: number): number {
+  return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+}
+
+function normalizeNullableFiniteNumber(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
+function normalizeSortMode(value: unknown): SortMode {
+  return value === 'distance' || value === 'name' ? value : 'distance';
+}
+
+function normalizeFavoriteStatus(value: unknown): FavoriteStatus {
+  return typeof value === 'string' && FAVORITE_STATUSES.has(value as Exclude<FavoriteStatus, null>)
+    ? (value as Exclude<FavoriteStatus, null>)
+    : null;
+}
+
+function normalizeStringArray(value: unknown, maxLength?: number): string[] {
+  if (!Array.isArray(value)) return [];
+
+  const normalized = value
+    .filter((entry): entry is string => typeof entry === 'string')
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+
+  return typeof maxLength === 'number' ? normalized.slice(0, maxLength) : normalized;
+}
+
+export function normalizeFilters(value: unknown): RestaurantFilters {
+  const record = isRecord(value) ? value : {};
+
+  return {
+    gfOnly: normalizeBoolean(record.gfOnly),
+    openNowOnly: normalizeBoolean(record.openNowOnly),
+    sortMode: normalizeSortMode(record.sortMode),
+    maxDistanceMeters: Math.max(0, normalizeFiniteNumber(record.maxDistanceMeters, 0)),
+    minRating: Math.min(5, Math.max(0, normalizeFiniteNumber(record.minRating, 0))),
+    searchQuery: normalizeString(record.searchQuery).trim(),
+  };
+}
+
+export function normalizeFavoriteMap(value: unknown): Record<string, string> {
+  if (!isRecord(value)) return {};
+
+  const normalized: Record<string, string> = {};
+  for (const [key, status] of Object.entries(value)) {
+    if (!key.trim()) continue;
+    if (typeof status === 'string' && FAVORITE_STATUSES.has(status as Exclude<FavoriteStatus, null>)) {
+      normalized[key] = status;
+    }
+  }
+
+  return normalized;
+}
+
+export function normalizeRestaurant(value: unknown): Restaurant | null {
+  if (!isRecord(value)) return null;
+
+  const placeId = normalizeString(value.placeId).trim();
+  const name = normalizeString(value.name, 'Unknown restaurant').trim() || 'Unknown restaurant';
+  const address = normalizeString(value.address).trim();
+
+  if (!placeId && !address && name === 'Unknown restaurant') {
+    return null;
+  }
+
+  const rating = normalizeNullableFiniteNumber(value.rating);
+  const openNow = typeof value.openNow === 'boolean' ? value.openNow : null;
+  const hasGFMenu = normalizeBoolean(value.hasGFMenu);
+  const gfMenu = normalizeStringArray(value.gfMenu, 15);
+  const menuUrl = normalizeString(value.menuUrl).trim() || null;
+  const rawMenuText = normalizeString(value.rawMenuText).trim() || null;
+  const menuScanStatus = MENU_SCAN_STATUSES.has(value.menuScanStatus as Restaurant['menuScanStatus'])
+    ? (value.menuScanStatus as Restaurant['menuScanStatus'])
+    : 'NOT_STARTED';
+
+  return {
+    placeId,
+    name,
+    address,
+    latitude: normalizeFiniteNumber(value.latitude, 0),
+    longitude: normalizeFiniteNumber(value.longitude, 0),
+    rating: rating != null ? Math.min(5, Math.max(0, rating)) : null,
+    openNow,
+    hasGFMenu,
+    gfMenu,
+    distanceMeters: Math.max(0, normalizeFiniteNumber(value.distanceMeters, 0)),
+    menuUrl,
+    rawMenuText,
+    menuScanStatus,
+    menuScanTimestamp: Math.max(0, normalizeFiniteNumber(value.menuScanTimestamp, 0)),
+    favoriteStatus: normalizeFavoriteStatus(value.favoriteStatus),
+  };
+}
+
+export function normalizeCachePayload(value: unknown): CachePayload | null {
+  if (!isRecord(value) || !Array.isArray(value.restaurants)) return null;
+
+  const restaurants = value.restaurants
+    .map((restaurant) => normalizeRestaurant(restaurant))
+    .filter((restaurant): restaurant is Restaurant => restaurant !== null);
+
+  return {
+    restaurants,
+    lat: normalizeNullableFiniteNumber(value.lat),
+    lng: normalizeNullableFiniteNumber(value.lng),
+    timestamp: Math.max(0, normalizeFiniteNumber(value.timestamp, 0)),
+  };
+}
 
 export const SettingsManager = {
   // ─── Units ───────────────────────────────────────────────────
@@ -36,7 +184,8 @@ export const SettingsManager = {
 
   // ─── Distance Units ──────────────────────────────────────────
   formatDistance(meters: number, useMiles: boolean): string {
-    if (meters <= 0) return '';
+    if (!Number.isFinite(meters) || meters <= 0) return '';
+
     if (useMiles) {
       const miles = meters / 1609.34;
       if (miles >= 0.1) return `${miles.toFixed(1)} mi`;
@@ -53,53 +202,39 @@ export const SettingsManager = {
     try {
       const raw = await AsyncStorage.getItem(KEYS.FILTERS);
       if (raw) {
-        const parsed = JSON.parse(raw);
-        return {
-          gfOnly: parsed.gfOnly ?? false,
-          openNowOnly: parsed.openNowOnly ?? false,
-          sortMode: (parsed.sortMode as SortMode) ?? 'distance',
-          maxDistanceMeters: parsed.maxDistanceMeters ?? 0,
-          minRating: parsed.minRating ?? 0,
-          searchQuery: parsed.searchQuery ?? '',
-        };
+        return normalizeFilters(JSON.parse(raw));
       }
     } catch (_) {}
-    return {
-      gfOnly: false,
-      openNowOnly: false,
-      sortMode: 'distance',
-      maxDistanceMeters: 0,
-      minRating: 0,
-      searchQuery: '',
-    };
+
+    return DEFAULT_FILTERS;
   },
 
   async saveFilters(filters: RestaurantFilters): Promise<void> {
-    await AsyncStorage.setItem(KEYS.FILTERS, JSON.stringify(filters));
+    await AsyncStorage.setItem(KEYS.FILTERS, JSON.stringify(normalizeFilters(filters)));
   },
 
   // ─── Favorites ───────────────────────────────────────────────
   async loadFavorites(): Promise<Record<string, string>> {
     try {
       const raw = await AsyncStorage.getItem(KEYS.FAVORITES);
-      if (raw) return JSON.parse(raw);
+      if (raw) return normalizeFavoriteMap(JSON.parse(raw));
     } catch (_) {}
     return {};
   },
 
   async saveFavorites(map: Record<string, string>): Promise<void> {
-    await AsyncStorage.setItem(KEYS.FAVORITES, JSON.stringify(map));
+    await AsyncStorage.setItem(KEYS.FAVORITES, JSON.stringify(normalizeFavoriteMap(map)));
   },
 
   // ─── Restaurant cache ───────────────────────────────────────
   async saveCache(data: CachePayload): Promise<void> {
-    await AsyncStorage.setItem(KEYS.CACHE, JSON.stringify(data));
+    await AsyncStorage.setItem(KEYS.CACHE, JSON.stringify(normalizeCachePayload(data)));
   },
 
   async loadCache(): Promise<CachePayload | null> {
     try {
       const raw = await AsyncStorage.getItem(KEYS.CACHE);
-      if (raw) return JSON.parse(raw);
+      if (raw) return normalizeCachePayload(JSON.parse(raw));
     } catch (_) {}
     return null;
   },

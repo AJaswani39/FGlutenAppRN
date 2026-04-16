@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet, Switch } from 'react-native';
-import { Colors, Spacing, Radius } from '../theme/colors';
+import { Colors, Spacing, Radius, FontSize, FontWeight } from '../theme/colors';
 import { useSettings } from '../context/SettingsContext';
 
 export default function SettingsScreen() {

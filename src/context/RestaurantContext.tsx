@@ -1,44 +1,50 @@
 import React, {
   createContext,
+  useCallback,
   useContext,
   useEffect,
   useRef,
   useState,
-  useCallback,
 } from 'react';
 import * as Location from 'expo-location';
 import Constants from 'expo-constants';
+import { FavoriteStatus, Restaurant, RestaurantUiState } from '../types/restaurant';
 import {
-  Restaurant,
-  RestaurantFilters,
-  RestaurantUiState,
-  FavoriteStatus,
-} from '../types/restaurant';
-import {
-  fetchNearbyRestaurants,
-  fetchWebsiteForPlace,
-  fetchHtml,
+  distanceBetween,
   extractGfEvidence,
   extractRawMenuText,
+  fetchHtml,
+  fetchNearbyRestaurants,
+  fetchWebsiteForPlace,
   findMenuLink,
-  distanceBetween,
 } from '../data/placesRepository';
 import { SettingsManager } from '../util/SettingsManager';
-import { useSettings } from './SettingsContext';
+import {
+  filterAndSortRestaurants,
+  getRestaurantIdentityKey,
+  isSameRestaurantIdentity,
+} from '../util/restaurantUtils';
 import { useFilters } from './FiltersContext';
+import { useSettings } from './SettingsContext';
 
-const MENU_SCAN_TTL_MS = 3 * 24 * 60 * 60 * 1000; // 3 days
+const MENU_SCAN_TTL_MS = 3 * 24 * 60 * 60 * 1000;
 const MAX_SCANS_PER_BATCH = 5;
 
-// Get API key from app.json extra
 interface ExpoConfigExtra {
   MAPS_API_KEY?: string;
 }
 
-const MAPS_API_KEY =
-  (Constants.expoConfig?.extra as ExpoConfigExtra)?.MAPS_API_KEY ?? '';
+function getMapsApiKey(): string {
+  return (Constants.expoConfig?.extra as ExpoConfigExtra)?.MAPS_API_KEY ?? '';
+}
 
-// ─── Context types ───────────────────────────────────────────────────────────
+type EmptyResultsReason = 'filters' | 'nearby';
+
+interface EmitFilteredStateOptions {
+  emptyReason?: EmptyResultsReason;
+  message?: string | null;
+  status?: RestaurantUiState['status'];
+}
 
 interface RestaurantContextValue {
   uiState: RestaurantUiState;
@@ -49,13 +55,22 @@ interface RestaurantContextValue {
 
 const RestaurantContext = createContext<RestaurantContextValue | null>(null);
 
-export function useRestaurants(): RestaurantContextValue {
-  const ctx = useContext(RestaurantContext);
-  if (!ctx) throw new Error('useRestaurants must be inside RestaurantProvider');
-  return ctx;
+export function getEmptyResultsMessage(reason: EmptyResultsReason): string {
+  if (reason === 'filters') {
+    return 'No restaurants match your current filters.';
+  }
+
+  return 'No nearby restaurants found. Try expanding your distance or refreshing your search.';
 }
 
-// ─── Provider ────────────────────────────────────────────────────────────────
+export function useRestaurants(): RestaurantContextValue {
+  const context = useContext(RestaurantContext);
+  if (!context) {
+    throw new Error('useRestaurants must be inside RestaurantProvider');
+  }
+
+  return context;
+}
 
 export function RestaurantProvider({ children }: { children: React.ReactNode }) {
   const { strictCeliac } = useSettings();
@@ -69,7 +84,6 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
     userLongitude: null,
   });
 
-  // Raw restaurant data (before filtering)
   const rawRestaurants = useRef<Restaurant[]>([]);
   const userLat = useRef<number | null>(null);
   const userLng = useRef<number | null>(null);
@@ -77,69 +91,65 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
   const cacheAttempted = useRef(false);
   const filtersRef = useRef(filters);
 
-  // Keep filtersRef current
   useEffect(() => {
     filtersRef.current = filters;
   }, [filters]);
 
-  // ─── Init: load persisted data ──────────────────────────────
-  useEffect(() => {
-    (async () => {
-      favoriteMap.current = await SettingsManager.loadFavorites();
-    })();
-  }, []);
+  const updateRestaurant = useCallback(
+    (target: Restaurant, updater: (restaurant: Restaurant) => Restaurant) => {
+      let updated = false;
 
-  // ─── Filter & emit state ─────────────────────────────────────
-  const emitFilteredState = useCallback(
-    (message?: string | null) => {
-      const f = filtersRef.current;
-      const raw = rawRestaurants.current;
-      if (raw.length === 0 || userLat.current == null || userLng.current == null)
-        return;
-
-      let filtered = raw.filter((r) => {
-        let fitsGF = !f.gfOnly || r.hasGFMenu || r.gfMenu.length > 0;
-
-        if (strictCeliac) {
-          const hasEvidence = r.gfMenu.length > 0;
-          const isHighRatedGF = (r.hasGFMenu || r.gfMenu.length > 0) && (r.rating ?? 0) >= 4.0;
-          fitsGF = hasEvidence || isHighRatedGF;
+      rawRestaurants.current = rawRestaurants.current.map((restaurant) => {
+        if (!isSameRestaurantIdentity(restaurant, target)) {
+          return restaurant;
         }
 
-        const q = f.searchQuery.toLowerCase();
-        const passesSearch =
-          !q ||
-          r.name.toLowerCase().includes(q) ||
-          r.gfMenu.some((item) => item.toLowerCase().includes(q));
+        const nextRestaurant = updater(restaurant);
+        if (nextRestaurant !== restaurant) {
+          updated = true;
+        }
 
-        if (!fitsGF || !passesSearch) return false;
-        if (f.openNowOnly && r.openNow !== true) return false;
-        if (f.minRating > 0 && (r.rating ?? 0) < f.minRating) return false;
-        if (f.maxDistanceMeters > 0 && r.distanceMeters > f.maxDistanceMeters) return false;
-        return true;
+        return nextRestaurant;
       });
 
-      if (f.sortMode === 'distance') {
-        filtered = filtered.sort((a, b) => a.distanceMeters - b.distanceMeters);
-      } else {
-        filtered = filtered.sort((a, b) => a.name.localeCompare(b.name));
-      }
+      return updated;
+    },
+    []
+  );
 
-      if (filtered.length === 0) {
-        setUiState({
-          status: 'error',
-          restaurants: [],
-          message: 'No restaurants found. Try adjusting your filters.',
-          userLatitude: userLat.current,
-          userLongitude: userLng.current,
-        });
-        return;
-      }
+  const favoriteKey = useCallback((restaurant: Restaurant): string | null => {
+    return getRestaurantIdentityKey(restaurant);
+  }, []);
+
+  const applyFavorites = useCallback(
+    (restaurants: Restaurant[]) => {
+      return restaurants.map((restaurant) => {
+        const key = favoriteKey(restaurant);
+        if (!key) return restaurant;
+
+        const favoriteStatus = favoriteMap.current[key] as FavoriteStatus | undefined;
+        if (!favoriteStatus) return restaurant;
+
+        return { ...restaurant, favoriteStatus };
+      });
+    },
+    [favoriteKey]
+  );
+
+  const emitFilteredState = useCallback(
+    (options: EmitFilteredStateOptions = {}) => {
+      const raw = rawRestaurants.current;
+      const filtered = filterAndSortRestaurants(raw, filtersRef.current, strictCeliac);
+      const status = options.status ?? 'success';
+      const emptyReason = options.emptyReason ?? (raw.length === 0 ? 'nearby' : 'filters');
 
       setUiState({
-        status: 'success',
+        status,
         restaurants: filtered,
-        message: message ?? null,
+        message:
+          filtered.length === 0
+            ? options.message ?? getEmptyResultsMessage(emptyReason)
+            : options.message ?? null,
         userLatitude: userLat.current,
         userLongitude: userLng.current,
       });
@@ -147,27 +157,91 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
     [strictCeliac]
   );
 
-  // ─── Menu scanning ───────────────────────────────────────────
+  useEffect(() => {
+    if (rawRestaurants.current.length === 0 && uiState.status === 'idle') {
+      return;
+    }
+
+    emitFilteredState({
+      emptyReason: rawRestaurants.current.length === 0 ? 'nearby' : 'filters',
+      message: uiState.message,
+      status: uiState.status,
+    });
+  }, [emitFilteredState, filters, strictCeliac]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    (async () => {
+      const favorites = await SettingsManager.loadFavorites();
+      if (!isMounted) return;
+
+      favoriteMap.current = favorites;
+      if (rawRestaurants.current.length > 0) {
+        rawRestaurants.current = applyFavorites(rawRestaurants.current);
+        emitFilteredState({
+          emptyReason: rawRestaurants.current.length === 0 ? 'nearby' : 'filters',
+          message: uiState.message,
+          status: uiState.status,
+        });
+      }
+    })();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [applyFavorites, emitFilteredState]);
+
+  const persistCache = useCallback(async () => {
+    await SettingsManager.saveCache({
+      restaurants: rawRestaurants.current,
+      lat: userLat.current,
+      lng: userLng.current,
+      timestamp: Date.now(),
+    });
+  }, []);
+
   const scanMenu = useCallback(
     async (restaurant: Restaurant) => {
-      if (!MAPS_API_KEY) return;
+      const mapsApiKey = getMapsApiKey();
+      if (!mapsApiKey || !restaurant.placeId) return;
 
-      const idx = rawRestaurants.current.findIndex((r) => r.placeId === restaurant.placeId);
-      if (idx >= 0) {
-        rawRestaurants.current[idx] = { ...rawRestaurants.current[idx], menuScanStatus: 'FETCHING' };
-      }
-      emitFilteredState();
+      const scanStartedAt = Date.now();
+      const started = updateRestaurant(restaurant, (current) => ({
+        ...current,
+        menuScanStatus: 'FETCHING',
+        menuScanTimestamp: scanStartedAt,
+      }));
 
-      const website = await fetchWebsiteForPlace(restaurant.placeId, MAPS_API_KEY);
+      if (!started) return;
+      emitFilteredState({
+        emptyReason: rawRestaurants.current.length === 0 ? 'nearby' : 'filters',
+        message: uiState.message,
+        status: uiState.status,
+      });
+
+      const website = await fetchWebsiteForPlace(restaurant.placeId, mapsApiKey);
       if (!website) {
-        if (idx >= 0) {
-          rawRestaurants.current[idx] = {
-            ...rawRestaurants.current[idx],
+        const applied = updateRestaurant(restaurant, (current) => {
+          if (
+            current.menuScanStatus !== 'FETCHING' ||
+            current.menuScanTimestamp !== scanStartedAt
+          ) {
+            return current;
+          }
+
+          return {
+            ...current,
+            menuUrl: null,
             menuScanStatus: 'NO_WEBSITE',
-            menuScanTimestamp: Date.now(),
+            menuScanTimestamp: scanStartedAt,
           };
+        });
+
+        if (applied) {
+          emitFilteredState();
+          await persistCache();
         }
-        emitFilteredState();
         return;
       }
 
@@ -178,208 +252,232 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
         if (menuLink && menuLink !== website) {
           menuUrl = menuLink;
           const menuHtml = await fetchHtml(menuLink);
-          if (menuHtml) html = menuHtml;
+          if (menuHtml) {
+            html = menuHtml;
+          }
         }
       }
 
       const gfMenu = html ? extractGfEvidence(html) : [];
       const rawMenuText = html ? extractRawMenuText(html) : null;
+      const applied = updateRestaurant(restaurant, (current) => {
+        if (
+          current.menuScanStatus !== 'FETCHING' ||
+          current.menuScanTimestamp !== scanStartedAt
+        ) {
+          return current;
+        }
 
-      if (idx >= 0) {
-        rawRestaurants.current[idx] = {
-          ...rawRestaurants.current[idx],
+        return {
+          ...current,
           menuUrl,
           gfMenu,
           rawMenuText,
-          menuScanTimestamp: Date.now(),
           menuScanStatus: html ? 'SUCCESS' : 'FAILED',
+          menuScanTimestamp: scanStartedAt,
         };
-      }
-
-      emitFilteredState();
-      await SettingsManager.saveCache({
-        restaurants: rawRestaurants.current,
-        lat: userLat.current,
-        lng: userLng.current,
-        timestamp: Date.now(),
       });
+
+      if (applied) {
+        emitFilteredState();
+        await persistCache();
+      }
     },
-    [emitFilteredState]
+    [emitFilteredState, persistCache, uiState.message, uiState.status, updateRestaurant]
   );
 
   const kickOffMenuScans = useCallback(
     (restaurants: Restaurant[]) => {
       const now = Date.now();
       let launched = 0;
-      for (const r of restaurants) {
-        if (!r.placeId || r.menuScanStatus === 'FETCHING') continue;
+
+      for (const restaurant of restaurants) {
+        if (!restaurant.placeId || restaurant.menuScanStatus === 'FETCHING') continue;
+
         const age =
-          r.menuScanTimestamp > 0 ? now - r.menuScanTimestamp : Infinity;
-        if (age < MENU_SCAN_TTL_MS && r.menuScanStatus !== 'NOT_STARTED') continue;
+          restaurant.menuScanTimestamp > 0 ? now - restaurant.menuScanTimestamp : Infinity;
+        if (age < MENU_SCAN_TTL_MS && restaurant.menuScanStatus !== 'NOT_STARTED') continue;
         if (launched >= MAX_SCANS_PER_BATCH) break;
-        launched++;
-        scanMenu(r);
+
+        launched += 1;
+        void scanMenu(restaurant);
       }
     },
     [scanMenu]
   );
 
-  // ─── Apply favorites ─────────────────────────────────────────
-  const favoriteKey = useCallback((r: Restaurant): string | null => {
-    if (r.placeId) return `pid:${r.placeId}`;
-    if (r.name && r.address) return `na:${r.name}|${r.address}`;
-    return null;
-  }, []);
-
-  const applyFavorites = useCallback((restaurants: Restaurant[]) => {
-    return restaurants.map((r) => {
-      const key = favoriteKey(r);
-      if (key && favoriteMap.current[key]) {
-        return { ...r, favoriteStatus: favoriteMap.current[key] as FavoriteStatus };
-      }
-      return r;
-    });
-  }, [favoriteKey]);
-
-  // ─── Load cached data ────────────────────────────────────────
   const loadCachedIfAvailable = useCallback(async () => {
     if (cacheAttempted.current) return;
+
     cacheAttempted.current = true;
     const cached = await SettingsManager.loadCache();
     if (!cached?.restaurants?.length) return;
 
-    const withFavorites = applyFavorites(cached.restaurants);
-    rawRestaurants.current = withFavorites;
+    rawRestaurants.current = applyFavorites(cached.restaurants);
     userLat.current = cached.lat;
     userLng.current = cached.lng;
 
-    let msg = 'Showing cached results';
-    if (cached.timestamp) {
-      const d = new Date(cached.timestamp);
-      msg += ` (${d.toLocaleString()})`;
+    let message = 'Showing cached results';
+    if (cached.timestamp > 0) {
+      message += ` (${new Date(cached.timestamp).toLocaleString()})`;
     }
-    emitFilteredState(msg);
-    kickOffMenuScans(cached.restaurants);
-  }, [emitFilteredState, kickOffMenuScans, applyFavorites]);
 
-  // ─── Main load ───────────────────────────────────────────────
+    emitFilteredState({
+      emptyReason: 'filters',
+      message,
+    });
+    kickOffMenuScans(rawRestaurants.current);
+  }, [applyFavorites, emitFilteredState, kickOffMenuScans]);
+
   const loadNearbyRestaurants = useCallback(async () => {
-    if (!MAPS_API_KEY) {
-      setUiState({
-        status: 'error',
-        restaurants: [],
-        message: 'Maps API key is missing. Please configure MAPS_API_KEY.',
-        userLatitude: null,
-        userLongitude: null,
-      });
+    const mapsApiKey = getMapsApiKey();
+    await loadCachedIfAvailable();
+
+    if (!mapsApiKey) {
+      if (rawRestaurants.current.length > 0) {
+        emitFilteredState({
+          emptyReason: 'filters',
+          message: 'Showing cached results — Maps API key is missing. Live refresh is unavailable.',
+        });
+      } else {
+        setUiState({
+          status: 'error',
+          restaurants: [],
+          message: 'Maps API key is missing. Please configure MAPS_API_KEY.',
+          userLatitude: null,
+          userLongitude: null,
+        });
+      }
       return;
     }
 
-    await loadCachedIfAvailable();
+    if (rawRestaurants.current.length > 0) {
+      emitFilteredState({
+        emptyReason: 'filters',
+        message: 'Refreshing nearby restaurants…',
+        status: 'loading',
+      });
+    } else {
+      setUiState({
+        status: 'loading',
+        restaurants: [],
+        message: 'Finding restaurants near you…',
+        userLatitude: userLat.current,
+        userLongitude: userLng.current,
+      });
+    }
 
     const { status } = await Location.requestForegroundPermissionsAsync();
     if (status !== 'granted') {
-      setUiState({
-        status: 'permission_required',
-        restaurants: [],
-        message: 'Location permission is needed to find nearby restaurants.',
-        userLatitude: null,
-        userLongitude: null,
-      });
+      if (rawRestaurants.current.length > 0) {
+        emitFilteredState({
+          emptyReason: 'filters',
+          message:
+            'Showing cached results — location permission is needed to refresh nearby restaurants.',
+        });
+      } else {
+        setUiState({
+          status: 'permission_required',
+          restaurants: [],
+          message: 'Location permission is needed to find nearby restaurants.',
+          userLatitude: null,
+          userLongitude: null,
+        });
+      }
       return;
     }
 
-    setUiState((prev) => ({
-      ...prev,
-      status: 'loading',
-      message: 'Finding restaurants near you…',
-    }));
-
     try {
-      const loc = await Location.getCurrentPositionAsync({
+      const location = await Location.getCurrentPositionAsync({
         accuracy: Location.Accuracy.Balanced,
       });
-      const { latitude, longitude } = loc.coords;
+      const { latitude, longitude } = location.coords;
 
-      const restaurants = await fetchNearbyRestaurants(latitude, longitude, MAPS_API_KEY);
-
-      // Apply distances and favorites
-      const restaurantsWithFavorites = applyFavorites(restaurants);
-      const restaurantsWithDistance = restaurantsWithFavorites.map((r) => ({
-        ...r,
-        distanceMeters: distanceBetween(latitude, longitude, r.latitude, r.longitude),
+      const restaurants = await fetchNearbyRestaurants(latitude, longitude, mapsApiKey);
+      const restaurantsWithDistance = applyFavorites(restaurants).map((restaurant) => ({
+        ...restaurant,
+        distanceMeters: distanceBetween(latitude, longitude, restaurant.latitude, restaurant.longitude),
       }));
 
       rawRestaurants.current = restaurantsWithDistance;
       userLat.current = latitude;
       userLng.current = longitude;
 
-      emitFilteredState();
-
-      await SettingsManager.saveCache({
-        restaurants: restaurantsWithDistance,
-        lat: latitude,
-        lng: longitude,
-        timestamp: Date.now(),
+      emitFilteredState({
+        emptyReason: 'nearby',
       });
-
+      await persistCache();
       kickOffMenuScans(restaurantsWithDistance);
-    } catch (err: any) {
-      const errmsg = `Could not load restaurants: ${err?.message ?? 'Unknown error'}`;
-      if (rawRestaurants.current.length > 0 && userLat.current != null) {
-        emitFilteredState('Showing cached results — ' + errmsg);
+    } catch (error: unknown) {
+      const message = `Could not load restaurants: ${
+        error instanceof Error ? error.message : 'Unknown error'
+      }`;
+
+      if (rawRestaurants.current.length > 0) {
+        emitFilteredState({
+          emptyReason: 'filters',
+          message: `Showing cached results — ${message}`,
+        });
       } else {
         setUiState({
           status: 'error',
           restaurants: [],
-          message: errmsg,
+          message,
           userLatitude: null,
           userLongitude: null,
         });
       }
     }
-  }, [loadCachedIfAvailable, emitFilteredState, kickOffMenuScans, applyFavorites]);
+  }, [applyFavorites, emitFilteredState, kickOffMenuScans, loadCachedIfAvailable, persistCache]);
 
-  // ─── Favorites ───────────────────────────────────────────────
   const setFavoriteStatus = useCallback(
     (restaurant: Restaurant, status: FavoriteStatus) => {
       const key = favoriteKey(restaurant);
       if (!key) return;
+
       if (!status) {
         delete favoriteMap.current[key];
       } else {
         favoriteMap.current[key] = status;
       }
 
-      const idx = rawRestaurants.current.findIndex(
-        (r) => r.placeId === restaurant.placeId
-      );
-      if (idx >= 0) {
-        rawRestaurants.current[idx] = { ...rawRestaurants.current[idx], favoriteStatus: status };
-      }
+      updateRestaurant(restaurant, (current) => ({
+        ...current,
+        favoriteStatus: status,
+      }));
 
-      SettingsManager.saveFavorites(favoriteMap.current);
-      emitFilteredState();
+      void SettingsManager.saveFavorites(favoriteMap.current);
+      emitFilteredState({
+        emptyReason: rawRestaurants.current.length === 0 ? 'nearby' : 'filters',
+        message: uiState.message,
+        status: uiState.status,
+      });
     },
-    [emitFilteredState, favoriteKey]
+    [emitFilteredState, favoriteKey, uiState.message, uiState.status, updateRestaurant]
   );
 
-  // ─── Manual rescan ───────────────────────────────────────────
   const requestMenuRescan = useCallback(
     (restaurant: Restaurant) => {
-      const idx = rawRestaurants.current.findIndex((r) => r.placeId === restaurant.placeId);
-      if (idx >= 0) {
-        rawRestaurants.current[idx] = {
-          ...rawRestaurants.current[idx],
-          menuScanStatus: 'FETCHING',
-          menuScanTimestamp: Date.now(),
-          gfMenu: [],
-        };
-      }
-      emitFilteredState();
-      scanMenu(restaurant);
+      if (!restaurant.placeId || !getMapsApiKey()) return;
+
+      const scanRequestedAt = Date.now();
+      const updated = updateRestaurant(restaurant, (current) => ({
+        ...current,
+        gfMenu: [],
+        menuScanStatus: 'FETCHING',
+        menuScanTimestamp: scanRequestedAt,
+      }));
+
+      if (!updated) return;
+
+      emitFilteredState({
+        emptyReason: rawRestaurants.current.length === 0 ? 'nearby' : 'filters',
+        message: uiState.message,
+        status: uiState.status,
+      });
+      void scanMenu(restaurant);
     },
-    [emitFilteredState, scanMenu]
+    [emitFilteredState, scanMenu, uiState.message, uiState.status, updateRestaurant]
   );
 
   return (

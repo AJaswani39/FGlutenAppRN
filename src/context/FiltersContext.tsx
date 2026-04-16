@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { RestaurantFilters, SortMode } from '../types/restaurant';
-import { SettingsManager } from '../util/SettingsManager';
+import { RestaurantFilters } from '../types/restaurant';
+import { DEFAULT_FILTERS, SettingsManager } from '../util/SettingsManager';
 
 interface FiltersContextValue {
   filters: RestaurantFilters;
@@ -9,15 +9,6 @@ interface FiltersContextValue {
 }
 
 const FiltersContext = createContext<FiltersContextValue | null>(null);
-
-const DEFAULT_FILTERS: RestaurantFilters = {
-  gfOnly: false,
-  openNowOnly: false,
-  sortMode: 'distance',
-  maxDistanceMeters: 0,
-  minRating: 0,
-  searchQuery: '',
-};
 
 export function useFilters(): FiltersContextValue {
   const ctx = useContext(FiltersContext);

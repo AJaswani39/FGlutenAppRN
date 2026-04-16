@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet, Switch } from 'react-native';
-import { Colors, Spacing, Radius } from '../theme/colors';
+import { Colors, Spacing, Radius, FontSize, FontWeight } from '../theme/colors';
 import { useFilters } from '../context/FiltersContext';
 
 export default function FilterScreen() {
@@ -24,7 +24,7 @@ export default function FilterScreen() {
         />
         <SettingRow
           label="Min Rating"
-          value={filters.minRating}
+          value={filters.minRating >= 4.0}
           onToggle={() => setFilters({ minRating: filters.minRating >= 4.0 ? 0 : 4.0 })}
           description={`Minimum rating: ${filters.minRating === 0 ? 'Any' : filters.minRating.toFixed(1)}★`}
         />

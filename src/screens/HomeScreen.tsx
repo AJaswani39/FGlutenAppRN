@@ -13,7 +13,6 @@ import { useRestaurants } from '../context/RestaurantContext';
 import { useSettings } from '../context/SettingsContext';
 import { Restaurant } from '../types/restaurant';
 import { SettingsManager } from '../util/SettingsManager';
-import { RestaurantCardSkeleton } from '../components/Skeleton';
 
 const { width } = Dimensions.get('window');
 
@@ -113,7 +112,11 @@ export default function HomeScreen() {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Recent Results</Text>
           {cached.slice(0, 5).map((r) => (
-            <CachedRestaurantRow key={r.placeId} restaurant={r} useMiles={useMiles} />
+            <CachedRestaurantRow
+              key={r.placeId || `${r.name}-${r.address}`}
+              restaurant={r}
+              useMiles={useMiles}
+            />
           ))}
         </View>
       )}

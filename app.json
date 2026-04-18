@@ -16,6 +16,7 @@
       "supportsTablet": true,
       "bundleIdentifier": "io.fgluten.app",
       "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false,
         "NSLocationWhenInUseUsageDescription": "FGlutenApp uses your location to find gluten-free friendly restaurants near you.",
         "NSLocationAlwaysAndWhenInUseUsageDescription": "FGlutenApp uses your location to find gluten-free friendly restaurants near you."
       }
@@ -41,8 +42,7 @@
         {
           "locationWhenInUsePermission": "FGlutenApp uses your location to find gluten-free restaurants near you."
         }
-      ],
-      "expo-font"
+      ]
     ]
   }
 }

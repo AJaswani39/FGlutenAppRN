@@ -18,6 +18,7 @@ export default {
       supportsTablet: true,
       bundleIdentifier: "io.fgluten.app",
       infoPlist: {
+        ITSAppUsesNonExemptEncryption: false,
         NSLocationWhenInUseUsageDescription:
           "FGlutenApp uses your location to find gluten-free friendly restaurants near you.",
         NSLocationAlwaysAndWhenInUseUsageDescription:
@@ -49,8 +50,11 @@ export default {
       ],
     ],
     extra: {
-      // Reads GCP_API_KEY from your .env file at build/start time
+
       MAPS_API_KEY: process.env.GCP_API_KEY ?? "",
+      eas: {
+        projectId: "a445e80b-b3b6-4d3d-9b44-e0949b962c4d",
+      }
     },
   },
 };

@@ -1,8 +1,11 @@
 import 'dotenv/config';
 
+const appVariant = process.env.APP_VARIANT ?? "production";
+const isStaging = appVariant === "staging";
+
 export default {
   expo: {
-    name: "FGlutenApp",
+    name: isStaging ? "FGlutenApp (Staging)" : "FGlutenApp",
     slug: "fgluten-app",
     version: "1.0.0",
     orientation: "portrait",
@@ -13,6 +16,12 @@ export default {
       image: "./assets/splash-icon.png",
       resizeMode: "contain",
       backgroundColor: "#0D1117",
+    },
+    updates: {
+      url: "https://u.expo.dev/a445e80b-b3b6-4d3d-9b44-e0949b962c4d",
+    },
+    runtimeVersion: {
+      policy: "appVersion",
     },
     ios: {
       supportsTablet: true,
@@ -30,7 +39,7 @@ export default {
         foregroundImage: "./assets/adaptive-icon.png",
         backgroundColor: "#0D1117",
       },
-      package: "io.fgluten.app",
+      package: isStaging ? "io.fgluten.app.staging" : "io.fgluten.app",
       permissions: [
         "ACCESS_FINE_LOCATION",
         "ACCESS_COARSE_LOCATION",
@@ -50,11 +59,11 @@ export default {
       ],
     ],
     extra: {
-
+      appVariant,
       MAPS_API_KEY: process.env.GCP_API_KEY ?? "",
       eas: {
         projectId: "a445e80b-b3b6-4d3d-9b44-e0949b962c4d",
-      }
+      },
     },
   },
 };

@@ -2,6 +2,8 @@ import 'dotenv/config';
 
 const appVariant = process.env.APP_VARIANT ?? "production";
 const isStaging = appVariant === "staging";
+const mapsApiKey =
+  process.env.EXPO_PUBLIC_MAPS_API_KEY ?? process.env.GCP_API_KEY ?? "";
 
 export default {
   expo: {
@@ -60,7 +62,7 @@ export default {
     ],
     extra: {
       appVariant,
-      MAPS_API_KEY: process.env.GCP_API_KEY ?? "",
+      MAPS_API_KEY: mapsApiKey,
       eas: {
         projectId: "a445e80b-b3b6-4d3d-9b44-e0949b962c4d",
       },

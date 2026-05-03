@@ -16,8 +16,9 @@ import { Colors, Spacing, Radius, FontSize, FontWeight } from '../theme/colors';
 import { useRestaurants } from '../context/RestaurantContext';
 import { useFilters } from '../context/FiltersContext';
 import { useSettings } from '../context/SettingsContext';
-import { Restaurant, RestaurantFilters } from '../types/restaurant';
+import { MenuScanProgress, Restaurant, RestaurantFilters } from '../types/restaurant';
 import { SettingsManager } from '../util/SettingsManager';
+import { getGfConfidenceLevel } from '../util/restaurantUtils';
 import RestaurantDetailModal from './components/RestaurantDetailModal';
 import { RestaurantCardSkeleton } from '../components/Skeleton';
 import { useDebounce } from '../hooks/useDebounce';
@@ -119,6 +120,10 @@ export default function RestaurantListScreen() {
         </Pressable>
       </View>
 
+      {uiState.scanProgress ? (
+        <ScanProgressBanner progress={uiState.scanProgress} />
+      ) : null}
+
       {/* ── Results count ── */}
       {(hasResults || (status === 'success' && message)) && (
         <Text style={styles.resultsCount}>
@@ -193,8 +198,8 @@ function RestaurantCard({
   useMiles: boolean;
   onPress: () => void;
 }) {
-  const isGF = r.hasGFMenu || r.gfMenu.length > 0;
   const dist = SettingsManager.formatDistance(r.distanceMeters, useMiles);
+  const confidence = confidenceMeta(r);
 
   return (
     <Pressable style={cardStyles.card} onPress={onPress}>
@@ -203,11 +208,9 @@ function RestaurantCard({
         <Text style={cardStyles.name} numberOfLines={1}>
           {r.name}
         </Text>
-        {isGF && (
-          <View style={cardStyles.gfBadge}>
-            <Text style={cardStyles.gfBadgeText}>GF</Text>
-          </View>
-        )}
+        <View style={[cardStyles.gfBadge, { backgroundColor: confidence.bg }]}>
+          <Text style={[cardStyles.gfBadgeText, { color: confidence.color }]}>{confidence.shortLabel}</Text>
+        </View>
       </View>
 
       <Text style={cardStyles.address} numberOfLines={1}>
@@ -227,6 +230,7 @@ function RestaurantCard({
           />
         )}
         {dist && <MetaPill icon="📍" text={dist} />}
+        <MetaPill icon={confidence.icon} text={confidence.label} color={confidence.color} />
         <ScanStatusPill status={r.menuScanStatus} gfCount={r.gfMenu.length} />
       </View>
 
@@ -268,6 +272,71 @@ function RestaurantCard({
       )}
     </Pressable>
   );
+}
+
+function ScanProgressBanner({
+  progress,
+}: {
+  progress: MenuScanProgress;
+}) {
+  const text = progress.active
+    ? `Scanning menus ${progress.completed}/${progress.total}`
+    : `Menu scans complete ${progress.completed}/${progress.total}`;
+
+  return (
+    <View style={[styles.scanBanner, !progress.active && styles.scanBannerDone]}>
+      {progress.active ? <ActivityIndicator size="small" color={Colors.info} /> : null}
+      <Text style={[styles.scanBannerText, !progress.active && styles.scanBannerDoneText]}>
+        {text}
+      </Text>
+    </View>
+  );
+}
+
+function confidenceMeta(restaurant: Restaurant) {
+  const level = getGfConfidenceLevel(restaurant);
+  switch (level) {
+    case 'confirmed':
+      return {
+        icon: '✅',
+        label: 'Confirmed GF evidence',
+        shortLabel: 'Confirmed',
+        color: Colors.success,
+        bg: Colors.successBg,
+      };
+    case 'name_match':
+      return {
+        icon: '🌾',
+        label: 'Name suggests GF',
+        shortLabel: 'Likely GF',
+        color: Colors.warning,
+        bg: Colors.warningBg,
+      };
+    case 'no_evidence':
+      return {
+        icon: '🔎',
+        label: 'No GF evidence found',
+        shortLabel: 'No evidence',
+        color: Colors.textSecondary,
+        bg: Colors.surfaceElevated,
+      };
+    case 'unavailable':
+      return {
+        icon: '⚠️',
+        label: 'Menu evidence unavailable',
+        shortLabel: 'Unknown',
+        color: Colors.warning,
+        bg: Colors.warningBg,
+      };
+    default:
+      return {
+        icon: '⏳',
+        label: 'Awaiting menu scan',
+        shortLabel: 'Pending',
+        color: Colors.info,
+        bg: Colors.infoBg,
+      };
+  }
 }
 
 function MetaPill({ icon, text, color }: { icon: string; text: string; color?: string }) {
@@ -569,6 +638,29 @@ const styles = StyleSheet.create({
     padding: Spacing.md,
   },
   loadingText: { color: Colors.textSecondary, fontSize: FontSize.md },
+  scanBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    marginHorizontal: Spacing.md,
+    marginBottom: Spacing.sm,
+    backgroundColor: Colors.infoBg,
+    borderRadius: Radius.md,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    borderWidth: 1,
+    borderColor: Colors.info,
+  },
+  scanBannerDone: {
+    backgroundColor: Colors.successBg,
+    borderColor: Colors.success,
+  },
+  scanBannerText: {
+    color: Colors.info,
+    fontSize: FontSize.sm,
+    fontWeight: FontWeight.semiBold,
+  },
+  scanBannerDoneText: { color: Colors.success },
 });
 
 const cardStyles = StyleSheet.create({
@@ -594,12 +686,11 @@ const cardStyles = StyleSheet.create({
     marginRight: 8,
   },
   gfBadge: {
-    backgroundColor: Colors.primaryLight,
     borderRadius: Radius.full,
     paddingHorizontal: 8,
     paddingVertical: 2,
   },
-  gfBadgeText: { color: Colors.primary, fontSize: FontSize.xs, fontWeight: FontWeight.bold },
+  gfBadgeText: { fontSize: FontSize.xs, fontWeight: FontWeight.bold },
   address: { color: Colors.textMuted, fontSize: FontSize.sm, marginBottom: Spacing.sm },
   metaRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   pill: {

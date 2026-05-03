@@ -1,4 +1,4 @@
-import { Restaurant, RestaurantFilters } from '../types/restaurant';
+import { GfConfidenceLevel, Restaurant, RestaurantFilters } from '../types/restaurant';
 
 export function normalizeSearchQuery(query: string): string {
   return query.trim().toLowerCase();
@@ -6,6 +6,17 @@ export function normalizeSearchQuery(query: string): string {
 
 export function hasRestaurantGfEvidence(restaurant: Restaurant): boolean {
   return restaurant.hasGFMenu || restaurant.gfMenu.length > 0;
+}
+
+export function getGfConfidenceLevel(restaurant: Restaurant): GfConfidenceLevel {
+  if (restaurant.gfMenu.length > 0) return 'confirmed';
+  if (restaurant.hasGFMenu) return 'name_match';
+  if (restaurant.menuScanStatus === 'SUCCESS') return 'no_evidence';
+  if (restaurant.menuScanStatus === 'FAILED' || restaurant.menuScanStatus === 'NO_WEBSITE') {
+    return 'unavailable';
+  }
+
+  return 'pending';
 }
 
 export function getRestaurantIdentityKey(restaurant: Pick<Restaurant, 'placeId' | 'name' | 'address'>): string | null {

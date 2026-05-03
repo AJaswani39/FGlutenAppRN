@@ -1,6 +1,7 @@
 export type MenuScanStatus = 'NOT_STARTED' | 'FETCHING' | 'SUCCESS' | 'NO_WEBSITE' | 'FAILED';
 export type FavoriteStatus = 'safe' | 'try' | 'avoid' | null;
 export type SortMode = 'distance' | 'name';
+export type GfConfidenceLevel = 'confirmed' | 'name_match' | 'no_evidence' | 'unavailable' | 'pending';
 
 export interface Restaurant {
   placeId: string;
@@ -37,4 +38,11 @@ export interface RestaurantUiState {
   message: string | null;
   userLatitude: number | null;
   userLongitude: number | null;
+  scanProgress: MenuScanProgress | null;
+}
+
+export interface MenuScanProgress {
+  completed: number;
+  total: number;
+  active: boolean;
 }

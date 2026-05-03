@@ -8,7 +8,7 @@ import React, {
 } from 'react';
 import * as Location from 'expo-location';
 import Constants from 'expo-constants';
-import { FavoriteStatus, Restaurant, RestaurantUiState } from '../types/restaurant';
+import { FavoriteStatus, MenuScanProgress, Restaurant, RestaurantUiState } from '../types/restaurant';
 import {
   distanceBetween,
   extractGfEvidence,
@@ -83,6 +83,7 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
     message: null,
     userLatitude: null,
     userLongitude: null,
+    scanProgress: null,
   });
   const [savedRestaurants, setSavedRestaurants] = useState<Restaurant[]>([]);
 
@@ -90,6 +91,7 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
   const userLat = useRef<number | null>(null);
   const userLng = useRef<number | null>(null);
   const favoriteMap = useRef<Record<string, string>>({});
+  const scanBatchKeys = useRef<string[]>([]);
   const cacheAttempted = useRef(false);
   const filtersRef = useRef(filters);
 
@@ -157,6 +159,29 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
     );
   }, []);
 
+  const getScanProgress = useCallback((): MenuScanProgress | null => {
+    const keys = scanBatchKeys.current;
+    if (keys.length === 0) return null;
+
+    let completed = 0;
+    let fetching = 0;
+    for (const key of keys) {
+      const restaurant = rawRestaurants.current.find((item) => favoriteKey(item) === key);
+      if (!restaurant) continue;
+      if (restaurant.menuScanStatus === 'FETCHING') {
+        fetching += 1;
+      } else if (restaurant.menuScanStatus !== 'NOT_STARTED') {
+        completed += 1;
+      }
+    }
+
+    return {
+      completed,
+      total: keys.length,
+      active: fetching > 0 || completed < keys.length,
+    };
+  }, [favoriteKey]);
+
   const emitFilteredState = useCallback(
     (options: EmitFilteredStateOptions = {}) => {
       const raw = rawRestaurants.current;
@@ -174,9 +199,10 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
             : options.message ?? null,
         userLatitude: userLat.current,
         userLongitude: userLng.current,
+        scanProgress: getScanProgress(),
       });
     },
-    [strictCeliac, syncSavedRestaurants]
+    [getScanProgress, strictCeliac, syncSavedRestaurants]
   );
 
   useEffect(() => {
@@ -311,7 +337,7 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
   const kickOffMenuScans = useCallback(
     (restaurants: Restaurant[]) => {
       const now = Date.now();
-      let launched = 0;
+      const targets: Restaurant[] = [];
 
       for (const restaurant of restaurants) {
         if (!restaurant.placeId || restaurant.menuScanStatus === 'FETCHING') continue;
@@ -319,13 +345,28 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
         const age =
           restaurant.menuScanTimestamp > 0 ? now - restaurant.menuScanTimestamp : Infinity;
         if (age < MENU_SCAN_TTL_MS && restaurant.menuScanStatus !== 'NOT_STARTED') continue;
-        if (launched >= MAX_SCANS_PER_BATCH) break;
+        if (targets.length >= MAX_SCANS_PER_BATCH) break;
 
-        launched += 1;
+        targets.push(restaurant);
+      }
+
+      scanBatchKeys.current = targets
+        .map((restaurant) => favoriteKey(restaurant))
+        .filter((key): key is string => Boolean(key));
+
+      if (targets.length > 0) {
+        emitFilteredState({
+          emptyReason: rawRestaurants.current.length === 0 ? 'nearby' : 'filters',
+          message: uiState.message,
+          status: uiState.status,
+        });
+      }
+
+      for (const restaurant of targets) {
         void scanMenu(restaurant);
       }
     },
-    [scanMenu]
+    [emitFilteredState, favoriteKey, scanMenu, uiState.message, uiState.status]
   );
 
   const loadCachedIfAvailable = useCallback(async () => {
@@ -368,6 +409,7 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
           message: 'Maps API key is missing. Please configure MAPS_API_KEY.',
           userLatitude: null,
           userLongitude: null,
+          scanProgress: getScanProgress(),
         });
       }
       return;
@@ -386,6 +428,7 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
         message: 'Finding restaurants near you…',
         userLatitude: userLat.current,
         userLongitude: userLng.current,
+        scanProgress: getScanProgress(),
       });
     }
 
@@ -404,6 +447,7 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
           message: 'Location permission is needed to find nearby restaurants.',
           userLatitude: null,
           userLongitude: null,
+          scanProgress: getScanProgress(),
         });
       }
       return;
@@ -447,10 +491,11 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
           message,
           userLatitude: null,
           userLongitude: null,
+          scanProgress: getScanProgress(),
         });
       }
     }
-  }, [applyFavorites, emitFilteredState, kickOffMenuScans, loadCachedIfAvailable, persistCache]);
+  }, [applyFavorites, emitFilteredState, getScanProgress, kickOffMenuScans, loadCachedIfAvailable, persistCache]);
 
   const setFavoriteStatus = useCallback(
     (restaurant: Restaurant, status: FavoriteStatus) => {
@@ -483,6 +528,11 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
       if (!restaurant.placeId || !getMapsApiKey()) return;
 
       const scanRequestedAt = Date.now();
+      const key = favoriteKey(restaurant);
+      if (key) {
+        scanBatchKeys.current = [key];
+      }
+
       const updated = updateRestaurant(restaurant, (current) => ({
         ...current,
         gfMenu: [],
@@ -499,7 +549,7 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
       });
       void scanMenu(restaurant);
     },
-    [emitFilteredState, scanMenu, uiState.message, uiState.status, updateRestaurant]
+    [emitFilteredState, favoriteKey, scanMenu, uiState.message, uiState.status, updateRestaurant]
   );
 
   return (

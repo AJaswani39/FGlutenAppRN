@@ -13,6 +13,7 @@ import {
 import { Colors, Spacing, Radius, FontSize, FontWeight } from '../../theme/colors';
 import { Restaurant, FavoriteStatus } from '../../types/restaurant';
 import { SettingsManager } from '../../util/SettingsManager';
+import { getGfConfidenceLevel } from '../../util/restaurantUtils';
 import { useRestaurants } from '../../context/RestaurantContext';
 import MenuAnalysisSheet from './MenuAnalysisSheet';
 
@@ -33,8 +34,8 @@ export default function RestaurantDetailModal({ restaurant: initial, useMiles, o
     initial;
 
   const dist = SettingsManager.formatDistance(restaurant.distanceMeters, useMiles);
-  const isGF = restaurant.hasGFMenu || restaurant.gfMenu.length > 0;
   const safeMenuUrl = getSafeExternalUrl(restaurant.menuUrl);
+  const confidence = confidenceMeta(restaurant);
 
   const openMaps = () => {
     const url = Platform.select({
@@ -104,14 +105,11 @@ export default function RestaurantDetailModal({ restaurant: initial, useMiles, o
 
           {/* GF status */}
           <Section title="Gluten-Free Status">
-            <View style={[styles.gfCard, { backgroundColor: isGF ? Colors.successBg : Colors.surfaceElevated }]}>
-              <Text style={[styles.gfCardTitle, { color: isGF ? Colors.success : Colors.textMuted }]}>
-                {isGF
-                  ? restaurant.gfMenu.length >= 3
-                    ? '✅ Many GF options found'
-                    : '✅ Some GF options found'
-                  : '❓ GF options unknown'}
+            <View style={[styles.gfCard, { backgroundColor: confidence.bg }]}>
+              <Text style={[styles.gfCardTitle, { color: confidence.color }]}>
+                {confidence.icon} {confidence.title}
               </Text>
+              <Text style={styles.gfCardBody}>{confidence.description}</Text>
             </View>
           </Section>
 
@@ -209,6 +207,55 @@ function getSafeExternalUrl(url: string | null): string | null {
   if (!trimmed || !/^https?:\/\//i.test(trimmed)) return null;
 
   return trimmed;
+}
+
+function confidenceMeta(restaurant: Restaurant) {
+  const level = getGfConfidenceLevel(restaurant);
+  switch (level) {
+    case 'confirmed':
+      return {
+        icon: '✅',
+        title: 'Confirmed GF evidence',
+        description:
+          restaurant.gfMenu.length >= 3
+            ? 'Multiple gluten-free menu references were found during the latest scan.'
+            : 'Gluten-free menu evidence was found during the latest scan.',
+        color: Colors.success,
+        bg: Colors.successBg,
+      };
+    case 'name_match':
+      return {
+        icon: '🌾',
+        title: 'Name suggests GF',
+        description: 'The restaurant name suggests gluten-free options, but menu evidence is not confirmed yet.',
+        color: Colors.warning,
+        bg: Colors.warningBg,
+      };
+    case 'no_evidence':
+      return {
+        icon: '🔎',
+        title: 'No GF evidence found',
+        description: 'The menu scan completed, but no specific gluten-free items or claims were found.',
+        color: Colors.textSecondary,
+        bg: Colors.surfaceElevated,
+      };
+    case 'unavailable':
+      return {
+        icon: '⚠️',
+        title: 'Menu evidence unavailable',
+        description: 'The app could not inspect a menu for this restaurant. Ask staff before relying on it.',
+        color: Colors.warning,
+        bg: Colors.warningBg,
+      };
+    default:
+      return {
+        icon: '⏳',
+        title: 'Awaiting menu scan',
+        description: 'The app has not finished checking this restaurant for gluten-free menu evidence.',
+        color: Colors.info,
+        bg: Colors.infoBg,
+      };
+  }
 }
 
 function menuStatusText(r: Restaurant): string {
@@ -382,6 +429,12 @@ const styles = StyleSheet.create({
     padding: Spacing.md,
   },
   gfCardTitle: { fontSize: FontSize.md, fontWeight: FontWeight.semiBold },
+  gfCardBody: {
+    color: Colors.textSecondary,
+    fontSize: FontSize.sm,
+    lineHeight: 20,
+    marginTop: Spacing.xs,
+  },
   scanRow: {
     flexDirection: 'row',
     alignItems: 'center',

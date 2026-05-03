@@ -368,4 +368,42 @@ describe('RestaurantContext', () => {
 
     expect(getApi().restaurants.savedRestaurants).toHaveLength(0);
   });
+
+  it('reports menu scan progress for the current scan batch', async () => {
+    (global.fetch as jest.Mock).mockImplementation(async (url: string) => {
+      if (url.includes('searchNearby')) {
+        return {
+          ok: true,
+          json: async () => ({
+            places: Array.from({ length: 7 }).map((_, index) => ({
+              id: `scan-place-${index}`,
+              displayName: { text: `Scan Cafe ${index}` },
+              formattedAddress: `${index} Main St`,
+              location: { latitude: 40.715 + index * 0.001, longitude: -74.004 },
+              rating: 4.1,
+              currentOpeningHours: { openNow: true },
+            })),
+          }),
+        };
+      }
+
+      return {
+        ok: true,
+        json: async () => ({}),
+      };
+    });
+
+    const { getApi } = await renderHarness();
+
+    await act(async () => {
+      await getApi().restaurants.loadNearbyRestaurants();
+    });
+    await flushAsync();
+
+    expect(getApi().restaurants.uiState.scanProgress).toEqual({
+      completed: 5,
+      total: 5,
+      active: false,
+    });
+  });
 });

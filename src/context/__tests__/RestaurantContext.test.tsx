@@ -279,4 +279,93 @@ describe('RestaurantContext', () => {
 
     expect(getApi().restaurants.uiState.restaurants[0].favoriteStatus).toBe('safe');
   });
+
+  it('keeps saved restaurants independent from active filters', async () => {
+    (global.fetch as jest.Mock).mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        places: [
+          {
+            id: 'safe-place',
+            displayName: { text: 'Safe Bistro' },
+            formattedAddress: '12 Green St',
+            location: { latitude: 40.715, longitude: -74.004 },
+            rating: 4.8,
+            currentOpeningHours: { openNow: true },
+          },
+          {
+            id: 'avoid-place',
+            displayName: { text: 'Avoid Grill' },
+            formattedAddress: '34 Wheat Ave',
+            location: { latitude: 40.716, longitude: -74.003 },
+            rating: 3.5,
+            currentOpeningHours: { openNow: false },
+          },
+        ],
+      }),
+    });
+
+    const { getApi } = await renderHarness();
+
+    await act(async () => {
+      await getApi().restaurants.loadNearbyRestaurants();
+    });
+
+    const [safePlace, avoidPlace] = getApi().restaurants.uiState.restaurants;
+    act(() => {
+      getApi().restaurants.setFavoriteStatus(safePlace, 'safe');
+      getApi().restaurants.setFavoriteStatus(avoidPlace, 'avoid');
+    });
+    await flushAsync();
+
+    act(() => {
+      getApi().filters.setFilters({ searchQuery: 'not in saved names' });
+    });
+    await flushAsync();
+
+    expect(getApi().restaurants.uiState.restaurants).toHaveLength(0);
+    expect(getApi().restaurants.savedRestaurants.map((restaurant) => restaurant.placeId)).toEqual([
+      'safe-place',
+      'avoid-place',
+    ]);
+  });
+
+  it('removes restaurants from saved results when favorite status is cleared', async () => {
+    (global.fetch as jest.Mock).mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        places: [
+          {
+            id: 'try-place',
+            displayName: { text: 'Try Cafe' },
+            formattedAddress: '56 Rice Rd',
+            location: { latitude: 40.715, longitude: -74.004 },
+            rating: 4.1,
+            currentOpeningHours: { openNow: true },
+          },
+        ],
+      }),
+    });
+
+    const { getApi } = await renderHarness();
+
+    await act(async () => {
+      await getApi().restaurants.loadNearbyRestaurants();
+    });
+
+    const [restaurant] = getApi().restaurants.uiState.restaurants;
+    act(() => {
+      getApi().restaurants.setFavoriteStatus(restaurant, 'try');
+    });
+    await flushAsync();
+
+    expect(getApi().restaurants.savedRestaurants).toHaveLength(1);
+
+    act(() => {
+      getApi().restaurants.setFavoriteStatus(restaurant, null);
+    });
+    await flushAsync();
+
+    expect(getApi().restaurants.savedRestaurants).toHaveLength(0);
+  });
 });

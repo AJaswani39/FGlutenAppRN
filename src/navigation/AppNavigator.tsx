@@ -6,7 +6,8 @@ import { Colors, FontSize } from '../theme/colors';
 import HomeScreen from '../screens/HomeScreen';
 import RestaurantListScreen from '../screens/RestaurantListScreen';
 import SettingsScreen from '../screens/SettingsScreen';
-import FilterScreen from '../screens/FilterScreen';
+import MapScreen from '../screens/MapScreen';
+import SavedPlacesScreen from '../screens/SavedPlacesScreen';
 import { RootTabParamList } from '../types/navigation';
 
 const Tab = createBottomTabNavigator<RootTabParamList>();
@@ -75,13 +76,24 @@ function TabNavigator() {
           }}
         />
       <Tab.Screen
-        name="Filter"
-        component={FilterScreen}
+        name="Map"
+        component={MapScreen}
         options={{
-          title: 'Filters',
-          tabBarLabel: 'Filter',
+          title: 'Map',
+          tabBarLabel: 'Map',
           tabBarIcon: ({ focused }) => (
-            <TabIcon emoji="⚙️" focused={focused} />
+            <TabIcon emoji="🗺️" focused={focused} />
+          ),
+        }}
+      />
+      <Tab.Screen
+        name="Saved"
+        component={SavedPlacesScreen}
+        options={{
+          title: 'Saved Places',
+          tabBarLabel: 'Saved',
+          tabBarIcon: ({ focused }) => (
+            <TabIcon emoji="❤️" focused={focused} />
           ),
         }}
       />

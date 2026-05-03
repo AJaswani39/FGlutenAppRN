@@ -9,7 +9,6 @@ import {
   ActivityIndicator,
   RefreshControl,
   Platform,
-  Linking,
   ScrollView,
   Keyboard,
 } from 'react-native';
@@ -23,14 +22,11 @@ import RestaurantDetailModal from './components/RestaurantDetailModal';
 import { RestaurantCardSkeleton } from '../components/Skeleton';
 import { useDebounce } from '../hooks/useDebounce';
 
-type ViewMode = 'list' | 'map';
-
 export default function RestaurantListScreen() {
   const { uiState, loadNearbyRestaurants } = useRestaurants();
   const { filters, setFilters } = useFilters();
   const { useMiles } = useSettings();
 
-  const [viewMode, setViewMode] = useState<ViewMode>('list');
   const [selectedRestaurant, setSelectedRestaurant] = useState<Restaurant | null>(null);
   const [showFilters, setShowFilters] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -111,21 +107,13 @@ export default function RestaurantListScreen() {
         />
       )}
 
-      {/* ── View toggle ── */}
-      <View style={styles.toggleRow}>
-        <ToggleButton
-          label="📋  List"
-          active={viewMode === 'list'}
-          onPress={() => setViewMode('list')}
-        />
-        <ToggleButton
-          label="🗺️  Map"
-          active={viewMode === 'map'}
-          onPress={() => setViewMode('map')}
-        />
+      <View style={styles.refreshRow}>
+        <Text style={styles.refreshLabel}>Explore results</Text>
         <Pressable
           style={styles.refreshBtn}
           onPress={loadNearbyRestaurants}
+          accessibilityRole="button"
+          accessibilityLabel="Refresh nearby restaurants"
         >
           <Text style={styles.refreshBtnText}>↻</Text>
         </Pressable>
@@ -159,7 +147,7 @@ export default function RestaurantListScreen() {
       )}
 
       {/* ── List view ── */}
-      {hasResults && viewMode === 'list' && (
+      {hasResults && (
         <FlatList
           data={restaurants}
           keyExtractor={(r) => r.placeId || `${r.name}-${r.address}`}
@@ -180,17 +168,6 @@ export default function RestaurantListScreen() {
           }
           showsVerticalScrollIndicator={false}
           onScrollBeginDrag={Keyboard.dismiss}
-        />
-      )}
-
-      {/* ── Map placeholder (react-native-maps requires native build) ── */}
-      {hasResults && viewMode === 'map' && (
-        <MapPlaceholder
-          restaurants={restaurants}
-          userLat={uiState.userLatitude}
-          userLng={uiState.userLongitude}
-          useMiles={useMiles}
-          onRestaurantPress={handleRestaurantPress}
         />
       )}
 
@@ -479,79 +456,6 @@ function FilterChip({
   );
 }
 
-// ── MapPlaceholder ─────────────────────────────────────────────────────────
-
-function MapPlaceholder({
-  restaurants,
-  userLat,
-  userLng,
-  useMiles,
-  onRestaurantPress,
-}: {
-  restaurants: Restaurant[];
-  userLat: number | null;
-  userLng: number | null;
-  useMiles: boolean;
-  onRestaurantPress: (r: Restaurant) => void;
-}) {
-  const openInMaps = (r: Restaurant) => {
-    const url = Platform.select({
-      ios: `maps://app?daddr=${r.latitude},${r.longitude}`,
-      android: `geo:${r.latitude},${r.longitude}?q=${encodeURIComponent(r.name)}`,
-    });
-    if (url) Linking.openURL(url);
-  };
-
-  return (
-    <View style={mapStyles.container}>
-      <View style={mapStyles.header}>
-        <Text style={mapStyles.headerText}>📍 {restaurants.length} locations</Text>
-        {userLat && (
-          <Text style={mapStyles.headerSub}>
-            Your location: {userLat.toFixed(4)}, {userLng?.toFixed(4)}
-          </Text>
-        )}
-      </View>
-      <FlatList
-        data={restaurants}
-        keyExtractor={(r) => r.placeId || `${r.name}-${r.address}`}
-        renderItem={({ item: r }) => (
-          <Pressable
-            style={mapStyles.row}
-            onPress={() => onRestaurantPress(r)}
-          >
-            <View style={mapStyles.pin}>
-              <Text style={mapStyles.pinText}>📍</Text>
-            </View>
-            <View style={mapStyles.rowContent}>
-              <Text style={mapStyles.name} numberOfLines={1}>
-                {r.name}
-              </Text>
-              <Text style={mapStyles.dist}>
-                {SettingsManager.formatDistance(r.distanceMeters, useMiles)}
-              </Text>
-            </View>
-            <Pressable
-              style={mapStyles.dirBtn}
-              onPress={(event) => {
-                event.stopPropagation();
-                openInMaps(r);
-              }}
-            >
-              <Text style={mapStyles.dirText}>Navigate</Text>
-            </Pressable>
-          </Pressable>
-        )}
-        contentContainerStyle={{ padding: Spacing.md }}
-        showsVerticalScrollIndicator={false}
-      />
-      <Text style={mapStyles.note}>
-        💡 Full map view available in production build (react-native-maps)
-      </Text>
-    </View>
-  );
-}
-
 // ── StateMessage ────────────────────────────────────────────────────────────
 
 function StateMessage({
@@ -586,29 +490,6 @@ function StateMessage({
         </Text>
       </Pressable>
     </View>
-  );
-}
-
-// ── Toggle button ────────────────────────────────────────────────────────────
-
-function ToggleButton({
-  label,
-  active,
-  onPress,
-}: {
-  label: string;
-  active: boolean;
-  onPress: () => void;
-}) {
-  return (
-    <Pressable
-      style={[styles.toggleBtn, active && styles.toggleBtnActive]}
-      onPress={onPress}
-    >
-      <Text style={[styles.toggleBtnText, active && styles.toggleBtnTextActive]}>
-        {label}
-      </Text>
-    </Pressable>
   );
 }
 
@@ -653,32 +534,19 @@ const styles = StyleSheet.create({
   },
   filterBtnActive: { borderColor: Colors.primary, backgroundColor: Colors.primaryLight },
   filterBtnText: { fontSize: 18 },
-  toggleRow: {
+  refreshRow: {
     flexDirection: 'row',
     paddingHorizontal: Spacing.md,
     paddingBottom: Spacing.sm,
     gap: Spacing.sm,
     alignItems: 'center',
+    justifyContent: 'space-between',
   },
-  toggleBtn: {
-    flex: 1,
-    paddingVertical: 8,
-    borderRadius: Radius.md,
-    backgroundColor: Colors.surface,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  toggleBtnActive: {
-    backgroundColor: Colors.primary,
-    borderColor: Colors.primary,
-  },
-  toggleBtnText: {
+  refreshLabel: {
     color: Colors.textSecondary,
     fontSize: FontSize.sm,
     fontWeight: FontWeight.medium,
   },
-  toggleBtnTextActive: { color: Colors.textInverse },
   refreshBtn: {
     width: 36,
     height: 36,
@@ -806,55 +674,6 @@ const filterStyles = StyleSheet.create({
     borderColor: Colors.border,
   },
   stepBtnText: { color: Colors.textPrimary, fontSize: 16, fontWeight: FontWeight.bold },
-});
-
-const mapStyles = StyleSheet.create({
-  container: { flex: 1 },
-  header: {
-    padding: Spacing.md,
-    backgroundColor: Colors.surface,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
-  },
-  headerText: { color: Colors.textPrimary, fontSize: FontSize.md, fontWeight: FontWeight.semiBold },
-  headerSub: { color: Colors.textMuted, fontSize: FontSize.xs, marginTop: 2 },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Colors.surface,
-    borderRadius: Radius.md,
-    padding: Spacing.md,
-    marginBottom: Spacing.sm,
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  pin: {
-    width: 36,
-    height: 36,
-    backgroundColor: Colors.primaryLight,
-    borderRadius: Radius.full,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: Spacing.sm,
-  },
-  pinText: { fontSize: 18 },
-  rowContent: { flex: 1 },
-  name: { color: Colors.textPrimary, fontSize: FontSize.sm, fontWeight: FontWeight.semiBold },
-  dist: { color: Colors.textMuted, fontSize: FontSize.xs, marginTop: 2 },
-  dirBtn: {
-    backgroundColor: Colors.primaryLight,
-    borderRadius: Radius.sm,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-  },
-  dirText: { color: Colors.primary, fontSize: FontSize.xs, fontWeight: FontWeight.semiBold },
-  note: {
-    color: Colors.textMuted,
-    fontSize: FontSize.xs,
-    textAlign: 'center',
-    padding: Spacing.md,
-    paddingTop: 0,
-  },
 });
 
 const stateStyles = StyleSheet.create({

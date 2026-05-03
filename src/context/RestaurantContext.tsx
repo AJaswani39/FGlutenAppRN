@@ -48,6 +48,7 @@ interface EmitFilteredStateOptions {
 
 interface RestaurantContextValue {
   uiState: RestaurantUiState;
+  savedRestaurants: Restaurant[];
   loadNearbyRestaurants: () => Promise<void>;
   setFavoriteStatus: (restaurant: Restaurant, status: FavoriteStatus) => void;
   requestMenuRescan: (restaurant: Restaurant) => void;
@@ -83,6 +84,7 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
     userLatitude: null,
     userLongitude: null,
   });
+  const [savedRestaurants, setSavedRestaurants] = useState<Restaurant[]>([]);
 
   const rawRestaurants = useRef<Restaurant[]>([]);
   const userLat = useRef<number | null>(null);
@@ -136,6 +138,25 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
     [favoriteKey]
   );
 
+  const syncSavedRestaurants = useCallback(() => {
+    const statusOrder: Record<NonNullable<FavoriteStatus>, number> = {
+      safe: 0,
+      try: 1,
+      avoid: 2,
+    };
+
+    setSavedRestaurants(
+      rawRestaurants.current
+        .filter((restaurant) => restaurant.favoriteStatus)
+        .sort((left, right) => {
+          const leftStatus = left.favoriteStatus ?? 'try';
+          const rightStatus = right.favoriteStatus ?? 'try';
+          const statusDelta = statusOrder[leftStatus] - statusOrder[rightStatus];
+          return statusDelta !== 0 ? statusDelta : left.name.localeCompare(right.name);
+        })
+    );
+  }, []);
+
   const emitFilteredState = useCallback(
     (options: EmitFilteredStateOptions = {}) => {
       const raw = rawRestaurants.current;
@@ -143,6 +164,7 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
       const status = options.status ?? 'success';
       const emptyReason = options.emptyReason ?? (raw.length === 0 ? 'nearby' : 'filters');
 
+      syncSavedRestaurants();
       setUiState({
         status,
         restaurants: filtered,
@@ -154,7 +176,7 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
         userLongitude: userLng.current,
       });
     },
-    [strictCeliac]
+    [strictCeliac, syncSavedRestaurants]
   );
 
   useEffect(() => {
@@ -484,6 +506,7 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
     <RestaurantContext.Provider
       value={{
         uiState,
+        savedRestaurants,
         loadNearbyRestaurants,
         setFavoriteStatus,
         requestMenuRescan,

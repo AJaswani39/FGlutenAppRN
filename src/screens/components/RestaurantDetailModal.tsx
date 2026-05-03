@@ -23,12 +23,14 @@ interface Props {
 }
 
 export default function RestaurantDetailModal({ restaurant: initial, useMiles, onClose }: Props) {
-  const { uiState, setFavoriteStatus, requestMenuRescan } = useRestaurants();
+  const { uiState, savedRestaurants, setFavoriteStatus, requestMenuRescan } = useRestaurants();
   const [showAI, setShowAI] = useState(false);
 
   // Keep the displayed restaurant in sync with ViewModel updates
   const restaurant =
-    uiState.restaurants.find((r) => r.placeId === initial.placeId) ?? initial;
+    uiState.restaurants.find((r) => r.placeId === initial.placeId) ??
+    savedRestaurants.find((r) => r.placeId === initial.placeId) ??
+    initial;
 
   const dist = SettingsManager.formatDistance(restaurant.distanceMeters, useMiles);
   const isGF = restaurant.hasGFMenu || restaurant.gfMenu.length > 0;

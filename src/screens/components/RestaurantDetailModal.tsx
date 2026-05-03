@@ -34,6 +34,7 @@ export default function RestaurantDetailModal({ restaurant: initial, useMiles, o
 
   const dist = SettingsManager.formatDistance(restaurant.distanceMeters, useMiles);
   const isGF = restaurant.hasGFMenu || restaurant.gfMenu.length > 0;
+  const safeMenuUrl = getSafeExternalUrl(restaurant.menuUrl);
 
   const openMaps = () => {
     const url = Platform.select({
@@ -44,7 +45,7 @@ export default function RestaurantDetailModal({ restaurant: initial, useMiles, o
   };
 
   const openMenu = () => {
-    if (restaurant.menuUrl) Linking.openURL(restaurant.menuUrl);
+    if (safeMenuUrl) Linking.openURL(safeMenuUrl);
   };
 
   const handleFav = (status: FavoriteStatus) => {
@@ -172,7 +173,7 @@ export default function RestaurantDetailModal({ restaurant: initial, useMiles, o
                 icon="🌐"
                 label="View Menu"
                 onPress={openMenu}
-                disabled={!restaurant.menuUrl}
+                disabled={!safeMenuUrl}
               />
               <ActionButton
                 icon="🔍"
@@ -201,6 +202,13 @@ export default function RestaurantDetailModal({ restaurant: initial, useMiles, o
       )}
     </Modal>
   );
+}
+
+function getSafeExternalUrl(url: string | null): string | null {
+  const trimmed = url?.trim();
+  if (!trimmed || !/^https?:\/\//i.test(trimmed)) return null;
+
+  return trimmed;
 }
 
 function menuStatusText(r: Restaurant): string {

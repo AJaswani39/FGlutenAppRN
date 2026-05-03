@@ -10,7 +10,8 @@ A full React Native port of the original Android FGlutenApp, built with Expo SDK
 | 🤖 AI menu scanning (heuristic + keyword) | ✅ |
 | ❤️ Favorites (Safe / Try / Avoid) | ✅ |
 | 🔍 Smart filters (GF-only, Open Now, Distance, Rating) | ✅ |
-| 📋 List view + 🗺️ Map-list view | ✅ |
+| 📋 Explore list + 🗺️ native map tab | ✅ |
+| ❤️ Saved places tab | ✅ |
 | 💾 Offline cache (AsyncStorage, 3-day scan TTL) | ✅ |
 | 📏 Miles / KM toggle | ✅ |
 | 🧬 Strict Celiac mode | ✅ |
@@ -41,7 +42,8 @@ FGlutenAppRN/
 │   └── screens/
 │       ├── HomeScreen.tsx          # Dashboard (mirrors HomeFragment.java)
 │       ├── RestaurantListScreen.tsx # List + filter (mirrors RestaurantListFragment.java)
-│       ├── ProfileScreen.tsx       # Settings & stats (mirrors ProfileFragment.kt)
+│       ├── MapScreen.tsx           # Native restaurant map
+│       ├── SavedPlacesScreen.tsx   # Safe / Try / Avoid saved places
 │       └── components/
 │           ├── RestaurantDetailModal.tsx  # Detail sheet (mirrors RestaurantDetailBottomSheet.java)
 │           └── MenuAnalysisSheet.tsx      # AI analysis (mirrors MenuAnalysisBottomSheet.kt)
@@ -51,17 +53,19 @@ FGlutenAppRN/
 
 ### 1. Add your Google Maps API Key
 
-In `app.json`, fill in the `extra.MAPS_API_KEY` field:
+Set `GCP_API_KEY` in your local environment. `app.config.js` publishes it to
+`extra.MAPS_API_KEY` for the app bundle:
 
-```json
-"extra": {
-  "MAPS_API_KEY": "YOUR_GOOGLE_MAPS_API_KEY"
-}
+```bash
+GCP_API_KEY=YOUR_GOOGLE_MAPS_API_KEY
 ```
 
 > **Required APIs** (same as the Android app):
 > - Places API (New) — for restaurant search
 > - Maps SDK for Android / iOS — for map view (native build)
+>
+> Treat this as a public mobile client key. Restrict it in Google Cloud by
+> package/bundle/signing identity and only allow the APIs above.
 
 ### 2. Install dependencies
 
@@ -77,7 +81,7 @@ npx expo start
 
 Scan the QR code with the **Expo Go** app on iOS or Android.
 
-> ⚠️ `react-native-maps` requires a **development build** or production build — it does not work in Expo Go. The map view falls back to a scrollable list of locations in Expo Go mode.
+> ⚠️ `react-native-maps` requires a **development build** or production build — it does not work in Expo Go.
 
 ### 4. Development build (for maps)
 
@@ -115,9 +119,10 @@ npx eas submit --profile production --platform android
 | `SettingsManager.java` | `src/util/SettingsManager.ts` |
 | `HomeFragment.java` | `src/screens/HomeScreen.tsx` |
 | `RestaurantListFragment.java` | `src/screens/RestaurantListScreen.tsx` |
+| Map view | `src/screens/MapScreen.tsx` |
+| Favorites/saved places | `src/screens/SavedPlacesScreen.tsx` |
 | `RestaurantDetailBottomSheet.java` | `src/screens/components/RestaurantDetailModal.tsx` |
 | `MenuAnalysisBottomSheet.kt` | `src/screens/components/MenuAnalysisSheet.tsx` |
-| `ProfileFragment.kt` | `src/screens/ProfileScreen.tsx` |
 | `mobile_navigation.xml` | `src/navigation/AppNavigator.tsx` |
 | SharedPreferences | AsyncStorage |
 | LiveData / ViewModel | React Context + useState/useRef |

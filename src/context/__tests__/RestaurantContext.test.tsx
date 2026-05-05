@@ -118,6 +118,18 @@ describe('RestaurantContext', () => {
     expect(getApi().restaurants.uiState.restaurants).toHaveLength(0);
   });
 
+  it('recovers when the location permission request fails', async () => {
+    locationMock.requestForegroundPermissionsAsync.mockRejectedValue(new Error('Permission API failed'));
+    const { getApi } = await renderHarness();
+
+    await act(async () => {
+      await getApi().restaurants.loadNearbyRestaurants();
+    });
+
+    expect(getApi().restaurants.uiState.status).toBe('error');
+    expect(getApi().restaurants.uiState.message).toContain('Permission API failed');
+  });
+
   it('treats empty nearby results as a success empty state', async () => {
     (global.fetch as jest.Mock).mockResolvedValue({
       ok: true,

@@ -8,7 +8,7 @@ import {
   Dimensions,
   ActivityIndicator,
 } from 'react-native';
-import { NavigationProp, useNavigation } from '@react-navigation/native';
+import { NavigationProp, TabActions, useNavigation } from '@react-navigation/native';
 import { Colors, Spacing, Radius, FontSize, FontWeight } from '../theme/colors';
 import { useRestaurants } from '../context/RestaurantContext';
 import { useSettings } from '../context/SettingsContext';
@@ -31,8 +31,8 @@ export default function HomeScreen() {
     (uiState.status === 'error' || uiState.status === 'permission_required' || !hasData);
 
   const handleFindRestaurants = React.useCallback(() => {
+    navigation.dispatch(TabActions.jumpTo('Restaurants'));
     void loadNearbyRestaurants();
-    navigation.navigate('Restaurants');
   }, [loadNearbyRestaurants, navigation]);
 
   const stats = React.useMemo(() => {
@@ -66,7 +66,6 @@ export default function HomeScreen() {
         <Pressable
           style={[styles.ctaButton, isLoading && styles.ctaButtonDisabled]}
           onPress={handleFindRestaurants}
-          disabled={isLoading}
         >
           {isLoading ? (
             <ActivityIndicator color={Colors.textInverse} size="small" />

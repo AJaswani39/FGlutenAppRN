@@ -438,28 +438,28 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
       });
     }
 
-    const { status } = await Location.requestForegroundPermissionsAsync();
-    if (status !== 'granted') {
-      if (rawRestaurants.current.length > 0) {
-        emitFilteredState({
-          emptyReason: 'filters',
-          message:
-            'Showing cached results — location permission is needed to refresh nearby restaurants.',
-        });
-      } else {
-        setUiState({
-          status: 'permission_required',
-          restaurants: [],
-          message: 'Location permission is needed to find nearby restaurants.',
-          userLatitude: null,
-          userLongitude: null,
-          scanProgress: getScanProgress(),
-        });
-      }
-      return;
-    }
-
     try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        if (rawRestaurants.current.length > 0) {
+          emitFilteredState({
+            emptyReason: 'filters',
+            message:
+              'Showing cached results — location permission is needed to refresh nearby restaurants.',
+          });
+        } else {
+          setUiState({
+            status: 'permission_required',
+            restaurants: [],
+            message: 'Location permission is needed to find nearby restaurants.',
+            userLatitude: null,
+            userLongitude: null,
+            scanProgress: getScanProgress(),
+          });
+        }
+        return;
+      }
+
       const location = await Location.getCurrentPositionAsync({
         accuracy: Location.Accuracy.Balanced,
       });

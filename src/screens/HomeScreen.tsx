@@ -8,21 +8,32 @@ import {
   Dimensions,
   ActivityIndicator,
 } from 'react-native';
+import { NavigationProp, useNavigation } from '@react-navigation/native';
 import { Colors, Spacing, Radius, FontSize, FontWeight } from '../theme/colors';
 import { useRestaurants } from '../context/RestaurantContext';
 import { useSettings } from '../context/SettingsContext';
 import { Restaurant } from '../types/restaurant';
+import { RootTabParamList } from '../types/navigation';
 import { SettingsManager } from '../util/SettingsManager';
 
 const { width } = Dimensions.get('window');
 
 export default function HomeScreen() {
+  const navigation = useNavigation<NavigationProp<RootTabParamList>>();
   const { uiState, loadNearbyRestaurants } = useRestaurants();
   const { useMiles } = useSettings();
 
   const cached = uiState.restaurants;
   const hasData = cached.length > 0;
   const isLoading = uiState.status === 'loading';
+  const shouldShowStatusMessage =
+    Boolean(uiState.message) &&
+    (uiState.status === 'error' || uiState.status === 'permission_required' || !hasData);
+
+  const handleFindRestaurants = React.useCallback(() => {
+    void loadNearbyRestaurants();
+    navigation.navigate('Restaurants');
+  }, [loadNearbyRestaurants, navigation]);
 
   const stats = React.useMemo(() => {
     let favorites = 0;
@@ -54,7 +65,7 @@ export default function HomeScreen() {
         </Text>
         <Pressable
           style={[styles.ctaButton, isLoading && styles.ctaButtonDisabled]}
-          onPress={loadNearbyRestaurants}
+          onPress={handleFindRestaurants}
           disabled={isLoading}
         >
           {isLoading ? (
@@ -63,6 +74,9 @@ export default function HomeScreen() {
             <Text style={styles.ctaText}>🔍  Find Restaurants Near Me</Text>
           )}
         </Pressable>
+        {shouldShowStatusMessage && (
+          <Text style={styles.statusMessage}>{uiState.message}</Text>
+        )}
       </View>
 
       {/* Stats chips */}
@@ -243,6 +257,13 @@ const styles = StyleSheet.create({
     color: Colors.textInverse,
     fontSize: FontSize.md,
     fontWeight: FontWeight.bold,
+  },
+  statusMessage: {
+    color: Colors.textSecondary,
+    fontSize: FontSize.sm,
+    lineHeight: 20,
+    marginTop: Spacing.md,
+    textAlign: 'center',
   },
   chipsRow: {
     flexDirection: 'row',

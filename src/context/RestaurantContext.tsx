@@ -26,6 +26,7 @@ import {
 } from '../util/restaurantUtils';
 import { useFilters } from './FiltersContext';
 import { useSettings } from './SettingsContext';
+import { logger } from '../util/logger';
 
 const MENU_SCAN_TTL_MS = 3 * 24 * 60 * 60 * 1000;
 const MAX_SCANS_PER_BATCH = 5;
@@ -373,6 +374,7 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
     if (cacheAttempted.current) return;
 
     cacheAttempted.current = true;
+    favoriteMap.current = await SettingsManager.loadFavorites();
     const cached = await SettingsManager.loadCache();
     if (!cached?.restaurants?.length) return;
 
@@ -391,6 +393,10 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
     });
     kickOffMenuScans(rawRestaurants.current);
   }, [applyFavorites, emitFilteredState, kickOffMenuScans]);
+
+  useEffect(() => {
+    void loadCachedIfAvailable();
+  }, [loadCachedIfAvailable]);
 
   const loadNearbyRestaurants = useCallback(async () => {
     const mapsApiKey = getMapsApiKey();
@@ -459,7 +465,14 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
       });
       const { latitude, longitude } = location.coords;
 
-      const restaurants = await fetchNearbyRestaurants(latitude, longitude, mapsApiKey);
+      const searchRadiusMeters =
+        filtersRef.current.maxDistanceMeters > 0 ? filtersRef.current.maxDistanceMeters : undefined;
+      const restaurants = await fetchNearbyRestaurants(
+        latitude,
+        longitude,
+        mapsApiKey,
+        searchRadiusMeters
+      );
       const restaurantsWithDistance = applyFavorites(restaurants).map((restaurant) => ({
         ...restaurant,
         distanceMeters: distanceBetween(latitude, longitude, restaurant.latitude, restaurant.longitude),
@@ -513,7 +526,10 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
         favoriteStatus: status,
       }));
 
-      void SettingsManager.saveFavorites(favoriteMap.current);
+      void SettingsManager.saveFavorites(favoriteMap.current).catch((error: unknown) => {
+        const message = error instanceof Error ? error.message : String(error);
+        logger.error(`Failed to save favorite status: ${message}`);
+      });
       emitFilteredState({
         emptyReason: rawRestaurants.current.length === 0 ? 'nearby' : 'filters',
         message: uiState.message,

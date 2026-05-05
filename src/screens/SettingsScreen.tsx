@@ -27,7 +27,14 @@ export default function SettingsScreen() {
   );
 }
 
-function SettingRow({ label, value, onToggle, description }: any) {
+interface SettingRowProps {
+  label: string;
+  value: boolean;
+  onToggle: () => void;
+  description?: string;
+}
+
+function SettingRow({ label, value, onToggle, description }: SettingRowProps) {
   return (
     <View style={styles.settingRow}>
       <View style={styles.settingContent}>

@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { SettingsManager } from '../util/SettingsManager';
+import { logger } from '../util/logger';
 
 interface SettingsContextValue {
   useMiles: boolean;
@@ -29,12 +30,18 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
 
   const setUseMiles = useCallback((val: boolean) => {
     setUseMilesState(val);
-    SettingsManager.setUseMiles(val);
+    void SettingsManager.setUseMiles(val).catch((error: unknown) => {
+      const message = error instanceof Error ? error.message : String(error);
+      logger.error(`Failed to save distance unit setting: ${message}`);
+    });
   }, []);
 
   const setStrictCeliac = useCallback((val: boolean) => {
     setStrictCeliacState(val);
-    SettingsManager.setStrictCeliac(val);
+    void SettingsManager.setStrictCeliac(val).catch((error: unknown) => {
+      const message = error instanceof Error ? error.message : String(error);
+      logger.error(`Failed to save strict celiac setting: ${message}`);
+    });
   }, []);
 
   return (

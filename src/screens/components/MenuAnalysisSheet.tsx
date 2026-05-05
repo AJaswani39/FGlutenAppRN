@@ -61,8 +61,9 @@ export default function MenuAnalysisSheet({ restaurantName, menuText, onClose }:
     try {
       const result = analyseMenuText(text);
       setAnalysisResult(result);
-    } catch (e: any) {
-      setError(`Analysis failed: ${e.message}`);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      setError(`Analysis failed: ${message}`);
     } finally {
       setIsAnalyzing(false);
     }
@@ -230,15 +231,15 @@ function ResultSection({ title, children }: { title: string; children: React.Rea
 
 // ─── Local heuristic analysis (mirrors AIRepository.kt logic) ───────────────
 
-function analyseMenuText(text: string): AnalysisResult {
+export function analyseMenuText(text: string): AnalysisResult {
   const lower = text.toLowerCase();
 
   const GF_POSITIVE = [
-    /gluten[\s-]?free/gi,
-    /\bgf\b/g,
-    /celiac[\s-]?friendly/gi,
-    /coeliac[\s-]?friendly/gi,
-    /no[\s-]gluten/gi,
+    /gluten[\s-]?free/i,
+    /\bgf\b/i,
+    /celiac[\s-]?friendly/i,
+    /coeliac[\s-]?friendly/i,
+    /no[\s-]gluten/i,
   ];
 
   const GLUTEN_SOURCES = [
@@ -289,8 +290,6 @@ function analyseMenuText(text: string): AnalysisResult {
     if (glutenFreeItems.length >= 12) break;
   }
   
-  GF_POSITIVE.forEach((r) => { r.lastIndex = 0; });
-
   const warnings: string[] = [];
   const foundGlutenSources = GLUTEN_SOURCES.filter((g) => lower.includes(g));
   if (foundGlutenSources.length > 0) {

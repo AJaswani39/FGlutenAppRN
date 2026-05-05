@@ -17,7 +17,8 @@ import RestaurantDetailModal from './components/RestaurantDetailModal';
 export default function MapScreen() {
   const { uiState, loadNearbyRestaurants } = useRestaurants();
   const { useMiles } = useSettings();
-  const [selectedRestaurant, setSelectedRestaurant] = useState<Restaurant | null>(null);
+  const [previewRestaurant, setPreviewRestaurant] = useState<Restaurant | null>(null);
+  const [detailRestaurant, setDetailRestaurant] = useState<Restaurant | null>(null);
 
   const restaurants = uiState.restaurants;
   const initialRegion = useMemo<Region | null>(() => {
@@ -84,7 +85,7 @@ export default function MapScreen() {
             title={restaurant.name}
             description={restaurant.address}
             pinColor={markerColor(restaurant)}
-            onPress={() => setSelectedRestaurant(restaurant)}
+            onPress={() => setPreviewRestaurant(restaurant)}
           />
         ))}
       </MapView>
@@ -96,20 +97,20 @@ export default function MapScreen() {
         </Text>
       </View>
 
-      {selectedRestaurant ? (
-        <Pressable style={styles.previewCard} onPress={() => setSelectedRestaurant(selectedRestaurant)}>
-          <Text style={styles.previewName} numberOfLines={1}>{selectedRestaurant.name}</Text>
+      {previewRestaurant ? (
+        <Pressable style={styles.previewCard} onPress={() => setDetailRestaurant(previewRestaurant)}>
+          <Text style={styles.previewName} numberOfLines={1}>{previewRestaurant.name}</Text>
           <Text style={styles.previewMeta} numberOfLines={1}>
-            {previewMeta(selectedRestaurant, useMiles)}
+            {previewMeta(previewRestaurant, useMiles)}
           </Text>
         </Pressable>
       ) : null}
 
-      {selectedRestaurant ? (
+      {detailRestaurant ? (
         <RestaurantDetailModal
-          restaurant={selectedRestaurant}
+          restaurant={detailRestaurant}
           useMiles={useMiles}
-          onClose={() => setSelectedRestaurant(null)}
+          onClose={() => setDetailRestaurant(null)}
         />
       ) : null}
     </View>

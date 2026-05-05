@@ -280,6 +280,74 @@ describe('RestaurantContext', () => {
     expect(getApi().restaurants.uiState.restaurants[0].favoriteStatus).toBe('safe');
   });
 
+  it('hydrates saved restaurants from cached results on startup', async () => {
+    await AsyncStorage.setItem(
+      'restaurant_favorites',
+      JSON.stringify({
+        'pid:cached-safe-place': 'safe',
+      })
+    );
+    await AsyncStorage.setItem(
+      'restaurant_cache',
+      JSON.stringify({
+        restaurants: [
+          {
+            placeId: 'cached-safe-place',
+            name: 'Cached Safe Cafe',
+            address: '99 Memory Ln',
+            latitude: 40.712,
+            longitude: -74.001,
+            rating: 4.9,
+            openNow: true,
+            hasGFMenu: true,
+            gfMenu: ['GF pancakes'],
+            distanceMeters: 300,
+            menuUrl: null,
+            rawMenuText: null,
+            menuScanStatus: 'SUCCESS',
+            menuScanTimestamp: Date.now(),
+            favoriteStatus: null,
+          },
+        ],
+        lat: 40.7128,
+        lng: -74.006,
+        timestamp: 555,
+      })
+    );
+
+    const { getApi } = await renderHarness();
+
+    expect(getApi().restaurants.savedRestaurants).toHaveLength(1);
+    expect(getApi().restaurants.savedRestaurants[0]).toMatchObject({
+      placeId: 'cached-safe-place',
+      favoriteStatus: 'safe',
+    });
+  });
+
+  it('uses the distance filter as the nearby search radius', async () => {
+    (global.fetch as jest.Mock).mockResolvedValue({
+      ok: true,
+      json: async () => ({ places: [] }),
+    });
+
+    const { getApi } = await renderHarness();
+
+    act(() => {
+      getApi().filters.setFilters({ maxDistanceMeters: 12000 });
+    });
+    await flushAsync();
+
+    await act(async () => {
+      await getApi().restaurants.loadNearbyRestaurants();
+    });
+
+    const nearbyCall = (global.fetch as jest.Mock).mock.calls.find(([url]) =>
+      String(url).includes('searchNearby')
+    );
+    expect(nearbyCall).toBeDefined();
+    expect(JSON.parse(nearbyCall[1].body).locationRestriction.circle.radius).toBe(12000);
+  });
+
   it('keeps saved restaurants independent from active filters', async () => {
     (global.fetch as jest.Mock).mockResolvedValue({
       ok: true,

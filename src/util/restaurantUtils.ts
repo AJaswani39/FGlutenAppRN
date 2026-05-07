@@ -30,6 +30,13 @@ export function getRestaurantIdentityKey(restaurant: Pick<Restaurant, 'placeId' 
   return null;
 }
 
+export function getRestaurantListKey(
+  restaurant: Pick<Restaurant, 'placeId' | 'name' | 'address'>,
+  fallbackIndex?: number
+): string {
+  return getRestaurantIdentityKey(restaurant) ?? `restaurant:${fallbackIndex ?? 'unknown'}`;
+}
+
 export function isSameRestaurantIdentity(
   left: Pick<Restaurant, 'placeId' | 'name' | 'address'>,
   right: Pick<Restaurant, 'placeId' | 'name' | 'address'>

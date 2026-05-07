@@ -21,12 +21,22 @@ export function FiltersProvider({ children }: { children: React.ReactNode }) {
   const [filters, setFiltersState] = useState<RestaurantFilters>(DEFAULT_FILTERS);
 
   useEffect(() => {
+    let isMounted = true;
+
     (async () => {
-      const savedFilters = await SettingsManager.loadFilters();
-      if (savedFilters) {
+      try {
+        const savedFilters = await SettingsManager.loadFilters();
+        if (!isMounted) return;
         setFiltersState(savedFilters);
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error);
+        logger.error(`Failed to load restaurant filters: ${message}`);
       }
     })();
+
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   const setFilters = useCallback((partial: Partial<RestaurantFilters>) => {

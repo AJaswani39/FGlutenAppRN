@@ -5,18 +5,16 @@ import {
   StyleSheet,
   Pressable,
   ScrollView,
-  Dimensions,
   ActivityIndicator,
 } from 'react-native';
 import { NavigationProp, TabActions, useNavigation } from '@react-navigation/native';
 import { Colors, Spacing, Radius, FontSize, FontWeight } from '../theme/colors';
 import { useRestaurants } from '../context/RestaurantContext';
 import { useSettings } from '../context/SettingsContext';
-import { Restaurant } from '../types/restaurant';
 import { RootTabParamList } from '../types/navigation';
-import { SettingsManager } from '../util/SettingsManager';
-
-const { width } = Dimensions.get('window');
+import { getRestaurantListKey } from '../util/restaurantUtils';
+import { IconCircle, Ionicons, MetaPill } from '../components/ui';
+import { RestaurantSummaryCard } from '../components/RestaurantSummaryCard';
 
 export default function HomeScreen() {
   const navigation = useNavigation<NavigationProp<RootTabParamList>>();
@@ -40,8 +38,8 @@ export default function HomeScreen() {
     let scans = 0;
     let latestScan = 0;
     for (const r of cached) {
-      if (r.favoriteStatus) favorites++;
-      if (r.menuScanStatus === 'SUCCESS') scans++;
+      if (r.favoriteStatus) favorites += 1;
+      if (r.menuScanStatus === 'SUCCESS') scans += 1;
       if (r.menuScanTimestamp > latestScan) latestScan = r.menuScanTimestamp;
     }
     return { favorites, scans, latestScan };
@@ -53,152 +51,94 @@ export default function HomeScreen() {
       contentContainerStyle={styles.content}
       showsVerticalScrollIndicator={false}
     >
-      {/* Hero header */}
       <View style={styles.hero}>
-        <View style={styles.heroBadge}>
-          <Text style={styles.heroBadgeText}>🌾 Gluten-Free Guide</Text>
+        <View style={styles.heroTop}>
+          <IconCircle name="leaf" />
+          <View style={styles.heroCopy}>
+            <Text style={styles.kicker}>Gluten-free nearby guide</Text>
+            <Text style={styles.heroTitle}>Find a safer place to eat</Text>
+          </View>
         </View>
-        <Text style={styles.heroTitle}>Find Your Safe{'\n'}Restaurant</Text>
         <Text style={styles.heroSubtitle}>
-          Discover nearby restaurants with gluten-free menus, AI-powered menu
-          scanning, and community-verified options — all nearby.
+          Search nearby restaurants, scan public menus for gluten-free evidence, and keep your own safe/try/avoid list.
         </Text>
         <Pressable
           style={[styles.ctaButton, isLoading && styles.ctaButtonDisabled]}
           onPress={handleFindRestaurants}
+          disabled={isLoading}
+          accessibilityRole="button"
         >
           {isLoading ? (
             <ActivityIndicator color={Colors.textInverse} size="small" />
           ) : (
-            <Text style={styles.ctaText}>🔍  Find Restaurants Near Me</Text>
+            <>
+              <Ionicons name="navigate" size={17} color={Colors.textInverse} />
+              <Text style={styles.ctaText}>Find Restaurants Near Me</Text>
+            </>
           )}
         </Pressable>
-        {shouldShowStatusMessage && (
+        {shouldShowStatusMessage ? (
           <Text style={styles.statusMessage}>{uiState.message}</Text>
+        ) : null}
+      </View>
+
+      <View style={styles.statsGrid}>
+        <StatCard icon="location" label="Results" value={`${cached.length}`} />
+        <StatCard icon="heart" label="Saved" value={`${stats.favorites}`} />
+        <StatCard icon="scan" label="Scanned" value={`${stats.scans}`} />
+      </View>
+
+      {stats.latestScan > 0 ? (
+        <View style={styles.timestampRow}>
+          <MetaPill icon="time" text={`Last scan ${timeAgo(stats.latestScan)}`} />
+        </View>
+      ) : null}
+
+      <View style={styles.section}>
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>Recent Results</Text>
+          {hasData ? (
+            <Pressable onPress={() => navigation.dispatch(TabActions.jumpTo('Restaurants'))}>
+              <Text style={styles.linkText}>Explore all</Text>
+            </Pressable>
+          ) : null}
+        </View>
+
+        {hasData ? (
+          cached.slice(0, 5).map((restaurant, index) => (
+            <RestaurantSummaryCard
+              key={getRestaurantListKey(restaurant, index)}
+              restaurant={restaurant}
+              useMiles={useMiles}
+              compact
+            />
+          ))
+        ) : (
+          <View style={styles.emptyPanel}>
+            <Ionicons name="restaurant-outline" size={24} color={Colors.textSecondary} />
+            <Text style={styles.emptyTitle}>No search results yet</Text>
+            <Text style={styles.emptyText}>Start a nearby search to fill your dashboard.</Text>
+          </View>
         )}
       </View>
 
-      {/* Stats chips */}
-      {hasData && (
-        <View style={styles.chipsRow}>
-          <StatChip icon="📍" label={`${cached.length} cached`} />
-          <StatChip icon="❤️" label={`${stats.favorites} saved`} />
-          <StatChip icon="🔬" label={`${stats.scans} scanned`} />
-        </View>
-      )}
-
-      {stats.latestScan > 0 && (
-        <Text style={styles.timestampText}>
-          Last scan: {timeAgo(stats.latestScan)}
-        </Text>
-      )}
-
-      {/* Feature highlights */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Why FGlutenApp?</Text>
-        <View style={styles.featureGrid}>
-          <FeatureCard
-            icon="🗺️"
-            title="Nearby Search"
-            desc="Finds restaurants within your chosen radius using your live location."
-          />
-          <FeatureCard
-            icon="🤖"
-            title="AI Menu Scan"
-            desc="Automatically scans menus for gluten-free evidence and parses items."
-          />
-          <FeatureCard
-            icon="❤️"
-            title="Favorites"
-            desc="Mark places as Safe, Try, or Avoid to remember your experiences."
-          />
-          <FeatureCard
-            icon="🔍"
-            title="Smart Filters"
-            desc="Filter by GF-only, open now, rating, and distance radius."
-          />
-        </View>
-      </View>
-
-      {/* Cached restaurants */}
-      {hasData && (
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Recent Results</Text>
-          {cached.slice(0, 5).map((r) => (
-            <CachedRestaurantRow
-              key={r.placeId || `${r.name}-${r.address}`}
-              restaurant={r}
-              useMiles={useMiles}
-            />
-          ))}
-        </View>
-      )}
-
-      <View style={{ height: 40 }} />
+      <View style={{ height: 32 }} />
     </ScrollView>
   );
 }
 
-function StatChip({ icon, label }: { icon: string; label: string }) {
+function StatCard({ icon, label, value }: { icon: 'location' | 'heart' | 'scan'; label: string; value: string }) {
   return (
-    <View style={chipStyles.chip}>
-      <Text style={chipStyles.icon}>{icon}</Text>
-      <Text style={chipStyles.label}>{label}</Text>
-    </View>
-  );
-}
-
-function FeatureCard({ icon, title, desc }: { icon: string; title: string; desc: string }) {
-  return (
-    <View style={featureStyles.card}>
-      <Text style={featureStyles.icon}>{icon}</Text>
-      <Text style={featureStyles.title}>{title}</Text>
-      <Text style={featureStyles.desc}>{desc}</Text>
-    </View>
-  );
-}
-
-function CachedRestaurantRow({
-  restaurant,
-  useMiles,
-}: {
-  restaurant: Restaurant;
-  useMiles: boolean;
-}) {
-  const dist = SettingsManager.formatDistance(restaurant.distanceMeters, useMiles);
-  const isGF = restaurant.hasGFMenu || restaurant.gfMenu.length > 0;
-
-  return (
-    <View style={rowStyles.row}>
-      <View style={rowStyles.left}>
-        <Text style={rowStyles.name} numberOfLines={1}>
-          {restaurant.name}
-        </Text>
-        <Text style={rowStyles.meta}>
-          {isGF ? '✅ GF  •  ' : ''}{dist}
-        </Text>
-      </View>
-      {restaurant.favoriteStatus === 'safe' && (
-        <View style={[rowStyles.badge, { backgroundColor: Colors.successBg }]}>
-          <Text style={[rowStyles.badgeText, { color: Colors.success }]}>Safe</Text>
-        </View>
-      )}
-      {restaurant.favoriteStatus === 'try' && (
-        <View style={[rowStyles.badge, { backgroundColor: Colors.warningBg }]}>
-          <Text style={[rowStyles.badgeText, { color: Colors.warning }]}>Try</Text>
-        </View>
-      )}
-      {restaurant.favoriteStatus === 'avoid' && (
-        <View style={[rowStyles.badge, { backgroundColor: Colors.errorBg }]}>
-          <Text style={[rowStyles.badgeText, { color: Colors.error }]}>Avoid</Text>
-        </View>
-      )}
+    <View style={styles.statCard}>
+      <Ionicons name={icon} size={16} color={Colors.primary} />
+      <Text style={styles.statValue}>{value}</Text>
+      <Text style={styles.statLabel}>{label}</Text>
     </View>
   );
 }
 
 function timeAgo(ts: number): string {
-  const diff = Date.now() - ts;
+  const diff = Math.max(0, Date.now() - ts);
   const mins = Math.floor(diff / 60000);
   if (mins < 60) return `${mins}m ago`;
   const hrs = Math.floor(mins / 60);
@@ -208,50 +148,52 @@ function timeAgo(ts: number): string {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
-  content: { paddingHorizontal: Spacing.md, paddingTop: Spacing.xl },
+  content: { padding: Spacing.md, paddingTop: Spacing.lg },
   hero: {
     backgroundColor: Colors.surface,
-    borderRadius: Radius.xl,
-    padding: Spacing.xl,
+    borderRadius: Radius.lg,
+    padding: Spacing.lg,
     borderWidth: 1,
     borderColor: Colors.border,
-    marginBottom: Spacing.lg,
-  },
-  heroBadge: {
-    backgroundColor: Colors.primaryLight,
-    alignSelf: 'flex-start',
-    borderRadius: Radius.full,
-    paddingHorizontal: 12,
-    paddingVertical: 5,
     marginBottom: Spacing.md,
   },
-  heroBadgeText: {
+  heroTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+    marginBottom: Spacing.md,
+  },
+  heroCopy: { flex: 1 },
+  kicker: {
     color: Colors.primary,
-    fontSize: FontSize.sm,
-    fontWeight: FontWeight.semiBold,
+    fontSize: FontSize.xs,
+    fontWeight: FontWeight.bold,
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+    marginBottom: 4,
   },
   heroTitle: {
     color: Colors.textPrimary,
-    fontSize: FontSize.display,
+    fontSize: FontSize.xxl,
     fontWeight: FontWeight.extraBold,
-    lineHeight: 40,
-    marginBottom: Spacing.md,
+    lineHeight: 32,
   },
   heroSubtitle: {
     color: Colors.textSecondary,
     fontSize: FontSize.md,
-    lineHeight: 23,
-    marginBottom: Spacing.xl,
+    lineHeight: 22,
+    marginBottom: Spacing.lg,
   },
   ctaButton: {
+    minHeight: 48,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.sm,
     backgroundColor: Colors.primary,
     borderRadius: Radius.full,
-    paddingVertical: 15,
-    alignItems: 'center',
   },
-  ctaButtonDisabled: {
-    opacity: 0.6,
-  },
+  ctaButtonDisabled: { opacity: 0.65 },
   ctaText: {
     color: Colors.textInverse,
     fontSize: FontSize.md,
@@ -264,88 +206,66 @@ const styles = StyleSheet.create({
     marginTop: Spacing.md,
     textAlign: 'center',
   },
-  chipsRow: {
+  statsGrid: {
     flexDirection: 'row',
     gap: Spacing.sm,
     marginBottom: Spacing.sm,
   },
-  timestampText: {
+  statCard: {
+    flex: 1,
+    backgroundColor: Colors.surface,
+    borderRadius: Radius.md,
+    padding: Spacing.md,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  statValue: {
+    color: Colors.textPrimary,
+    fontSize: FontSize.xl,
+    fontWeight: FontWeight.extraBold,
+    marginTop: Spacing.sm,
+  },
+  statLabel: {
     color: Colors.textMuted,
     fontSize: FontSize.xs,
-    marginBottom: Spacing.lg,
+    marginTop: 2,
   },
-  section: { marginBottom: Spacing.xl },
+  timestampRow: { marginBottom: Spacing.md, alignItems: 'flex-start' },
+  section: { marginTop: Spacing.sm },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: Spacing.sm,
+  },
   sectionTitle: {
     color: Colors.textPrimary,
     fontSize: FontSize.lg,
     fontWeight: FontWeight.bold,
-    marginBottom: Spacing.md,
   },
-  featureGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: Spacing.sm,
-  },
-});
-
-const chipStyles = StyleSheet.create({
-  chip: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Colors.surface,
-    borderRadius: Radius.full,
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.sm,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    gap: 4,
-  },
-  icon: { fontSize: 13 },
-  label: { color: Colors.textSecondary, fontSize: FontSize.xs, fontWeight: FontWeight.medium },
-});
-
-const featureStyles = StyleSheet.create({
-  card: {
-    width: (width - Spacing.md * 2 - Spacing.sm) / 2,
-    backgroundColor: Colors.surface,
-    borderRadius: Radius.lg,
-    padding: Spacing.md,
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  icon: { fontSize: 26, marginBottom: Spacing.sm },
-  title: {
-    color: Colors.textPrimary,
+  linkText: {
+    color: Colors.primary,
     fontSize: FontSize.sm,
     fontWeight: FontWeight.semiBold,
-    marginBottom: 4,
   },
-  desc: { color: Colors.textSecondary, fontSize: FontSize.xs, lineHeight: 17 },
-});
-
-const rowStyles = StyleSheet.create({
-  row: {
-    flexDirection: 'row',
+  emptyPanel: {
     alignItems: 'center',
     backgroundColor: Colors.surface,
-    borderRadius: Radius.md,
-    padding: Spacing.md,
-    marginBottom: Spacing.sm,
+    borderRadius: Radius.lg,
+    padding: Spacing.xl,
     borderWidth: 1,
     borderColor: Colors.border,
   },
-  left: { flex: 1 },
-  name: {
+  emptyTitle: {
     color: Colors.textPrimary,
     fontSize: FontSize.md,
-    fontWeight: FontWeight.semiBold,
+    fontWeight: FontWeight.bold,
+    marginTop: Spacing.sm,
   },
-  meta: { color: Colors.textSecondary, fontSize: FontSize.sm, marginTop: 3 },
-  badge: {
-    borderRadius: Radius.sm,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
+  emptyText: {
+    color: Colors.textSecondary,
+    fontSize: FontSize.sm,
+    marginTop: 4,
+    textAlign: 'center',
   },
-  badgeText: { fontSize: FontSize.xs, fontWeight: FontWeight.semiBold },
 });

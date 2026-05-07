@@ -22,10 +22,27 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   const [strictCeliac, setStrictCeliacState] = useState(false);
 
   useEffect(() => {
+    let isMounted = true;
+
     (async () => {
-      setUseMilesState(await SettingsManager.useMiles());
-      setStrictCeliacState(await SettingsManager.isStrictCeliac());
+      try {
+        const [savedUseMiles, savedStrictCeliac] = await Promise.all([
+          SettingsManager.useMiles(),
+          SettingsManager.isStrictCeliac(),
+        ]);
+
+        if (!isMounted) return;
+        setUseMilesState(savedUseMiles);
+        setStrictCeliacState(savedStrictCeliac);
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error);
+        logger.error(`Failed to load settings: ${message}`);
+      }
     })();
+
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   const setUseMiles = useCallback((val: boolean) => {

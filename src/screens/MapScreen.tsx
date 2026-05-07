@@ -13,6 +13,8 @@ import { useSettings } from '../context/SettingsContext';
 import { Restaurant } from '../types/restaurant';
 import { SettingsManager } from '../util/SettingsManager';
 import RestaurantDetailModal from './components/RestaurantDetailModal';
+import { getRestaurantListKey } from '../util/restaurantUtils';
+import { Ionicons, StateMessage } from '../components/ui';
 
 export default function MapScreen() {
   const { uiState, loadNearbyRestaurants } = useRestaurants();
@@ -54,15 +56,13 @@ export default function MapScreen() {
   if (!initialRegion || restaurants.length === 0) {
     return (
       <View style={stateStyles.container}>
-        <Text style={stateStyles.emoji}>{uiState.status === 'permission_required' ? '📍' : '🗺️'}</Text>
-        <Text style={stateStyles.message}>
-          {uiState.message ?? 'Search nearby restaurants to show them on the map.'}
-        </Text>
-        <Pressable style={stateStyles.button} onPress={loadNearbyRestaurants}>
-          <Text style={stateStyles.buttonText}>
-            {uiState.status === 'permission_required' ? 'Enable Location' : 'Find Restaurants'}
-          </Text>
-        </Pressable>
+        <StateMessage
+          icon={uiState.status === 'permission_required' ? 'navigate-circle' : 'map'}
+          title={uiState.status === 'permission_required' ? 'Location needed' : 'Map is empty'}
+          message={uiState.message ?? 'Search nearby restaurants to show them on the map.'}
+          actionLabel={uiState.status === 'permission_required' ? 'Enable Location' : 'Find Restaurants'}
+          onAction={loadNearbyRestaurants}
+        />
       </View>
     );
   }
@@ -77,7 +77,7 @@ export default function MapScreen() {
       >
         {restaurants.map((restaurant) => (
           <Marker
-            key={restaurant.placeId || `${restaurant.name}-${restaurant.address}`}
+            key={getRestaurantListKey(restaurant)}
             coordinate={{
               latitude: restaurant.latitude,
               longitude: restaurant.longitude,
@@ -91,7 +91,10 @@ export default function MapScreen() {
       </MapView>
 
       <View style={styles.summaryBar}>
-        <Text style={styles.summaryTitle}>{restaurants.length} mapped</Text>
+        <View style={styles.summaryTitleRow}>
+          <Ionicons name="map" size={18} color={Colors.primary} />
+          <Text style={styles.summaryTitle}>{restaurants.length} mapped</Text>
+        </View>
         <Text style={styles.summaryText} numberOfLines={1}>
           Current Explore filters are applied
         </Text>
@@ -154,6 +157,11 @@ const styles = StyleSheet.create({
     fontSize: FontSize.md,
     fontWeight: FontWeight.bold,
   },
+  summaryTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
   summaryText: {
     color: Colors.textSecondary,
     fontSize: FontSize.xs,
@@ -191,7 +199,6 @@ const stateStyles = StyleSheet.create({
     padding: Spacing.xl,
     gap: Spacing.md,
   },
-  emoji: { fontSize: 52 },
   message: {
     color: Colors.textSecondary,
     fontSize: FontSize.md,

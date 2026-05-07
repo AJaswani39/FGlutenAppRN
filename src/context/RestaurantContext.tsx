@@ -11,12 +11,7 @@ import Constants from 'expo-constants';
 import { FavoriteStatus, MenuScanProgress, Restaurant, RestaurantUiState } from '../types/restaurant';
 import {
   distanceBetween,
-  extractGfEvidence,
-  extractRawMenuText,
-  fetchHtml,
   fetchNearbyRestaurants,
-  fetchWebsiteForPlace,
-  findMenuLink,
 } from '../data/placesRepository';
 import { SettingsManager } from '../util/SettingsManager';
 import {
@@ -27,6 +22,7 @@ import {
 import { useFilters } from './FiltersContext';
 import { useSettings } from './SettingsContext';
 import { logger } from '../util/logger';
+import { scanRestaurantMenu } from '../services/menuScanner';
 
 const MENU_SCAN_TTL_MS = 3 * 24 * 60 * 60 * 1000;
 const MAX_SCANS_PER_BATCH = 5;
@@ -242,12 +238,17 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
   }, [applyFavorites, emitFilteredState]);
 
   const persistCache = useCallback(async () => {
-    await SettingsManager.saveCache({
-      restaurants: rawRestaurants.current,
-      lat: userLat.current,
-      lng: userLng.current,
-      timestamp: Date.now(),
-    });
+    try {
+      await SettingsManager.saveCache({
+        restaurants: rawRestaurants.current,
+        lat: userLat.current,
+        lng: userLng.current,
+        timestamp: Date.now(),
+      });
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      logger.error(`Failed to save restaurant cache: ${message}`);
+    }
   }, []);
 
   const scanMenu = useCallback(
@@ -269,46 +270,13 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
         status: uiState.status,
       });
 
-      const website = await fetchWebsiteForPlace(restaurant.placeId, mapsApiKey);
-      if (!website) {
-        const applied = updateRestaurant(restaurant, (current) => {
-          if (
-            current.menuScanStatus !== 'FETCHING' ||
-            current.menuScanTimestamp !== scanStartedAt
-          ) {
-            return current;
-          }
+      const result = await scanRestaurantMenu({
+        restaurant,
+        mapsApiKey,
+        scanStartedAt,
+      });
+      if (!result) return;
 
-          return {
-            ...current,
-            menuUrl: null,
-            menuScanStatus: 'NO_WEBSITE',
-            menuScanTimestamp: scanStartedAt,
-          };
-        });
-
-        if (applied) {
-          emitFilteredState();
-          await persistCache();
-        }
-        return;
-      }
-
-      let menuUrl = website;
-      let html = await fetchHtml(website);
-      if (html) {
-        const menuLink = findMenuLink(html, website);
-        if (menuLink && menuLink !== website) {
-          menuUrl = menuLink;
-          const menuHtml = await fetchHtml(menuLink);
-          if (menuHtml) {
-            html = menuHtml;
-          }
-        }
-      }
-
-      const gfMenu = html ? extractGfEvidence(html) : [];
-      const rawMenuText = html ? extractRawMenuText(html) : null;
       const applied = updateRestaurant(restaurant, (current) => {
         if (
           current.menuScanStatus !== 'FETCHING' ||
@@ -319,11 +287,7 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
 
         return {
           ...current,
-          menuUrl,
-          gfMenu,
-          rawMenuText,
-          menuScanStatus: html ? 'SUCCESS' : 'FAILED',
-          menuScanTimestamp: scanStartedAt,
+          ...result,
         };
       });
 

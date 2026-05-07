@@ -13,8 +13,10 @@ import {
 import { Colors, Spacing, Radius, FontSize, FontWeight } from '../../theme/colors';
 import { Restaurant, FavoriteStatus } from '../../types/restaurant';
 import { SettingsManager } from '../../util/SettingsManager';
-import { getGfConfidenceLevel } from '../../util/restaurantUtils';
+import { getGfConfidenceLevel, isSameRestaurantIdentity } from '../../util/restaurantUtils';
 import { useRestaurants } from '../../context/RestaurantContext';
+import { logger } from '../../util/logger';
+import { IconName, Ionicons } from '../../components/ui';
 import MenuAnalysisSheet from './MenuAnalysisSheet';
 
 interface Props {
@@ -29,8 +31,8 @@ export default function RestaurantDetailModal({ restaurant: initial, useMiles, o
 
   // Keep the displayed restaurant in sync with ViewModel updates
   const restaurant =
-    uiState.restaurants.find((r) => r.placeId === initial.placeId) ??
-    savedRestaurants.find((r) => r.placeId === initial.placeId) ??
+    uiState.restaurants.find((r) => isSameRestaurantIdentity(r, initial)) ??
+    savedRestaurants.find((r) => isSameRestaurantIdentity(r, initial)) ??
     initial;
 
   const dist = SettingsManager.formatDistance(restaurant.distanceMeters, useMiles);
@@ -42,11 +44,21 @@ export default function RestaurantDetailModal({ restaurant: initial, useMiles, o
       ios: `maps://app?daddr=${restaurant.latitude},${restaurant.longitude}`,
       android: `geo:${restaurant.latitude},${restaurant.longitude}?q=${encodeURIComponent(restaurant.name)}`,
     });
-    if (url) Linking.openURL(url);
+    if (url) {
+      void Linking.openURL(url).catch((error: unknown) => {
+        const message = error instanceof Error ? error.message : String(error);
+        logger.error(`Failed to open maps link: ${message}`);
+      });
+    }
   };
 
   const openMenu = () => {
-    if (safeMenuUrl) Linking.openURL(safeMenuUrl);
+    if (safeMenuUrl) {
+      void Linking.openURL(safeMenuUrl).catch((error: unknown) => {
+        const message = error instanceof Error ? error.message : String(error);
+        logger.error(`Failed to open menu link: ${message}`);
+      });
+    }
   };
 
   const handleFav = (status: FavoriteStatus) => {
@@ -162,25 +174,25 @@ export default function RestaurantDetailModal({ restaurant: initial, useMiles, o
           <Section title="Actions">
             <View style={styles.actionsGrid}>
               <ActionButton
-                icon="🗺️"
+                icon="map"
                 label="Open in Maps"
                 onPress={openMaps}
                 primary
               />
               <ActionButton
-                icon="🌐"
+                icon="globe"
                 label="View Menu"
                 onPress={openMenu}
                 disabled={!safeMenuUrl}
               />
               <ActionButton
-                icon="🔍"
+                icon="scan"
                 label="Rescan Menu"
                 onPress={handleRescan}
                 disabled={!restaurant.placeId || restaurant.menuScanStatus === 'FETCHING'}
               />
               <ActionButton
-                icon="🤖"
+                icon="sparkles"
                 label="AI Analysis"
                 onPress={() => setShowAI(true)}
                 primary
@@ -358,7 +370,7 @@ function ActionButton({
   disabled,
   primary,
 }: {
-  icon: string;
+  icon: IconName;
   label: string;
   onPress: () => void;
   disabled?: boolean;
@@ -378,7 +390,11 @@ function ActionButton({
       accessibilityLabel={label}
       accessibilityState={{ disabled }}
     >
-      <Text style={actionStyles.icon}>{icon}</Text>
+      <Ionicons
+        name={icon}
+        size={17}
+        color={disabled ? Colors.textMuted : primary ? Colors.primary : Colors.textSecondary}
+      />
       <Text style={[actionStyles.label, primary && actionStyles.primaryLabel, disabled && actionStyles.disabledLabel]}>
         {label}
       </Text>
@@ -507,7 +523,6 @@ const actionStyles = StyleSheet.create({
     borderColor: Colors.primary,
   },
   disabledBtn: { opacity: 0.4 },
-  icon: { fontSize: 16 },
   label: { color: Colors.textSecondary, fontSize: FontSize.sm, fontWeight: FontWeight.medium },
   primaryLabel: { color: Colors.primary },
   disabledLabel: { color: Colors.textMuted },

@@ -1,5 +1,10 @@
 import { Restaurant } from '../../types/restaurant';
-import { getGfConfidenceLevel } from '../restaurantUtils';
+import {
+  getGfConfidenceLevel,
+  getRestaurantIdentityKey,
+  getRestaurantListKey,
+  isSameRestaurantIdentity,
+} from '../restaurantUtils';
 
 function restaurant(overrides: Partial<Restaurant>): Restaurant {
   return {
@@ -30,5 +35,22 @@ describe('restaurantUtils', () => {
     expect(getGfConfidenceLevel(restaurant({ menuScanStatus: 'FAILED' }))).toBe('unavailable');
     expect(getGfConfidenceLevel(restaurant({ menuScanStatus: 'NO_WEBSITE' }))).toBe('unavailable');
     expect(getGfConfidenceLevel(restaurant({ menuScanStatus: 'FETCHING' }))).toBe('pending');
+  });
+
+  it('builds stable restaurant identity and list keys', () => {
+    expect(getRestaurantIdentityKey(restaurant({ placeId: ' abc ' }))).toBe('pid:abc');
+    expect(getRestaurantIdentityKey(restaurant({ placeId: '', name: ' Cafe ', address: ' 123 Main ' }))).toBe(
+      'na:Cafe|123 Main'
+    );
+    expect(getRestaurantListKey(restaurant({ placeId: '', name: '', address: '' }), 4)).toBe('restaurant:4');
+  });
+
+  it('matches restaurants by fallback identity when place ids are unavailable', () => {
+    const left = restaurant({ placeId: '', name: 'Rice House', address: '7 Main' });
+    const right = restaurant({ placeId: '', name: 'Rice House', address: '7 Main', rating: 4.8 });
+    const different = restaurant({ placeId: '', name: 'Rice House', address: '8 Main' });
+
+    expect(isSameRestaurantIdentity(left, right)).toBe(true);
+    expect(isSameRestaurantIdentity(left, different)).toBe(false);
   });
 });

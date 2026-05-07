@@ -336,6 +336,56 @@ describe('RestaurantContext', () => {
     });
   });
 
+  it('keeps default settings when startup setting storage rejects', async () => {
+    (AsyncStorage.getItem as jest.Mock).mockRejectedValueOnce(new Error('settings unavailable'));
+    const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+
+    const { getApi } = await renderHarness();
+
+    expect(getApi().settings.useMiles).toBe(false);
+    expect(getApi().settings.strictCeliac).toBe(false);
+
+    errorSpy.mockRestore();
+  });
+
+  it('keeps loaded restaurants visible when cache persistence rejects', async () => {
+    (global.fetch as jest.Mock).mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        places: [
+          {
+            id: 'cache-save-place',
+            displayName: { text: 'Cache Save Cafe' },
+            formattedAddress: '10 Stable St',
+            location: { latitude: 40.715, longitude: -74.004 },
+            rating: 4.6,
+            currentOpeningHours: { openNow: true },
+          },
+        ],
+      }),
+    });
+    (AsyncStorage.setItem as jest.Mock).mockImplementation(async (key: string, value: string) => {
+      if (key === 'restaurant_cache') {
+        throw new Error('cache full');
+      }
+      void value;
+      return undefined;
+    });
+    const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+
+    const { getApi } = await renderHarness();
+
+    await act(async () => {
+      await getApi().restaurants.loadNearbyRestaurants();
+    });
+
+    expect(getApi().restaurants.uiState.status).toBe('success');
+    expect(getApi().restaurants.uiState.restaurants).toHaveLength(1);
+
+    await flushAsync();
+    errorSpy.mockRestore();
+  });
+
   it('uses the distance filter as the nearby search radius', async () => {
     (global.fetch as jest.Mock).mockResolvedValue({
       ok: true,

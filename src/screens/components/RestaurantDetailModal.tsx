@@ -15,8 +15,12 @@ import { Restaurant, FavoriteStatus } from '../../types/restaurant';
 import { SettingsManager } from '../../util/SettingsManager';
 import { getGfConfidenceLevel, isSameRestaurantIdentity } from '../../util/restaurantUtils';
 import { useRestaurants } from '../../context/RestaurantContext';
+import { useSettings } from '../../context/SettingsContext';
 import { logger } from '../../util/logger';
 import { IconName, Ionicons } from '../../components/ui';
+import { getRestaurantSafetyScore, MenuSafetyLevel } from '../../services/menuSafety';
+import { getDiningChecklist } from '../../services/diningChecklist';
+import { getCuisineRiskHints } from '../../services/cuisineRiskHints';
 import MenuAnalysisSheet from './MenuAnalysisSheet';
 
 interface Props {
@@ -27,6 +31,7 @@ interface Props {
 
 export default function RestaurantDetailModal({ restaurant: initial, useMiles, onClose }: Props) {
   const { uiState, savedRestaurants, setFavoriteStatus, requestMenuRescan } = useRestaurants();
+  const { strictCeliac } = useSettings();
   const [showAI, setShowAI] = useState(false);
 
   // Keep the displayed restaurant in sync with ViewModel updates
@@ -38,6 +43,13 @@ export default function RestaurantDetailModal({ restaurant: initial, useMiles, o
   const dist = SettingsManager.formatDistance(restaurant.distanceMeters, useMiles);
   const safeMenuUrl = getSafeExternalUrl(restaurant.menuUrl);
   const confidence = confidenceMeta(restaurant);
+  const safetyScore = getRestaurantSafetyScore(restaurant, { strictCeliac });
+  const safety = safetyMeta(safetyScore.level);
+  const diningChecklist = getDiningChecklist(restaurant, {
+    strictCeliac,
+    safetyLevel: safetyScore.level,
+  });
+  const cuisineRiskHints = getCuisineRiskHints(restaurant);
 
   const openMaps = () => {
     const url = Platform.select({
@@ -122,6 +134,97 @@ export default function RestaurantDetailModal({ restaurant: initial, useMiles, o
                 {confidence.icon} {confidence.title}
               </Text>
               <Text style={styles.gfCardBody}>{confidence.description}</Text>
+            </View>
+          </Section>
+
+          <Section title="Safety Score">
+            <View style={[styles.safetyScoreCard, { backgroundColor: safety.bg }]}>
+              <View style={styles.safetyScoreHeader}>
+                <View>
+                  <Text style={[styles.safetyScoreValue, { color: safety.color }]}>
+                    {safetyScore.score}
+                    <Text style={styles.safetyScoreMax}>/100</Text>
+                  </Text>
+                  <Text style={[styles.safetyScoreTitle, { color: safety.color }]}>
+                    {safety.icon} {safetyScore.title}
+                  </Text>
+                </View>
+                <View style={[styles.safetyMeter, { borderColor: safety.color }]}>
+                  <View
+                    style={[
+                      styles.safetyMeterFill,
+                      {
+                        width: `${safetyScore.score}%`,
+                        backgroundColor: safety.color,
+                      },
+                    ]}
+                  />
+                </View>
+              </View>
+              <Text style={styles.safetyScoreSummary}>{safetyScore.summary}</Text>
+              {safetyScore.reasons.length > 0 && (
+                <View style={styles.safetyReasons}>
+                  {safetyScore.reasons.map((reason) => (
+                    <View key={reason} style={styles.safetyReason}>
+                      <Text style={[styles.safetyReasonDot, { color: safety.color }]}>•</Text>
+                      <Text style={styles.safetyReasonText}>{reason}</Text>
+                    </View>
+                  ))}
+                </View>
+              )}
+            </View>
+          </Section>
+
+          <Section title="Ask Before You Eat">
+            <View style={styles.checklistCard}>
+              {diningChecklist.map((item) => (
+                <View key={item.id} style={styles.checklistItem}>
+                  <View
+                    style={[
+                      styles.checklistPriority,
+                      {
+                        backgroundColor: item.priority === 'high' ? Colors.warningBg : Colors.infoBg,
+                        borderColor: item.priority === 'high' ? Colors.warning : Colors.info,
+                      },
+                    ]}
+                  >
+                    <Ionicons
+                      name={item.priority === 'high' ? 'alert-circle' : 'chatbubble-ellipses'}
+                      size={15}
+                      color={item.priority === 'high' ? Colors.warning : Colors.info}
+                    />
+                  </View>
+                  <View style={styles.checklistTextGroup}>
+                    <Text style={styles.checklistQuestion}>{item.question}</Text>
+                    <Text style={styles.checklistNote}>{item.note}</Text>
+                  </View>
+                </View>
+              ))}
+            </View>
+          </Section>
+
+          <Section title="Cuisine Risk Hints">
+            <View style={styles.riskHintsGrid}>
+              {cuisineRiskHints.map((hint) => {
+                const color = hint.tone === 'warning' ? Colors.warning : Colors.info;
+                const bg = hint.tone === 'warning' ? Colors.warningBg : Colors.infoBg;
+                return (
+                  <View key={hint.id} style={styles.riskHintCard}>
+                    <View style={styles.riskHintHeader}>
+                      <View style={[styles.riskHintIcon, { backgroundColor: bg, borderColor: color }]}>
+                        <Ionicons
+                          name={hint.tone === 'warning' ? 'warning' : 'information-circle'}
+                          size={15}
+                          color={color}
+                        />
+                      </View>
+                      <Text style={styles.riskHintLabel}>{hint.label}</Text>
+                    </View>
+                    <Text style={styles.riskHintText}>{hint.risk}</Text>
+                    <Text style={[styles.riskHintAsk, { color }]}>Ask: {hint.saferAsk}</Text>
+                  </View>
+                );
+              })}
             </View>
           </Section>
 
@@ -268,6 +371,20 @@ function confidenceMeta(restaurant: Restaurant) {
         bg: Colors.infoBg,
       };
   }
+}
+
+function safetyMeta(level: MenuSafetyLevel) {
+  if (level === 'safe') {
+    return { icon: '✅', color: Colors.success, bg: Colors.successBg };
+  }
+  if (level === 'caution') {
+    return { icon: '⚠️', color: Colors.warning, bg: Colors.warningBg };
+  }
+  if (level === 'unsafe') {
+    return { icon: '❌', color: Colors.error, bg: Colors.errorBg };
+  }
+
+  return { icon: '❓', color: Colors.textSecondary, bg: Colors.surfaceElevated };
 }
 
 function menuStatusText(r: Restaurant): string {
@@ -449,6 +566,143 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
     fontSize: FontSize.sm,
     lineHeight: 20,
+    marginTop: Spacing.xs,
+  },
+  safetyScoreCard: {
+    borderRadius: Radius.md,
+    padding: Spacing.md,
+  },
+  safetyScoreHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: Spacing.md,
+  },
+  safetyScoreValue: {
+    fontSize: FontSize.xxl,
+    fontWeight: FontWeight.extraBold,
+  },
+  safetyScoreMax: {
+    color: Colors.textSecondary,
+    fontSize: FontSize.md,
+    fontWeight: FontWeight.semiBold,
+  },
+  safetyScoreTitle: {
+    fontSize: FontSize.md,
+    fontWeight: FontWeight.semiBold,
+    marginTop: 2,
+  },
+  safetyMeter: {
+    flex: 1,
+    height: 10,
+    borderRadius: Radius.full,
+    borderWidth: 1,
+    overflow: 'hidden',
+    backgroundColor: Colors.surface,
+  },
+  safetyMeterFill: {
+    height: '100%',
+    borderRadius: Radius.full,
+  },
+  safetyScoreSummary: {
+    color: Colors.textSecondary,
+    fontSize: FontSize.sm,
+    lineHeight: 20,
+    marginTop: Spacing.sm,
+  },
+  safetyReasons: {
+    marginTop: Spacing.sm,
+    gap: 4,
+  },
+  safetyReason: {
+    flexDirection: 'row',
+    gap: Spacing.sm,
+  },
+  safetyReasonDot: {
+    fontSize: FontSize.md,
+    lineHeight: 20,
+  },
+  safetyReasonText: {
+    flex: 1,
+    color: Colors.textSecondary,
+    fontSize: FontSize.sm,
+    lineHeight: 20,
+  },
+  checklistCard: {
+    backgroundColor: Colors.surface,
+    borderRadius: Radius.md,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    padding: Spacing.md,
+    gap: Spacing.md,
+  },
+  checklistItem: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: Spacing.sm,
+  },
+  checklistPriority: {
+    width: 30,
+    height: 30,
+    borderRadius: Radius.full,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 1,
+  },
+  checklistTextGroup: {
+    flex: 1,
+  },
+  checklistQuestion: {
+    color: Colors.textPrimary,
+    fontSize: FontSize.sm,
+    fontWeight: FontWeight.semiBold,
+    lineHeight: 19,
+  },
+  checklistNote: {
+    color: Colors.textSecondary,
+    fontSize: FontSize.xs,
+    lineHeight: 17,
+    marginTop: 3,
+  },
+  riskHintsGrid: {
+    gap: Spacing.sm,
+  },
+  riskHintCard: {
+    backgroundColor: Colors.surface,
+    borderRadius: Radius.md,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    padding: Spacing.md,
+  },
+  riskHintHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    marginBottom: Spacing.xs,
+  },
+  riskHintIcon: {
+    width: 28,
+    height: 28,
+    borderRadius: Radius.full,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  riskHintLabel: {
+    color: Colors.textPrimary,
+    fontSize: FontSize.sm,
+    fontWeight: FontWeight.bold,
+  },
+  riskHintText: {
+    color: Colors.textSecondary,
+    fontSize: FontSize.sm,
+    lineHeight: 19,
+  },
+  riskHintAsk: {
+    fontSize: FontSize.xs,
+    fontWeight: FontWeight.semiBold,
+    lineHeight: 17,
     marginTop: Spacing.xs,
   },
   scanRow: {

@@ -32,6 +32,8 @@ export default {
           "FGlutenApp uses your location to find gluten-free friendly restaurants near you.",
         NSLocationAlwaysAndWhenInUseUsageDescription:
           "FGlutenApp uses your location to find gluten-free friendly restaurants near you.",
+        NSPhotoLibraryUsageDescription:
+          "FGlutenApp lets you choose menu photos to scan for gluten-free safety clues.",
       },
     },
     android: {
@@ -57,10 +59,18 @@ export default {
             "FGlutenApp uses your location to find gluten-free restaurants near you.",
         },
       ],
+      [
+        "expo-image-picker",
+        {
+          photosPermission:
+            "FGlutenApp lets you choose menu photos to scan for gluten-free safety clues.",
+        },
+      ],
     ],
     extra: {
       appVariant,
       MAPS_API_KEY: process.env.GCP_API_KEY ?? "",
+      VISION_API_KEY: process.env.GCP_VISION_API_KEY ?? process.env.GCP_API_KEY ?? "",
       eas: {
         projectId: "a445e80b-b3b6-4d3d-9b44-e0949b962c4d",
       },

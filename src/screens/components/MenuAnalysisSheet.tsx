@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react';
+import Constants from 'expo-constants';
+import * as ImagePicker from 'expo-image-picker';
 import {
   View,
   Text,
@@ -10,19 +12,17 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { Colors, Spacing, Radius, FontSize, FontWeight } from '../../theme/colors';
+import { analyseMenuText, MenuAnalysisResult } from '../../services/menuSafety';
+import { extractMenuTextFromImage } from '../../services/menuOcr';
+
+interface ExpoConfigExtra {
+  VISION_API_KEY?: string;
+}
 
 interface Props {
   restaurantName: string;
   menuText: string;
   onClose: () => void;
-}
-
-interface AnalysisResult {
-  overallSafety: 'safe' | 'caution' | 'unknown' | 'unsafe';
-  glutenFreeItems: string[];
-  warnings: string[];
-  crossContamRisk: string;
-  summary: string;
 }
 
 /**
@@ -35,8 +35,9 @@ interface AnalysisResult {
  */
 export default function MenuAnalysisSheet({ restaurantName, menuText, onClose }: Props) {
   const [editableText, setEditableText] = useState(menuText);
-  const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(null);
+  const [analysisResult, setAnalysisResult] = useState<MenuAnalysisResult | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [isExtractingPhotoText, setIsExtractingPhotoText] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // Auto-analyse on mount if we have text
@@ -66,6 +67,44 @@ export default function MenuAnalysisSheet({ restaurantName, menuText, onClose }:
       setError(`Analysis failed: ${message}`);
     } finally {
       setIsAnalyzing(false);
+    }
+  };
+
+  const pickMenuPhoto = async () => {
+    setError(null);
+    setIsExtractingPhotoText(true);
+
+    try {
+      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permission.granted) {
+        setError('Photo access is needed to scan a menu image.');
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsEditing: false,
+        base64: true,
+        quality: 0.85,
+      });
+
+      if (result.canceled) return;
+
+      const base64 = result.assets[0]?.base64;
+      if (!base64) {
+        setError('Could not read that image. Try a clearer menu photo.');
+        return;
+      }
+
+      const visionApiKey = (Constants.expoConfig?.extra as ExpoConfigExtra)?.VISION_API_KEY ?? '';
+      const text = await extractMenuTextFromImage({ base64, apiKey: visionApiKey });
+      setEditableText(text);
+      await runAnalysis(text);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      setError(`Photo scan failed: ${message}`);
+    } finally {
+      setIsExtractingPhotoText(false);
     }
   };
 
@@ -136,6 +175,20 @@ export default function MenuAnalysisSheet({ restaurantName, menuText, onClose }:
           </View>
 
           <Pressable
+            style={[styles.photoBtn, isExtractingPhotoText && styles.analyseBtnDisabled]}
+            onPress={pickMenuPhoto}
+            disabled={isExtractingPhotoText || isAnalyzing}
+            accessibilityRole="button"
+            accessibilityLabel="Choose menu photo to scan"
+          >
+            {isExtractingPhotoText ? (
+              <ActivityIndicator color={Colors.primary} />
+            ) : (
+              <Text style={styles.photoBtnText}>📷 Scan Menu Photo</Text>
+            )}
+          </Pressable>
+
+          <Pressable
             style={[styles.analyseBtn, isAnalyzing && styles.analyseBtnDisabled]}
             onPress={() => runAnalysis(editableText)}
             disabled={isAnalyzing}
@@ -164,12 +217,12 @@ export default function MenuAnalysisSheet({ restaurantName, menuText, onClose }:
                 <View style={{ flex: 1 }}>
                   <Text style={[styles.safetyTitle, { color: safetyColor }]}>
                     {analysisResult.overallSafety === 'safe'
-                      ? 'Generally Safe for Gluten-Free'
+                      ? `Generally Safe (${analysisResult.score}/100)`
                       : analysisResult.overallSafety === 'caution'
-                      ? 'Caution — Some Risk Present'
+                      ? `Caution (${analysisResult.score}/100)`
                       : analysisResult.overallSafety === 'unsafe'
-                      ? 'Not Recommended for Celiac'
-                      : 'Insufficient Information'}
+                      ? `Not Recommended (${analysisResult.score}/100)`
+                      : `Insufficient Information (${analysisResult.score}/100)`}
                   </Text>
                   <Text style={styles.safetySummary}>{analysisResult.summary}</Text>
                 </View>
@@ -227,126 +280,6 @@ function ResultSection({ title, children }: { title: string; children: React.Rea
       <View style={resultStyles.body}>{children}</View>
     </View>
   );
-}
-
-// ─── Local heuristic analysis (mirrors AIRepository.kt logic) ───────────────
-
-export function analyseMenuText(text: string): AnalysisResult {
-  const lower = text.toLowerCase();
-
-  const GF_POSITIVE = [
-    /gluten[\s-]?free/i,
-    /\bgf\b/i,
-    /celiac[\s-]?friendly/i,
-    /coeliac[\s-]?friendly/i,
-    /no[\s-]gluten/i,
-  ];
-
-  const GLUTEN_SOURCES = [
-    'wheat',
-    'barley',
-    'rye',
-    'spelt',
-    'triticale',
-    'malt',
-    'semolina',
-    'durum',
-    'kamut',
-    'bulgur',
-    'farro',
-    'crouton',
-    'breaded',
-    'battered',
-    'flour',
-    'pasta',
-    'noodle',
-    'dumpling',
-    'soy sauce',
-    'teriyaki',
-  ];
-
-  const CC_PATTERNS = [
-    /share[\s\w]{0,30}kitchen/gi,
-    /cross[\s-]?contamin/gi,
-    /same[\s\w]{0,20}fryer/gi,
-    /not[\s-]?celiac[\s-]?safe/gi,
-    /may contain wheat/gi,
-    /processed in a facility/gi,
-  ];
-
-  const lines = text.split(/[\n\r]+/);
-  const glutenFreeItems: string[] = [];
-  
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (trimmed.length < 10 || trimmed.length > 200) continue;
-    
-    if (GF_POSITIVE.some((p) => p.test(trimmed))) {
-      const cleaned = extractGfItem(trimmed);
-      if (cleaned && !glutenFreeItems.some(g => g.toLowerCase() === cleaned.toLowerCase())) {
-        glutenFreeItems.push(cleaned);
-      }
-    }
-    if (glutenFreeItems.length >= 12) break;
-  }
-  
-  const warnings: string[] = [];
-  const foundGlutenSources = GLUTEN_SOURCES.filter((g) => lower.includes(g));
-  if (foundGlutenSources.length > 0) {
-    warnings.push(`Gluten-containing: ${foundGlutenSources.slice(0, 6).join(', ')}`);
-  }
-
-  let crossContamRisk = '';
-  const ccMatches = CC_PATTERNS.flatMap((p) => [...text.matchAll(p)].map((m) => m[0]));
-  CC_PATTERNS.forEach((r) => { r.lastIndex = 0; });
-  if (ccMatches.length > 0) {
-    crossContamRisk = ccMatches.slice(0, 3).join('; ');
-    warnings.push('Cross-contamination risk detected');
-  }
-
-  const hasPositive = glutenFreeItems.length > 0;
-  const hasWarnings = warnings.length > 0;
-  const hasCrossContam = ccMatches.length > 0;
-
-  let overallSafety: AnalysisResult['overallSafety'];
-  let summary: string;
-
-  if (hasPositive && !hasCrossContam && !hasWarnings) {
-    overallSafety = 'safe';
-    summary = `Found ${glutenFreeItems.length} gluten-free option${glutenFreeItems.length !== 1 ? 's' : ''} with no detected risks.`;
-  } else if (hasPositive && (hasCrossContam || hasWarnings)) {
-    overallSafety = 'caution';
-    summary = 'GF options found but risk factors detected. Consult staff before ordering.';
-  } else if (!hasPositive && hasWarnings) {
-    overallSafety = 'unsafe';
-    summary = 'No explicit GF options found. Gluten-containing items are present.';
-  } else {
-    overallSafety = 'unknown';
-    summary = 'Insufficient menu information. Contact restaurant directly.';
-  }
-
-  return { overallSafety, glutenFreeItems, warnings, crossContamRisk, summary };
-}
-
-function extractGfItem(line: string): string {
-  let cleaned = line.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
-  
-  if (cleaned.length > 80) {
-    const parts = cleaned.split(/[,;]/);
-    for (const part of parts) {
-      const trimmed = part.trim();
-      if (trimmed.length > 10 && trimmed.length < 60) {
-        return capitalizeFirst(trimmed);
-      }
-    }
-    return cleaned.slice(0, 80);
-  }
-  
-  return capitalizeFirst(cleaned);
-}
-
-function capitalizeFirst(str: string): string {
-  return str.charAt(0).toUpperCase() + str.slice(1);
 }
 
 // ── Styles ────────────────────────────────────────────────────────────────────
@@ -420,7 +353,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: Spacing.md,
   },
+  photoBtn: {
+    backgroundColor: Colors.primaryLight,
+    borderRadius: Radius.full,
+    paddingVertical: 13,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: Colors.primary,
+    marginBottom: Spacing.sm,
+  },
   analyseBtnDisabled: { opacity: 0.6 },
+  photoBtnText: { color: Colors.primary, fontSize: FontSize.md, fontWeight: FontWeight.bold },
   analyseBtnText: { color: Colors.textInverse, fontSize: FontSize.md, fontWeight: FontWeight.bold },
   errorCard: {
     backgroundColor: Colors.errorBg,

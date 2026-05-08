@@ -1,4 +1,4 @@
-import { analyseMenuText } from '../MenuAnalysisSheet';
+import { analyseMenuText } from '../../../services/menuSafety';
 
 describe('analyseMenuText', () => {
   it('detects consecutive gluten-free menu lines', () => {

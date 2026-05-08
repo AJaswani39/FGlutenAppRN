@@ -12,14 +12,19 @@ import { Colors, Spacing, Radius, FontSize, FontWeight } from '../theme/colors';
 import { useRestaurants } from '../context/RestaurantContext';
 import { useSettings } from '../context/SettingsContext';
 import { RootTabParamList } from '../types/navigation';
+import { Restaurant } from '../types/restaurant';
 import { getRestaurantListKey } from '../util/restaurantUtils';
+import { SettingsManager } from '../util/SettingsManager';
 import { IconCircle, Ionicons, MetaPill } from '../components/ui';
 import { RestaurantSummaryCard } from '../components/RestaurantSummaryCard';
+import RestaurantDetailModal from './components/RestaurantDetailModal';
+import { SafeRestaurantPick, getSafeRestaurantPicks } from '../services/safePicks';
 
 export default function HomeScreen() {
   const navigation = useNavigation<NavigationProp<RootTabParamList>>();
   const { uiState, loadNearbyRestaurants } = useRestaurants();
-  const { useMiles } = useSettings();
+  const { useMiles, strictCeliac } = useSettings();
+  const [selectedRestaurant, setSelectedRestaurant] = React.useState<Restaurant | null>(null);
 
   const cached = uiState.restaurants;
   const hasData = cached.length > 0;
@@ -44,6 +49,11 @@ export default function HomeScreen() {
     }
     return { favorites, scans, latestScan };
   }, [cached]);
+
+  const safePicks = React.useMemo(
+    () => getSafeRestaurantPicks(cached, { strictCeliac, limit: 3 }),
+    [cached, strictCeliac]
+  );
 
   return (
     <ScrollView
@@ -94,6 +104,25 @@ export default function HomeScreen() {
         </View>
       ) : null}
 
+      {safePicks.length > 0 ? (
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Best Nearby Right Now</Text>
+            <Pressable onPress={() => navigation.dispatch(TabActions.jumpTo('Restaurants'))}>
+              <Text style={styles.linkText}>Explore all</Text>
+            </Pressable>
+          </View>
+          {safePicks.map((pick, index) => (
+            <SafePickCard
+              key={getRestaurantListKey(pick.restaurant, index)}
+              pick={pick}
+              useMiles={useMiles}
+              onPress={() => setSelectedRestaurant(pick.restaurant)}
+            />
+          ))}
+        </View>
+      ) : null}
+
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Recent Results</Text>
@@ -111,6 +140,7 @@ export default function HomeScreen() {
               restaurant={restaurant}
               useMiles={useMiles}
               compact
+              onPress={() => setSelectedRestaurant(restaurant)}
             />
           ))
         ) : (
@@ -123,7 +153,62 @@ export default function HomeScreen() {
       </View>
 
       <View style={{ height: 32 }} />
+
+      {selectedRestaurant ? (
+        <RestaurantDetailModal
+          restaurant={selectedRestaurant}
+          useMiles={useMiles}
+          onClose={() => setSelectedRestaurant(null)}
+        />
+      ) : null}
     </ScrollView>
+  );
+}
+
+function SafePickCard({
+  pick,
+  useMiles,
+  onPress,
+}: {
+  pick: SafeRestaurantPick;
+  useMiles: boolean;
+  onPress: () => void;
+}) {
+  const dist = SettingsManager.formatDistance(pick.restaurant.distanceMeters, useMiles);
+  const scoreTone = pick.safetyScore.level === 'safe' ? Colors.success : Colors.warning;
+
+  return (
+    <Pressable style={styles.safePickCard} onPress={onPress} accessibilityRole="button">
+      <View style={styles.safePickHeader}>
+        <View style={styles.safePickTitleGroup}>
+          <Text style={styles.safePickName} numberOfLines={1}>
+            {pick.restaurant.name}
+          </Text>
+          <Text style={styles.safePickMeta} numberOfLines={1}>
+            {[dist, pick.restaurant.openNow === true ? 'Open now' : null, pick.restaurant.rating ? `${pick.restaurant.rating.toFixed(1)} stars` : null]
+              .filter(Boolean)
+              .join(' • ')}
+          </Text>
+        </View>
+        <View style={[styles.safePickScore, { borderColor: scoreTone }]}>
+          <Text style={[styles.safePickScoreValue, { color: scoreTone }]}>{pick.safetyScore.score}</Text>
+          <Text style={styles.safePickScoreLabel}>score</Text>
+        </View>
+      </View>
+      <Text style={styles.safePickSummary} numberOfLines={2}>
+        {pick.safetyScore.summary}
+      </Text>
+      {pick.highlights.length > 0 ? (
+        <View style={styles.safePickHighlights}>
+          {pick.highlights.map((highlight) => (
+            <View key={highlight} style={styles.safePickHighlight}>
+              <Ionicons name="checkmark-circle" size={12} color={Colors.success} />
+              <Text style={styles.safePickHighlightText}>{highlight}</Text>
+            </View>
+          ))}
+        </View>
+      ) : null}
+    </Pressable>
   );
 }
 
@@ -247,6 +332,76 @@ const styles = StyleSheet.create({
     color: Colors.primary,
     fontSize: FontSize.sm,
     fontWeight: FontWeight.semiBold,
+  },
+  safePickCard: {
+    backgroundColor: Colors.surface,
+    borderRadius: Radius.md,
+    padding: Spacing.md,
+    marginBottom: Spacing.sm,
+    borderWidth: 1,
+    borderColor: Colors.primaryDark,
+  },
+  safePickHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: Spacing.md,
+  },
+  safePickTitleGroup: {
+    flex: 1,
+  },
+  safePickName: {
+    color: Colors.textPrimary,
+    fontSize: FontSize.md,
+    fontWeight: FontWeight.bold,
+  },
+  safePickMeta: {
+    color: Colors.textMuted,
+    fontSize: FontSize.xs,
+    marginTop: 3,
+  },
+  safePickScore: {
+    width: 58,
+    minHeight: 46,
+    borderRadius: Radius.md,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.surfaceElevated,
+  },
+  safePickScoreValue: {
+    fontSize: FontSize.lg,
+    fontWeight: FontWeight.extraBold,
+  },
+  safePickScoreLabel: {
+    color: Colors.textMuted,
+    fontSize: FontSize.xs,
+    marginTop: -2,
+  },
+  safePickSummary: {
+    color: Colors.textSecondary,
+    fontSize: FontSize.sm,
+    lineHeight: 19,
+    marginTop: Spacing.sm,
+  },
+  safePickHighlights: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginTop: Spacing.sm,
+  },
+  safePickHighlight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    borderRadius: Radius.full,
+    backgroundColor: Colors.successBg,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  safePickHighlightText: {
+    color: Colors.success,
+    fontSize: FontSize.xs,
+    fontWeight: FontWeight.medium,
   },
   emptyPanel: {
     alignItems: 'center',

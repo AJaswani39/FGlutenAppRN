@@ -46,6 +46,8 @@ export async function scanRestaurantMenu({
       const menuHtml = await fetchHtml(menuLink);
       if (menuHtml) {
         html = menuHtml;
+      } else {
+        menuUrl = website;
       }
     }
   }

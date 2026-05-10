@@ -48,8 +48,8 @@ export function getSavedRestaurants(restaurants: Restaurant[]): Restaurant[] {
   return restaurants
     .filter((restaurant) => restaurant.favoriteStatus)
     .sort((left, right) => {
-      const leftStatus = left.favoriteStatus ?? 'try';
-      const rightStatus = right.favoriteStatus ?? 'try';
+      const leftStatus = left.favoriteStatus!;
+      const rightStatus = right.favoriteStatus!;
       const statusDelta = statusOrder[leftStatus] - statusOrder[rightStatus];
       return statusDelta !== 0 ? statusDelta : left.name.localeCompare(right.name);
     });

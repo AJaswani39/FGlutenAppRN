@@ -230,15 +230,15 @@ function FilterPanel({
         }`}
         onDecrease={() =>
           setFilters({
-            maxDistanceMeters: Math.max(0, filters.maxDistanceMeters - (useMiles ? 1609.34 : 1000)),
+            maxDistanceMeters: Math.round(Math.max(0, filters.maxDistanceMeters - (useMiles ? 1609.34 : 1000))),
           })
         }
         onIncrease={() =>
           setFilters({
-            maxDistanceMeters: Math.min(
+            maxDistanceMeters: Math.round(Math.min(
               maxKm * (useMiles ? 1609.34 : 1000),
               filters.maxDistanceMeters + (useMiles ? 1609.34 : 1000)
-            ),
+            )),
           })
         }
         onReset={filters.maxDistanceMeters > 0 ? () => setFilters({ maxDistanceMeters: 0 }) : undefined}

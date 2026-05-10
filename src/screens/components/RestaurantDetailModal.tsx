@@ -51,13 +51,14 @@ export default function RestaurantDetailModal({ restaurant: initial, useMiles, o
   });
   const cuisineRiskHints = getCuisineRiskHints(restaurant);
 
+  const mapsUrl = Platform.select({
+    ios: `maps://app?daddr=${restaurant.latitude},${restaurant.longitude}`,
+    android: `geo:${restaurant.latitude},${restaurant.longitude}?q=${encodeURIComponent(restaurant.name)}`,
+  });
+
   const openMaps = () => {
-    const url = Platform.select({
-      ios: `maps://app?daddr=${restaurant.latitude},${restaurant.longitude}`,
-      android: `geo:${restaurant.latitude},${restaurant.longitude}?q=${encodeURIComponent(restaurant.name)}`,
-    });
-    if (url) {
-      void Linking.openURL(url).catch((error: unknown) => {
+    if (mapsUrl) {
+      void Linking.openURL(mapsUrl).catch((error: unknown) => {
         const message = error instanceof Error ? error.message : String(error);
         logger.error(`Failed to open maps link: ${message}`);
       });
@@ -85,10 +86,10 @@ export default function RestaurantDetailModal({ restaurant: initial, useMiles, o
     requestMenuRescan(restaurant);
   };
 
-  const buildAiText = (): string => {
+  const buildAiText = (): string | null => {
     if (restaurant.rawMenuText) return restaurant.rawMenuText;
     if (restaurant.gfMenu.length > 0) return restaurant.gfMenu.join('\n');
-    return `Menu scan results for ${restaurant.name}`;
+    return null;
   };
 
   return (
@@ -280,6 +281,7 @@ export default function RestaurantDetailModal({ restaurant: initial, useMiles, o
                 icon="map"
                 label="Open in Maps"
                 onPress={openMaps}
+                disabled={!mapsUrl}
                 primary
               />
               <ActionButton
@@ -298,6 +300,7 @@ export default function RestaurantDetailModal({ restaurant: initial, useMiles, o
                 icon="sparkles"
                 label="AI Analysis"
                 onPress={() => setShowAI(true)}
+                disabled={!buildAiText()}
                 primary
               />
             </View>
@@ -309,7 +312,7 @@ export default function RestaurantDetailModal({ restaurant: initial, useMiles, o
       {showAI && (
         <MenuAnalysisSheet
           restaurantName={restaurant.name}
-          menuText={buildAiText()}
+          menuText={buildAiText() ?? ''}
           onClose={() => setShowAI(false)}
         />
       )}

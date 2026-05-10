@@ -70,6 +70,11 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
     scanProgress: null,
   });
 
+  const uiStateRef = useRef(uiState);
+  useEffect(() => {
+    uiStateRef.current = uiState;
+  }, [uiState]);
+
   const rawRestaurants = useRef<Restaurant[]>([]);
   const userLat = useRef<number | null>(null);
   const userLng = useRef<number | null>(null);
@@ -139,38 +144,16 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
   );
 
   useEffect(() => {
-    if (rawRestaurants.current.length === 0 && uiState.status === 'idle') {
+    if (rawRestaurants.current.length === 0 && uiStateRef.current.status === 'idle') {
       return;
     }
 
     emitFilteredState({
       emptyReason: rawRestaurants.current.length === 0 ? 'nearby' : 'filters',
-      message: uiState.message,
-      status: uiState.status,
+      message: uiStateRef.current.message,
+      status: uiStateRef.current.status,
     });
   }, [emitFilteredState, filters, strictCeliac]);
-
-  useEffect(() => {
-    let isMounted = true;
-
-    (async () => {
-      await loadFavorites();
-      if (!isMounted) return;
-
-      if (rawRestaurants.current.length > 0) {
-        rawRestaurants.current = applyFavorites(rawRestaurants.current);
-        emitFilteredState({
-          emptyReason: rawRestaurants.current.length === 0 ? 'nearby' : 'filters',
-          message: uiState.message,
-          status: uiState.status,
-        });
-      }
-    })();
-
-    return () => {
-      isMounted = false;
-    };
-  }, [applyFavorites, emitFilteredState, loadFavorites]);
 
   const persistCache = useCallback(async () => {
     try {
@@ -201,8 +184,8 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
       if (!started) return;
       emitFilteredState({
         emptyReason: rawRestaurants.current.length === 0 ? 'nearby' : 'filters',
-        message: uiState.message,
-        status: uiState.status,
+        message: uiStateRef.current.message,
+        status: uiStateRef.current.status,
       });
 
       const result = await scanRestaurantMenu({
@@ -231,7 +214,7 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
         await persistCache();
       }
     },
-    [emitFilteredState, persistCache, uiState.message, uiState.status, updateRestaurant]
+    [emitFilteredState, persistCache, updateRestaurant]
   );
 
   const kickOffMenuScans = useCallback(
@@ -245,8 +228,8 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
       if (targets.length > 0) {
         emitFilteredState({
           emptyReason: rawRestaurants.current.length === 0 ? 'nearby' : 'filters',
-          message: uiState.message,
-          status: uiState.status,
+          message: uiStateRef.current.message,
+          status: uiStateRef.current.status,
         });
       }
 
@@ -254,7 +237,7 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
         void scanMenu(restaurant);
       }
     },
-    [emitFilteredState, favoriteKey, scanMenu, uiState.message, uiState.status]
+    [emitFilteredState, favoriteKey, scanMenu]
   );
 
   const loadCachedIfAvailable = useCallback(async () => {
@@ -274,7 +257,7 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
       message: getCachedResultsMessage(cached.timestamp),
     });
     kickOffMenuScans(rawRestaurants.current);
-  }, [applyFavorites, emitFilteredState, kickOffMenuScans]);
+  }, [applyFavorites, emitFilteredState, kickOffMenuScans, loadFavorites]);
 
   useEffect(() => {
     void loadCachedIfAvailable();
@@ -403,13 +386,12 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
 
       emitFilteredState({
         emptyReason: rawRestaurants.current.length === 0 ? 'nearby' : 'filters',
-        message: uiState.message,
-        status: uiState.status,
+        message: uiStateRef.current.message,
+        status: uiStateRef.current.status,
       });
     },
-    [emitFilteredState, setFavoriteMapStatus, uiState.message, uiState.status, updateRestaurant]
+    [emitFilteredState, setFavoriteMapStatus, updateRestaurant]
   );
-
   const requestMenuRescan = useCallback(
     (restaurant: Restaurant) => {
       if (!restaurant.placeId || !getMapsApiKey()) return;
@@ -431,12 +413,12 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
 
       emitFilteredState({
         emptyReason: rawRestaurants.current.length === 0 ? 'nearby' : 'filters',
-        message: uiState.message,
-        status: uiState.status,
+        message: uiStateRef.current.message,
+        status: uiStateRef.current.status,
       });
       void scanMenu(restaurant);
     },
-    [emitFilteredState, favoriteKey, scanMenu, uiState.message, uiState.status, updateRestaurant]
+    [emitFilteredState, favoriteKey, scanMenu, updateRestaurant]
   );
 
   return (

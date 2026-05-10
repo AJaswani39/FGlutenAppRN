@@ -85,9 +85,9 @@ export function analyseMenuText(text: string): MenuAnalysisResult {
   }
 
   let crossContamRisk = '';
-  const ccMatches = CC_PATTERNS.flatMap((pattern) => [...text.matchAll(pattern)].map((match) => match[0]));
-  CC_PATTERNS.forEach((pattern) => {
+  const ccMatches = CC_PATTERNS.flatMap((pattern) => {
     pattern.lastIndex = 0;
+    return [...text.matchAll(pattern)].map((match) => match[0]);
   });
   if (ccMatches.length > 0) {
     crossContamRisk = ccMatches.slice(0, 3).join('; ');

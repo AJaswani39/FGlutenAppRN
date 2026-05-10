@@ -230,10 +230,11 @@ export async function fetchHtml(url: string): Promise<string | null> {
 }
 
 export function extractGfEvidence(html: string): string[] {
+  const safeHtml = html.slice(0, 500_000);
   const evidence: string[] = [];
   const seen = new Set<string>();
 
-  for (const segment of htmlToTextSegments(html)) {
+  for (const segment of htmlToTextSegments(safeHtml)) {
     if (!/gluten[\s-]?free|\bgf\b|celiac|coeliac/i.test(segment)) continue;
     if (segment.length <= 10 || segment.length >= 250) continue;
 
@@ -253,7 +254,8 @@ export function extractGfEvidence(html: string): string[] {
 }
 
 export function extractRawMenuText(html: string): string {
-  const segments = htmlToTextSegments(html);
+  const safeHtml = html.slice(0, 500_000);
+  const segments = htmlToTextSegments(safeHtml);
   return findMainContent(segments).slice(0, 3000);
 }
 

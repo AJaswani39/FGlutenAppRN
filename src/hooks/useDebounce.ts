@@ -5,6 +5,11 @@ export function useDebounce<T extends (...args: any[]) => void>(
   delay: number = 300
 ): T {
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const callbackRef = useRef(callback);
+
+  useEffect(() => {
+    callbackRef.current = callback;
+  }, [callback]);
 
   useEffect(() => {
     return () => {
@@ -19,7 +24,7 @@ export function useDebounce<T extends (...args: any[]) => void>(
       clearTimeout(timeoutRef.current);
     }
     timeoutRef.current = setTimeout(() => {
-      callback(...args);
+      callbackRef.current(...args);
     }, delay);
   }).current as T;
 

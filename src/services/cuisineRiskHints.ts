@@ -138,13 +138,20 @@ const CUISINE_RULES: CuisineRiskRule[] = [
 
 export function getCuisineRiskHints(restaurant: Restaurant): CuisineRiskHint[] {
   const text = `${restaurant.name}\n${restaurant.rawMenuText ?? ''}\n${restaurant.gfMenu.join('\n')}`;
-  const hints = [...DEFAULT_HINTS];
+  const hints: CuisineRiskHint[] = [];
 
   for (const rule of CUISINE_RULES) {
     if (rule.patterns.some((pattern) => pattern.test(text))) {
       hints.push(...rule.hints);
     }
   }
+
+  const hasFryerHint = hints.some((h) => h.id.includes('fryer'));
+  
+  if (!hasFryerHint) {
+    hints.unshift(DEFAULT_HINTS.find((h) => h.id === 'shared-fryer')!);
+  }
+  hints.unshift(DEFAULT_HINTS.find((h) => h.id === 'hidden-sauces')!);
 
   return dedupeHints(hints).slice(0, 6);
 }

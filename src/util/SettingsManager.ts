@@ -114,8 +114,10 @@ export function normalizeRestaurant(value: unknown): Restaurant | null {
   const placeId = normalizeString(value.placeId).trim();
   const name = normalizeString(value.name, 'Unknown restaurant').trim() || 'Unknown restaurant';
   const address = normalizeString(value.address).trim();
+  const latitude = normalizeNullableFiniteNumber(value.latitude);
+  const longitude = normalizeNullableFiniteNumber(value.longitude);
 
-  if (!placeId && !address && name === 'Unknown restaurant') {
+  if ((!placeId && !address && name === 'Unknown restaurant') || latitude == null || longitude == null) {
     return null;
   }
 
@@ -133,8 +135,8 @@ export function normalizeRestaurant(value: unknown): Restaurant | null {
     placeId,
     name,
     address,
-    latitude: normalizeFiniteNumber(value.latitude, 0),
-    longitude: normalizeFiniteNumber(value.longitude, 0),
+    latitude,
+    longitude,
     rating: rating != null ? Math.min(5, Math.max(0, rating)) : null,
     openNow,
     hasGFMenu,

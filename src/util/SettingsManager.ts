@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { FavoriteStatus, RestaurantFilters, SortMode, Restaurant } from '../types/restaurant';
+import { logger } from './logger';
 
 export interface CachePayload {
   restaurants: Restaurant[];
@@ -206,7 +207,9 @@ export const SettingsManager = {
       if (raw) {
         return normalizeFilters(JSON.parse(raw));
       }
-    } catch (_) {}
+    } catch (error: unknown) {
+      logger.warn(`Failed to load filters from storage: ${error instanceof Error ? error.message : String(error)}`);
+    }
 
     return DEFAULT_FILTERS;
   },
@@ -220,7 +223,9 @@ export const SettingsManager = {
     try {
       const raw = await AsyncStorage.getItem(KEYS.FAVORITES);
       if (raw) return normalizeFavoriteMap(JSON.parse(raw));
-    } catch (_) {}
+    } catch (error: unknown) {
+      logger.warn(`Failed to load favorites from storage: ${error instanceof Error ? error.message : String(error)}`);
+    }
     return {};
   },
 
@@ -237,7 +242,9 @@ export const SettingsManager = {
     try {
       const raw = await AsyncStorage.getItem(KEYS.CACHE);
       if (raw) return normalizeCachePayload(JSON.parse(raw));
-    } catch (_) {}
+    } catch (error: unknown) {
+      logger.warn(`Failed to load cache from storage: ${error instanceof Error ? error.message : String(error)}`);
+    }
     return null;
   },
 };

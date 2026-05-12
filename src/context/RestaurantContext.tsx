@@ -3,6 +3,7 @@ import React, {
   useCallback,
   useContext,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from 'react';
@@ -421,16 +422,19 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
     [emitFilteredState, favoriteKey, scanMenu, updateRestaurant]
   );
 
+  const contextValue = useMemo(
+    () => ({
+      uiState,
+      savedRestaurants,
+      loadNearbyRestaurants,
+      setFavoriteStatus,
+      requestMenuRescan,
+    }),
+    [uiState, savedRestaurants, loadNearbyRestaurants, setFavoriteStatus, requestMenuRescan]
+  );
+
   return (
-    <RestaurantContext.Provider
-      value={{
-        uiState,
-        savedRestaurants,
-        loadNearbyRestaurants,
-        setFavoriteStatus,
-        requestMenuRescan,
-      }}
-    >
+    <RestaurantContext.Provider value={contextValue}>
       {children}
     </RestaurantContext.Provider>
   );

@@ -1,10 +1,10 @@
-import { Restaurant } from '../types/restaurant';
 import {
   extractGfEvidence,
   extractRawMenuText,
   fetchHtml,
   fetchWebsiteForPlace,
   findMenuLink,
+  htmlToTextSegments,
 } from '../data/placesRepository';
 
 export interface MenuScanResult {
@@ -26,8 +26,11 @@ export async function scanRestaurantMenu({
 }): Promise<MenuScanResult | null> {
   if (!mapsApiKey || !restaurant.placeId) return null;
 
-  const website = await fetchWebsiteForPlace(restaurant.placeId, mapsApiKey);
-  if (!website) {
+  // Use existing menuUrl as a hint if available, otherwise fetch from Places API
+  const initialUrl =
+    restaurant.menuUrl || (await fetchWebsiteForPlace(restaurant.placeId, mapsApiKey));
+
+  if (!initialUrl) {
     return {
       menuUrl: null,
       gfMenu: [],
@@ -37,26 +40,38 @@ export async function scanRestaurantMenu({
     };
   }
 
-  let menuUrl = website;
-  let html = await fetchHtml(website);
+  let menuUrl = initialUrl;
+  let html = await fetchHtml(initialUrl);
+
+  // If we found a specific menu link on the home page, try to fetch it for richer data
   if (html) {
-    const menuLink = findMenuLink(html, website);
-    if (menuLink && menuLink !== website) {
-      menuUrl = menuLink;
+    const menuLink = findMenuLink(html, initialUrl);
+    if (menuLink && menuLink !== initialUrl) {
       const menuHtml = await fetchHtml(menuLink);
       if (menuHtml) {
         html = menuHtml;
-      } else {
-        menuUrl = website;
+        menuUrl = menuLink;
       }
     }
   }
 
+  // Pre-parse the segments once to share between concurrent extraction tasks
+  const segments = html ? htmlToTextSegments(html) : [];
+
+  // Concurrent extraction: Run evidence extraction and text cleanup tasks in parallel.
+  // We pass pre-parsed segments to avoid redundant regex-heavy parsing.
+  const [gfMenu, rawMenuText] = await Promise.all([
+    Promise.resolve(html ? extractGfEvidence(segments) : []),
+    Promise.resolve(html ? extractRawMenuText(segments) : null),
+  ]);
+
   return {
     menuUrl,
-    gfMenu: html ? extractGfEvidence(html) : [],
-    rawMenuText: html ? extractRawMenuText(html) : null,
+    gfMenu,
+    rawMenuText,
     menuScanStatus: html ? 'SUCCESS' : 'FAILED',
     menuScanTimestamp: scanStartedAt,
   };
 }
+
+

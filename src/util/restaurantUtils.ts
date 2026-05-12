@@ -46,6 +46,12 @@ export function isSameRestaurantIdentity(
   if (leftPlaceId && rightPlaceId) {
     return leftPlaceId === rightPlaceId;
   }
+): boolean {
+  const leftPlaceId = left.placeId.trim();
+  const rightPlaceId = right.placeId.trim();
+  if (leftPlaceId && rightPlaceId) {
+    return leftPlaceId === rightPlaceId;
+  }
 
   const leftFallback = getRestaurantIdentityKey(left);
   const rightFallback = getRestaurantIdentityKey(right);
@@ -57,33 +63,45 @@ export function filterAndSortRestaurants(
   filters: RestaurantFilters,
   strictCeliac: boolean
 ): Restaurant[] {
-  const normalizedQuery = normalizeSearchQuery(filters.searchQuery);
-  const filtered = restaurants.filter((restaurant) => {
-    let fitsGF = !filters.gfOnly || hasRestaurantGfEvidence(restaurant);
+  const query = filters.searchQuery.trim();
+  const queryRegex = query ? new RegExp(query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i') : null;
 
-    if (strictCeliac) {
-      const hasEvidence = restaurant.gfMenu.length > 0;
-      const isHighRatedGF = hasRestaurantGfEvidence(restaurant) && (restaurant.rating ?? 0) >= 4.0;
-      fitsGF = hasEvidence || isHighRatedGF;
+  const filtered = restaurants.filter((restaurant) => {
+    // 1. Check GF requirements first (logical checks are faster than string/regex)
+    if (filters.gfOnly || strictCeliac) {
+      const hasGfItems = restaurant.gfMenu.length > 0;
+      const hasAnyEvidence = restaurant.hasGFMenu || hasGfItems;
+      
+      if (strictCeliac) {
+        // Strict celiac needs explicit menu items or high-rated general evidence
+        if (!hasGfItems && !(hasAnyEvidence && (restaurant.rating ?? 0) >= 4.0)) return false;
+      } else if (filters.gfOnly && !hasAnyEvidence) {
+        return false;
+      }
     }
 
-    const passesSearch =
-      !normalizedQuery ||
-      restaurant.name.toLowerCase().includes(normalizedQuery) ||
-      restaurant.gfMenu.some((item) => item.toLowerCase().includes(normalizedQuery));
-
-    if (!fitsGF || !passesSearch) return false;
+    // 2. Simple numeric/boolean filters
     if (filters.openNowOnly && restaurant.openNow !== true) return false;
     if (filters.minRating > 0 && (restaurant.rating ?? 0) < filters.minRating) return false;
     if (filters.maxDistanceMeters > 0 && restaurant.distanceMeters > filters.maxDistanceMeters) return false;
+
+    // 3. Search query (regex test is faster than toLowerCase() + includes() as it avoids allocations)
+    if (queryRegex) {
+      const nameMatch = queryRegex.test(restaurant.name);
+      if (!nameMatch) {
+        const menuMatch = restaurant.gfMenu.some((item) => queryRegex.test(item));
+        if (!menuMatch) return false;
+      }
+    }
+
     return true;
   });
 
-  return [...filtered].sort((left, right) => {
+  // Sort the filtered array directly to avoid extra shallow copy
+  return filtered.sort((left, right) => {
     if (filters.sortMode === 'distance') {
       return left.distanceMeters - right.distanceMeters;
     }
-
     return left.name.localeCompare(right.name);
   });
 }

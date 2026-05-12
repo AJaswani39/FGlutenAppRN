@@ -1,4 +1,4 @@
-import React, { useCallback, useRef, useState } from 'react';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -61,6 +61,17 @@ export default function RestaurantListScreen() {
     setSelectedRestaurant(restaurant);
   }, []);
 
+  const renderItem = useCallback(
+    ({ item }: { item: Restaurant }) => (
+      <RestaurantSummaryCard
+        restaurant={item}
+        useMiles={useMiles}
+        onPress={() => handleRestaurantPress(item)}
+      />
+    ),
+    [useMiles, handleRestaurantPress]
+  );
+
   return (
     <View style={styles.container}>
       <View style={styles.headerPanel}>
@@ -109,9 +120,7 @@ export default function RestaurantListScreen() {
           />
         </View>
 
-        {showFilters ? (
-          <FilterPanel filters={filters} setFilters={setFilters} useMiles={useMiles} />
-        ) : null}
+        {showFilters ? <FilterPanel filters={filters} setFilters={setFilters} useMiles={useMiles} /> : null}
 
         <View style={styles.resultSummary}>
           <Text style={styles.resultTitle}>Explore results</Text>
@@ -133,12 +142,25 @@ export default function RestaurantListScreen() {
         </View>
       ) : null}
 
-      {!isLoading && (!hasResults || status === 'permission_required' || status === 'error' || status === 'idle') ? (
+      {!isLoading &&
+      (!hasResults || status === 'permission_required' || status === 'error' || status === 'idle') ? (
         <StateMessage
-          icon={status === 'permission_required' ? 'navigate-circle' : status === 'success' ? 'search' : 'restaurant'}
+          icon={
+            status === 'permission_required'
+              ? 'navigate-circle'
+              : status === 'success'
+              ? 'search'
+              : 'restaurant'
+          }
           title={stateTitle(status)}
           message={message ?? stateFallbackMessage(status)}
-          actionLabel={status === 'permission_required' ? 'Enable Location' : status === 'success' ? 'Refresh Results' : 'Find Restaurants'}
+          actionLabel={
+            status === 'permission_required'
+              ? 'Enable Location'
+              : status === 'success'
+              ? 'Refresh Results'
+              : 'Find Restaurants'
+          }
           onAction={loadNearbyRestaurants}
         />
       ) : null}
@@ -147,19 +169,17 @@ export default function RestaurantListScreen() {
         <FlatList
           data={restaurants}
           keyExtractor={(restaurant, index) => getRestaurantListKey(restaurant, index)}
-          renderItem={({ item }) => (
-            <RestaurantSummaryCard
-              restaurant={item}
-              useMiles={useMiles}
-              onPress={() => handleRestaurantPress(item)}
-            />
-          )}
+          renderItem={renderItem}
           contentContainerStyle={styles.listContent}
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} />
           }
           showsVerticalScrollIndicator={false}
           onScrollBeginDrag={Keyboard.dismiss}
+          removeClippedSubviews={Platform.OS === 'android'}
+          initialNumToRender={8}
+          maxToRenderPerBatch={10}
+          windowSize={5}
         />
       ) : null}
 
@@ -174,7 +194,11 @@ export default function RestaurantListScreen() {
   );
 }
 
-function ScanProgressBanner({ progress }: { progress: MenuScanProgress }) {
+const ScanProgressBanner = React.memo(function ScanProgressBanner({
+  progress,
+}: {
+  progress: MenuScanProgress;
+}) {
   const text = progress.active
     ? `Scanning menus ${progress.completed}/${progress.total}`
     : `Menu scans complete ${progress.completed}/${progress.total}`;
@@ -190,9 +214,9 @@ function ScanProgressBanner({ progress }: { progress: MenuScanProgress }) {
       <Text style={[styles.scanBannerText, !progress.active && styles.scanBannerDoneText]}>{text}</Text>
     </View>
   );
-}
+});
 
-function FilterPanel({
+const FilterPanel = React.memo(function FilterPanel({
   filters,
   setFilters,
   useMiles,
@@ -235,10 +259,9 @@ function FilterPanel({
         }
         onIncrease={() =>
           setFilters({
-            maxDistanceMeters: Math.round(Math.min(
-              maxKm * (useMiles ? 1609.34 : 1000),
-              filters.maxDistanceMeters + (useMiles ? 1609.34 : 1000)
-            )),
+            maxDistanceMeters: Math.round(
+              Math.min(maxKm * (useMiles ? 1609.34 : 1000), filters.maxDistanceMeters + (useMiles ? 1609.34 : 1000))
+            ),
           })
         }
         onReset={filters.maxDistanceMeters > 0 ? () => setFilters({ maxDistanceMeters: 0 }) : undefined}
@@ -252,7 +275,7 @@ function FilterPanel({
       />
     </ScrollView>
   );
-}
+});
 
 function FilterChip({ label, active, onToggle }: { label: string; active: boolean; onToggle: () => void }) {
   return (

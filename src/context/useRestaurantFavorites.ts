@@ -1,4 +1,4 @@
-import { MutableRefObject, useCallback, useRef, useState } from 'react';
+import { MutableRefObject, useCallback, useMemo, useRef, useState } from 'react';
 import { FavoriteStatus, Restaurant } from '../types/restaurant';
 import { SettingsManager } from '../util/SettingsManager';
 import { getRestaurantIdentityKey } from '../util/restaurantUtils';
@@ -48,12 +48,23 @@ export function useRestaurantFavorites(rawRestaurants: MutableRefObject<Restaura
     [favoriteKey]
   );
 
-  return {
-    savedRestaurants,
-    favoriteKey,
-    applyFavorites,
-    syncSavedRestaurants,
-    loadFavorites,
-    setFavoriteMapStatus,
-  };
+  return useMemo(
+    () => ({
+      savedRestaurants,
+      favoriteKey,
+      applyFavorites,
+      syncSavedRestaurants,
+      loadFavorites,
+      setFavoriteMapStatus,
+    }),
+    [
+      savedRestaurants,
+      favoriteKey,
+      applyFavorites,
+      syncSavedRestaurants,
+      loadFavorites,
+      setFavoriteMapStatus,
+    ]
+  );
 }
+

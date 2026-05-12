@@ -51,6 +51,9 @@ const GLUTEN_SOURCES = [
   'teriyaki',
 ];
 
+const GLUTEN_SOURCES_REGEX = new RegExp(`\\b(${GLUTEN_SOURCES.join('|')})\\b`, 'i');
+
+
 const CC_PATTERNS = [
   /share[\s\w]{0,30}kitchen/gi,
   /cross[\s-]?contamin/gi,
@@ -64,24 +67,34 @@ const CC_PATTERNS = [
 export function analyseMenuText(text: string): MenuAnalysisResult {
   const lines = text.split(/[\n\r]+/);
   const glutenFreeItems: string[] = [];
+  const foundGlutenSources = new Set<string>();
 
   for (const line of lines) {
     const trimmed = line.trim();
-    if (trimmed.length < 10 || trimmed.length > 200) continue;
+    if (trimmed.length === 0) continue;
 
-    if (GF_POSITIVE.some((pattern) => pattern.test(trimmed))) {
-      const cleaned = extractGfItem(trimmed);
-      if (cleaned && !glutenFreeItems.some((item) => item.toLowerCase() === cleaned.toLowerCase())) {
-        glutenFreeItems.push(cleaned);
+    // Check for GF positive patterns
+    const isGf = GF_POSITIVE.some((pattern) => pattern.test(trimmed));
+
+    if (isGf) {
+      if (glutenFreeItems.length < 12 && trimmed.length >= 10 && trimmed.length <= 200) {
+        const cleaned = extractGfItem(trimmed);
+        if (cleaned && !glutenFreeItems.some((item) => item.toLowerCase() === cleaned.toLowerCase())) {
+          glutenFreeItems.push(cleaned);
+        }
+      }
+    } else {
+      // If not marked GF, check for gluten sources in a single pass
+      const match = trimmed.match(GLUTEN_SOURCES_REGEX);
+      if (match) {
+        foundGlutenSources.add(match[0].toLowerCase());
       }
     }
-    if (glutenFreeItems.length >= 12) break;
   }
 
   const warnings: string[] = [];
-  const foundGlutenSources = findGlutenSources(lines);
-  if (foundGlutenSources.length > 0) {
-    warnings.push(`Gluten-containing: ${foundGlutenSources.slice(0, 6).join(', ')}`);
+  if (foundGlutenSources.size > 0) {
+    warnings.push(`Gluten-containing: ${Array.from(foundGlutenSources).slice(0, 6).join(', ')}`);
   }
 
   let crossContamRisk = '';
@@ -129,6 +142,7 @@ export function analyseMenuText(text: string): MenuAnalysisResult {
     summary,
   };
 }
+
 
 export function getRestaurantSafetyScore(
   restaurant: Restaurant,
@@ -218,21 +232,7 @@ function getFallbackSummary(restaurant: Restaurant): string {
   return 'Not enough menu text is available yet.';
 }
 
-function findGlutenSources(lines: string[]): string[] {
-  const found = new Set<string>();
 
-  for (const line of lines) {
-    const lowerLine = line.toLowerCase();
-    const gfLine = GF_POSITIVE.some((pattern) => pattern.test(lowerLine));
-    for (const source of GLUTEN_SOURCES) {
-      if (!lowerLine.includes(source)) continue;
-      if (gfLine) continue;
-      found.add(source);
-    }
-  }
-
-  return [...found];
-}
 
 function extractGfItem(line: string): string {
   let cleaned = line.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();

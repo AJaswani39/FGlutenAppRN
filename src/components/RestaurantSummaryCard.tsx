@@ -29,62 +29,65 @@ export function getConfidenceMeta(restaurant: Restaurant) {
   }
 }
 
-export function RestaurantSummaryCard({
-  restaurant,
-  useMiles,
-  onPress,
-  compact,
-}: {
-  restaurant: Restaurant;
-  useMiles: boolean;
-  onPress?: () => void;
-  compact?: boolean;
-}) {
-  const dist = SettingsManager.formatDistance(restaurant.distanceMeters, useMiles);
-  const confidence = getConfidenceMeta(restaurant);
-  const favorite = getFavoriteMeta(restaurant.favoriteStatus);
-  const Container = onPress ? Pressable : View;
+export const RestaurantSummaryCard = React.memo(
+  function RestaurantSummaryCard({
+    restaurant,
+    useMiles,
+    onPress,
+    compact,
+  }: {
+    restaurant: Restaurant;
+    useMiles: boolean;
+    onPress?: () => void;
+    compact?: boolean;
+  }) {
+    const dist = SettingsManager.formatDistance(restaurant.distanceMeters, useMiles);
+    const confidence = getConfidenceMeta(restaurant);
+    const favorite = getFavoriteMeta(restaurant.favoriteStatus);
+    const Container = onPress ? Pressable : View;
 
-  return (
-    <Container style={[styles.card, compact && styles.compactCard]} onPress={onPress}>
-      <View style={styles.header}>
-        <View style={styles.titleGroup}>
-          <Text style={styles.name} numberOfLines={1}>
-            {restaurant.name}
-          </Text>
-          <Text style={styles.address} numberOfLines={1}>
-            {restaurant.address || 'Address unavailable'}
-          </Text>
-        </View>
-        <StatusBadge label={favorite?.label ?? confidence.label} tone={favorite?.tone ?? confidence.tone} />
-      </View>
-
-      <View style={styles.metaRow}>
-        {restaurant.rating != null ? (
-          <MetaPill icon="star" text={restaurant.rating.toFixed(1)} color={Colors.warning} />
-        ) : null}
-        {restaurant.openNow != null ? (
-          <MetaPill
-            icon={restaurant.openNow ? 'time' : 'time-outline'}
-            text={restaurant.openNow ? 'Open' : 'Closed'}
-            color={restaurant.openNow ? Colors.success : Colors.error}
-          />
-        ) : null}
-        {dist ? <MetaPill icon="location" text={dist} /> : null}
-        <MetaPill icon={confidence.icon} text={confidence.label} color={toneColor(confidence.tone)} />
-        {restaurant.menuScanStatus === 'FETCHING' ? (
-          <View style={styles.scanPill}>
-            <Ionicons name="sync" size={12} color={Colors.info} />
-            <Text style={styles.scanText}>Scanning</Text>
+    return (
+      <Container style={[styles.card, compact && styles.compactCard]} onPress={onPress}>
+        <View style={styles.header}>
+          <View style={styles.titleGroup}>
+            <Text style={styles.name} numberOfLines={1}>
+              {restaurant.name}
+            </Text>
+            <Text style={styles.address} numberOfLines={1}>
+              {restaurant.address || 'Address unavailable'}
+            </Text>
           </View>
-        ) : null}
-        {restaurant.menuScanStatus === 'SUCCESS' && restaurant.gfMenu.length > 0 ? (
-          <MetaPill icon="restaurant" text={`${restaurant.gfMenu.length} GF`} color={Colors.success} />
-        ) : null}
-      </View>
-    </Container>
-  );
-}
+          <StatusBadge label={favorite?.label ?? confidence.label} tone={favorite?.tone ?? confidence.tone} />
+        </View>
+
+        <View style={styles.metaRow}>
+          {restaurant.rating != null ? (
+            <MetaPill icon="star" text={restaurant.rating.toFixed(1)} color={Colors.warning} />
+          ) : null}
+          {restaurant.openNow != null ? (
+            <MetaPill
+              icon={restaurant.openNow ? 'time' : 'time-outline'}
+              text={restaurant.openNow ? 'Open' : 'Closed'}
+              color={restaurant.openNow ? Colors.success : Colors.error}
+            />
+          ) : null}
+          {dist ? <MetaPill icon="location" text={dist} /> : null}
+          <MetaPill icon={confidence.icon} text={confidence.label} color={toneColor(confidence.tone)} />
+          {restaurant.menuScanStatus === 'FETCHING' ? (
+            <View style={styles.scanPill}>
+              <Ionicons name="sync" size={12} color={Colors.info} />
+              <Text style={styles.scanText}>Scanning</Text>
+            </View>
+          ) : null}
+          {restaurant.menuScanStatus === 'SUCCESS' && restaurant.gfMenu.length > 0 ? (
+            <MetaPill icon="restaurant" text={`${restaurant.gfMenu.length} GF`} color={Colors.success} />
+          ) : null}
+        </View>
+      </Container>
+    );
+  }
+);
+
 
 function toneColor(tone: ReturnType<typeof getConfidenceMeta>['tone']): string {
   if (tone === 'success') return Colors.success;

@@ -92,8 +92,9 @@ function stripNonContentTags(html: string): string {
     .replace(/<aside[\s\S]*?<\/aside>/gi, '\n');
 }
 
-function htmlToTextSegments(html: string): string[] {
-  const withBreaks = stripNonContentTags(html)
+export function htmlToTextSegments(html: string): string[] {
+  const safeHtml = html.slice(0, 500_000);
+  const withBreaks = stripNonContentTags(safeHtml)
     .replace(
       /<(?:br\s*\/?|\/p|\/div|\/li|\/ul|\/ol|\/section|\/article|\/tr|\/table|\/h[1-6])>/gi,
       '\n'
@@ -110,6 +111,7 @@ function htmlToTextSegments(html: string): string[] {
     .map((segment) => segment.replace(/\s+/g, ' ').trim())
     .filter(Boolean);
 }
+
 
 function cleanMenuLine(line: string): string {
   let cleaned = line.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
@@ -229,12 +231,12 @@ export async function fetchHtml(url: string): Promise<string | null> {
   }
 }
 
-export function extractGfEvidence(html: string): string[] {
-  const safeHtml = html.slice(0, 500_000);
+export function extractGfEvidence(htmlOrSegments: string | string[]): string[] {
+  const segments = typeof htmlOrSegments === 'string' ? htmlToTextSegments(htmlOrSegments) : htmlOrSegments;
   const evidence: string[] = [];
   const seen = new Set<string>();
 
-  for (const segment of htmlToTextSegments(safeHtml)) {
+  for (const segment of segments) {
     if (!/gluten[\s-]?free|\bgf\b|celiac|coeliac/i.test(segment)) continue;
     if (segment.length <= 10 || segment.length >= 250) continue;
 
@@ -253,11 +255,12 @@ export function extractGfEvidence(html: string): string[] {
   return evidence;
 }
 
-export function extractRawMenuText(html: string): string {
-  const safeHtml = html.slice(0, 500_000);
-  const segments = htmlToTextSegments(safeHtml);
+
+export function extractRawMenuText(htmlOrSegments: string | string[]): string {
+  const segments = typeof htmlOrSegments === 'string' ? htmlToTextSegments(htmlOrSegments) : htmlOrSegments;
   return findMainContent(segments).slice(0, 3000);
 }
+
 
 export function findMenuLink(html: string, baseUrl: string): string | null {
   const menuPattern = /href=["']([^"']*(?:menu|food|eat|dining)[^"']*)["']/gi;

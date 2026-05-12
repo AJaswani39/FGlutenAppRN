@@ -46,12 +46,6 @@ export function isSameRestaurantIdentity(
   if (leftPlaceId && rightPlaceId) {
     return leftPlaceId === rightPlaceId;
   }
-): boolean {
-  const leftPlaceId = left.placeId.trim();
-  const rightPlaceId = right.placeId.trim();
-  if (leftPlaceId && rightPlaceId) {
-    return leftPlaceId === rightPlaceId;
-  }
 
   const leftFallback = getRestaurantIdentityKey(left);
   const rightFallback = getRestaurantIdentityKey(right);

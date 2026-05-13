@@ -35,6 +35,8 @@ export default function RestaurantDetailModal({ restaurant: initial, useMiles, o
   const { strictCeliac } = useSettings();
   const [showAI, setShowAI] = useState(false);
 
+  if (!initial) return null;
+
   // Keep the displayed restaurant in sync with ViewModel updates
   const restaurant =
     uiState.restaurants.find((r) => isSameRestaurantIdentity(r, initial)) ??

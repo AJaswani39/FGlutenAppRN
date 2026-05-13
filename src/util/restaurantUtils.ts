@@ -38,11 +38,13 @@ export function getRestaurantListKey(
 }
 
 export function isSameRestaurantIdentity(
-  left: Pick<Restaurant, 'placeId' | 'name' | 'address'>,
-  right: Pick<Restaurant, 'placeId' | 'name' | 'address'>
+  left: Pick<Restaurant, 'placeId' | 'name' | 'address'> | null | undefined,
+  right: Pick<Restaurant, 'placeId' | 'name' | 'address'> | null | undefined
 ): boolean {
-  const leftPlaceId = left.placeId.trim();
-  const rightPlaceId = right.placeId.trim();
+  if (!left || !right) return false;
+
+  const leftPlaceId = (left.placeId || '').trim();
+  const rightPlaceId = (right.placeId || '').trim();
   if (leftPlaceId && rightPlaceId) {
     return leftPlaceId === rightPlaceId;
   }

@@ -7,7 +7,9 @@ import React, {
   useRef,
   useState,
 } from 'react';
+import { AppState } from 'react-native';
 import * as Location from 'expo-location';
+import NetInfo from '@react-native-community/netinfo';
 import { FavoriteStatus, MenuScanProgress, Restaurant, RestaurantUiState } from '../types/restaurant';
 import { fetchNearbyRestaurants } from '../data/placesRepository';
 import { distanceBetween } from '../util/geoUtils';
@@ -116,14 +118,19 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
   );
 
   const getScanProgress = useCallback((): MenuScanProgress | null => {
-    return getScanProgressForRestaurants(rawRestaurants.current, orchestrator.getBatchKeys());
-  }, [orchestrator]);
+    return getScanProgressForRestaurants(rawRestaurants.current, orchestrator.current?.getBatchKeys() ?? []);
+  }, []);
 
   const emitFilteredState = useCallback(
     (options: EmitFilteredStateOptions = {}) => {
       const raw = rawRestaurants.current;
       const filtered = filterAndSortRestaurants(raw, filtersRef.current, strictCeliac);
-      const status = options.status ?? 'success';
+      
+      // Preserve 'loading' status if background tasks trigger a notification
+      // unless we are explicitly trying to set a new status.
+      const currentStatus = uiStateRef.current.status;
+      const status = options.status ?? (currentStatus === 'loading' ? 'loading' : 'success');
+      
       const emptyReason = options.emptyReason ?? (raw.length === 0 ? 'nearby' : 'filters');
 
       syncSavedRestaurants();
@@ -156,44 +163,76 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
 
   const persistTimeout = useRef<NodeJS.Timeout | null>(null);
 
+  const flushPersistence = useCallback(async () => {
+    if (persistTimeout.current) {
+      clearTimeout(persistTimeout.current);
+      persistTimeout.current = null;
+    }
+    try {
+      await PersistenceService.saveCache({
+        restaurants: rawRestaurants.current,
+        lat: userLat.current,
+        lng: userLng.current,
+        timestamp: Date.now(),
+      });
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      logger.error(`Failed to flush persistence: ${message}`);
+    }
+  }, []);
+
   const persistCache = useCallback(() => {
     // Debounce persistence to avoid hammering the disk during batch scans
     if (persistTimeout.current) {
       clearTimeout(persistTimeout.current);
     }
 
-    persistTimeout.current = setTimeout(async () => {
-      try {
-        await PersistenceService.saveCache({
-          restaurants: rawRestaurants.current,
-          lat: userLat.current,
-          lng: userLng.current,
-          timestamp: Date.now(),
-        });
-      } catch (error: unknown) {
-        const message = error instanceof Error ? error.message : String(error);
-        logger.error(`Failed to save restaurant cache: ${message}`);
-      } finally {
-        persistTimeout.current = null;
-      }
-    }, 2000);
-  }, []);
+    persistTimeout.current = setTimeout(flushPersistence, 2000);
+  }, [flushPersistence]);
 
-  const orchestrator = useMemo(() => {
-    return new ScanOrchestrator({
+  // Flush on app close/background
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (nextAppState) => {
+      if (nextAppState === 'inactive' || nextAppState === 'background') {
+        void flushPersistence();
+      }
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, [flushPersistence]);
+
+  const orchestrator = useRef<ScanOrchestrator | null>(null);
+
+  // Initialize and sync orchestrator config
+  useEffect(() => {
+    const config: ScanOrchestratorConfig = {
       mapsApiKey: getMapsApiKey(),
       onRestaurantUpdate: updateRestaurant,
       onNotifyUI: () => emitFilteredState(),
       onPersist: persistCache,
       getIdentityKey: favoriteKey,
-    });
+    };
+
+    if (!orchestrator.current) {
+      orchestrator.current = new ScanOrchestrator(config);
+    } else {
+      orchestrator.current.setConfig(config);
+    }
   }, [emitFilteredState, favoriteKey, persistCache, updateRestaurant]);
+
+  useEffect(() => {
+    return () => {
+      orchestrator.current?.destroy();
+    };
+  }, []);
 
   const kickOffMenuScans = useCallback(
     (restaurants: Restaurant[]) => {
-      void orchestrator.scanBatch(restaurants);
+      void orchestrator.current?.scanBatch(restaurants);
     },
-    [orchestrator]
+    []
   );
 
   const loadCachedIfAvailable = useCallback(async () => {
@@ -205,7 +244,12 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
 
     if (!cached?.restaurants?.length) return;
 
-    rawRestaurants.current = applyFavorites(cached.restaurants);
+    // Sanitize cache: reset any restaurants that were stuck in 'FETCHING' state
+    const sanitized = cached.restaurants.map((r) =>
+      r.menuScanStatus === 'FETCHING' ? { ...r, menuScanStatus: 'NOT_STARTED' as const } : r
+    );
+
+    rawRestaurants.current = applyFavorites(sanitized);
     userLat.current = cached.lat;
     userLng.current = cached.lng;
 
@@ -223,6 +267,28 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
   const loadNearbyRestaurants = useCallback(async () => {
     // Prevent redundant fetches if one is already in progress
     if (uiStateRef.current.status === 'loading') return;
+
+    const netInfo = await NetInfo.fetch();
+    if (!netInfo.isConnected) {
+      if (rawRestaurants.current.length > 0) {
+        emitFilteredState({
+          message: 'No internet connection. Showing last cached results.',
+        });
+      } else {
+        setUiState({
+          status: 'error',
+          restaurants: [],
+          message: 'No internet connection. Please check your network and try again.',
+          userLatitude: null,
+          userLongitude: null,
+          scanProgress: null,
+        });
+      }
+      return;
+    }
+
+    // Flush any pending scans from the previous search area
+    orchestrator.current?.flushQueue();
 
     const mapsApiKey = getMapsApiKey();
     await loadCachedIfAvailable();
@@ -313,11 +379,21 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
       await persistCache();
       kickOffMenuScans(restaurantsWithDistance);
     } catch (error: unknown) {
-      const message = `Could not load restaurants: ${
-        error instanceof Error ? error.message : 'Unknown error'
-      }`;
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      const isPermissionError = /permission|denied|allowed/i.test(errorMessage);
+      
+      const message = `Could not load restaurants: ${errorMessage}`;
 
-      if (rawRestaurants.current.length > 0) {
+      if (isPermissionError) {
+        setUiState({
+          status: 'permission_required',
+          restaurants: rawRestaurants.current.length > 0 ? uiState.restaurants : [],
+          message: 'Location permission or services are required to refresh results.',
+          userLatitude: userLat.current,
+          userLongitude: userLng.current,
+          scanProgress: getScanProgress(),
+        });
+      } else if (rawRestaurants.current.length > 0) {
         emitFilteredState({
           emptyReason: 'filters',
           message: `Showing cached results — ${message}`,
@@ -354,14 +430,14 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
   );
   const requestMenuRescan = useCallback(
     (restaurant: Restaurant) => {
-      void orchestrator.requestRescan(restaurant);
+      void orchestrator.current?.requestRescan(restaurant);
     },
-    [orchestrator]
+    []
   );
 
   const retryFailedScans = useCallback(() => {
-    void orchestrator.retryFailed(rawRestaurants.current);
-  }, [orchestrator]);
+    void orchestrator.current?.retryFailed(rawRestaurants.current);
+  }, []);
 
   const contextValue = useMemo(
     () => ({

@@ -24,8 +24,37 @@ export class ScanOrchestrator {
   private currentBatchKeys: string[] = [];
   private scanQueue: Restaurant[] = [];
   private isProcessing = false;
+  private isDestroyed = false;
 
   constructor(private config: ScanOrchestratorConfig) {}
+
+  /**
+   * Stops all processing and prevents future scans.
+   */
+  destroy() {
+    this.isDestroyed = true;
+    this.scanQueue = [];
+    this.currentBatchKeys = [];
+  }
+
+  /**
+   * Updates the orchestrator configuration (callbacks and keys) without
+   * interrupting the current scan queue or worker pool.
+   */
+  setConfig(config: ScanOrchestratorConfig) {
+    this.config = config;
+  }
+
+  /**
+   * Clears the pending scan queue and stops tracking for the current batch.
+   * This should be called when the user starts a fresh search or navigates away.
+   */
+  flushQueue() {
+    this.scanQueue = [];
+    this.currentBatchKeys = [];
+    this.activeScans.clear();
+    this.config.onNotifyUI();
+  }
 
   /**
    * Returns the keys of restaurants currently being tracked in the active batch.
@@ -84,6 +113,7 @@ export class ScanOrchestrator {
    * Internal helper to add items to the shared queue and ensure workers are running.
    */
   private async enqueueAndStart(targets: Restaurant[]): Promise<void> {
+    if (this.isDestroyed) return;
     const getKey = this.config.getIdentityKey || getRestaurantIdentityKey;
     
     // Add new targets to queue, avoiding duplicates already in queue or processing
@@ -117,10 +147,11 @@ export class ScanOrchestrator {
     const workers = Array(CONCURRENT_SCAN_LIMIT)
       .fill(null)
       .map(async () => {
-        while (this.scanQueue.length > 0) {
+        while (this.scanQueue.length > 0 && !this.isDestroyed) {
           const restaurant = this.scanQueue.shift();
           if (restaurant) {
             await this.scanSingle(restaurant);
+            if (this.isDestroyed) break;
             // Stagger to avoid burst
             await new Promise((resolve) => setTimeout(resolve, 300));
           }
@@ -146,7 +177,7 @@ export class ScanOrchestrator {
    */
   private async scanSingle(restaurant: Restaurant): Promise<void> {
     const id = restaurant.placeId;
-    if (!id || this.activeScans.has(id) || !this.config.mapsApiKey) return;
+    if (!id || this.activeScans.has(id) || !this.config.mapsApiKey || this.isDestroyed) return;
 
     this.activeScans.add(id);
     const scanStartedAt = Date.now();

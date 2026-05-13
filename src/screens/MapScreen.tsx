@@ -16,6 +16,7 @@ import { formatDistance } from '../util/formatters';
 import RestaurantDetailModal from './components/RestaurantDetailModal';
 import { getRestaurantListKey } from '../util/restaurantUtils';
 import { Ionicons, StateMessage } from '../components/ui';
+import { ScanProgressBanner } from '../components/ScanProgressBanner';
 
 export default function MapScreen() {
   const { uiState, loadNearbyRestaurants } = useRestaurants();
@@ -70,12 +71,14 @@ export default function MapScreen() {
 
   return (
     <View style={styles.container}>
+      {uiState.scanProgress ? <ScanProgressBanner progress={uiState.scanProgress} /> : null}
       <MapView
         style={styles.map}
         provider={PROVIDER_GOOGLE}
         initialRegion={initialRegion}
         showsUserLocation={uiState.userLatitude != null && uiState.userLongitude != null}
         showsMyLocationButton
+        onPress={() => setPreviewRestaurant(null)}
       >
         {restaurants.map((restaurant, index) => {
           if (restaurant.latitude == null || restaurant.longitude == null) return null;

@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Constants from 'expo-constants';
 import * as ImagePicker from 'expo-image-picker';
+import * as ImageManipulator from 'expo-image-manipulator';
 import {
   View,
   Text,
@@ -10,6 +11,8 @@ import {
   Pressable,
   TextInput,
   ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { Colors, Spacing, Radius, FontSize, FontWeight } from '../../theme/colors';
 import { analyseMenuText, MenuAnalysisResult } from '../../services/menuSafety';
@@ -39,11 +42,18 @@ export default function MenuAnalysisSheet({ restaurantName, menuText, onClose }:
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isExtractingPhotoText, setIsExtractingPhotoText] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const isMounted = useRef(true);
+
+  useEffect(() => {
+    return () => {
+      isMounted.current = false;
+    };
+  }, []);
 
   // Auto-analyse on mount if we have text
   useEffect(() => {
     if (menuText && menuText.trim().length > 10) {
-      runAnalysis(menuText);
+      void runAnalysis(menuText);
     }
   }, []);
 
@@ -61,12 +71,17 @@ export default function MenuAnalysisSheet({ restaurantName, menuText, onClose }:
 
     try {
       const result = analyseMenuText(text);
-      setAnalysisResult(result);
+      if (isMounted.current) {
+        setAnalysisResult(result);
+      }
     } catch (error: unknown) {
+      if (!isMounted.current) return;
       const message = error instanceof Error ? error.message : String(error);
       setError(`Analysis failed: ${message}`);
     } finally {
-      setIsAnalyzing(false);
+      if (isMounted.current) {
+        setIsAnalyzing(false);
+      }
     }
   };
 
@@ -84,27 +99,42 @@ export default function MenuAnalysisSheet({ restaurantName, menuText, onClose }:
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ['images'],
         allowsEditing: false,
-        base64: true,
-        quality: 0.85,
+        quality: 0.8,
       });
 
-      if (result.canceled) return;
+      if (result.canceled || !result.assets[0]) return;
 
-      const base64 = result.assets[0]?.base64;
+      const pickedAsset = result.assets[0];
+      
+      // Resize to a reasonable max dimension for OCR (e.g. 1200px)
+      // This saves massive bandwidth and prevents memory issues with base64
+      const manipulated = await ImageManipulator.manipulateAsync(
+        pickedAsset.uri,
+        [{ resize: { width: pickedAsset.width > pickedAsset.height ? 1200 : undefined, height: pickedAsset.height >= pickedAsset.width ? 1200 : undefined } }],
+        { base64: true, format: ImageManipulator.SaveFormat.JPEG, quality: 0.7 }
+      );
+
+      const base64 = manipulated.base64;
       if (!base64) {
-        setError('Could not read that image. Try a clearer menu photo.');
+        setError('Could not process that image. Try a clearer menu photo.');
         return;
       }
 
       const visionApiKey = (Constants.expoConfig?.extra as ExpoConfigExtra)?.VISION_API_KEY ?? '';
       const text = await extractMenuTextFromImage({ base64, apiKey: visionApiKey });
-      setEditableText(text);
-      await runAnalysis(text);
+      
+      if (isMounted.current) {
+        setEditableText(text);
+        void runAnalysis(text);
+      }
     } catch (error: unknown) {
+      if (!isMounted.current) return;
       const message = error instanceof Error ? error.message : String(error);
       setError(`Photo scan failed: ${message}`);
     } finally {
-      setIsExtractingPhotoText(false);
+      if (isMounted.current) {
+        setIsExtractingPhotoText(false);
+      }
     }
   };
 
@@ -137,7 +167,10 @@ export default function MenuAnalysisSheet({ restaurantName, menuText, onClose }:
 
   return (
     <Modal visible animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
-      <View style={styles.container}>
+      <KeyboardAvoidingView 
+        style={styles.container} 
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
         {/* Header */}
         <View style={styles.header}>
           <View style={styles.handle} />
@@ -268,7 +301,7 @@ export default function MenuAnalysisSheet({ restaurantName, menuText, onClose }:
 
           <View style={{ height: 40 }} />
         </ScrollView>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }

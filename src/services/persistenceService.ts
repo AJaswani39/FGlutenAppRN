@@ -31,6 +31,7 @@ const MENU_SCAN_STATUSES = new Set<Restaurant['menuScanStatus']>([
   'SUCCESS',
   'NO_WEBSITE',
   'FAILED',
+  'JS_ONLY',
 ]);
 
 const FAVORITE_STATUSES = new Set<Exclude<FavoriteStatus, null>>(['safe', 'try', 'avoid']);

@@ -43,6 +43,18 @@ export async function scanRestaurantMenu({
     };
   }
 
+  // Detect JS-heavy providers that we can't scan with static HTML
+  const JS_PROVIDERS = /toasttab\.com|chownow\.com|bentobox\.com|singleplatform\.com|doordash\.com|ubereats\.com|grubhub\.com/i;
+  if (JS_PROVIDERS.test(initialUrl)) {
+    return {
+      menuUrl: initialUrl,
+      gfMenu: [],
+      rawMenuText: null,
+      menuScanStatus: 'JS_ONLY',
+      menuScanTimestamp: scanStartedAt,
+    };
+  }
+
   let menuUrl = initialUrl;
   let html = await fetchHtml(initialUrl);
 

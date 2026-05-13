@@ -1,4 +1,4 @@
-export type MenuScanStatus = 'NOT_STARTED' | 'FETCHING' | 'SUCCESS' | 'NO_WEBSITE' | 'FAILED';
+export type MenuScanStatus = 'NOT_STARTED' | 'FETCHING' | 'SUCCESS' | 'NO_WEBSITE' | 'FAILED' | 'JS_ONLY';
 export type FavoriteStatus = 'safe' | 'try' | 'avoid' | null;
 export type SortMode = 'distance' | 'name';
 export type GfConfidenceLevel = 'confirmed' | 'name_match' | 'no_evidence' | 'unavailable' | 'pending';

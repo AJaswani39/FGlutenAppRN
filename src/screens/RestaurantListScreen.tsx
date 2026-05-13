@@ -17,6 +17,7 @@ import { useRestaurants } from '../context/RestaurantContext';
 import { useFilters } from '../context/FiltersContext';
 import { useSettings } from '../context/SettingsContext';
 import { MenuScanProgress, Restaurant, RestaurantFilters } from '../types/restaurant';
+import { ScanProgressBanner } from '../components/ScanProgressBanner';
 import RestaurantDetailModal from './components/RestaurantDetailModal';
 import { RestaurantCardSkeleton } from '../components/Skeleton';
 import { useDebounce } from '../hooks/useDebounce';
@@ -195,47 +196,6 @@ export default function RestaurantListScreen() {
   );
 }
 
-const ScanProgressBanner = React.memo(function ScanProgressBanner({
-  progress,
-}: {
-  progress: MenuScanProgress;
-}) {
-  const { retryFailedScans } = useRestaurants();
-  const text = progress.active
-    ? `Scanning menus ${progress.completed}/${progress.total}`
-    : `Menu scans complete ${progress.completed}/${progress.total}`;
-
-  const hasFailures = progress.failed > 0;
-
-  return (
-    <View style={[styles.scanBanner, !progress.active && styles.scanBannerDone, hasFailures && styles.scanBannerError]}>
-      <View style={styles.scanBannerMain}>
-        {progress.active ? <ActivityIndicator size="small" color={Colors.info} /> : null}
-        <Ionicons
-          name={progress.active ? 'scan' : hasFailures ? 'alert-circle' : 'checkmark-circle'}
-          size={16}
-          color={progress.active ? Colors.info : hasFailures ? Colors.error : Colors.success}
-        />
-        <Text style={[styles.scanBannerText, !progress.active && styles.scanBannerDoneText, hasFailures && styles.scanBannerErrorText]}>
-          {text}
-          {hasFailures ? ` (${progress.failed} failed)` : ''}
-        </Text>
-      </View>
-      
-      {hasFailures && !progress.active ? (
-        <Pressable 
-          style={styles.retryBtn} 
-          onPress={retryFailedScans}
-          accessibilityRole="button"
-          accessibilityLabel="Retry failed scans"
-        >
-          <Text style={styles.retryBtnText}>Retry</Text>
-          <Ionicons name="refresh" size={14} color={Colors.error} />
-        </Pressable>
-      ) : null}
-    </View>
-  );
-});
 
 const FilterPanel = React.memo(function FilterPanel({
   filters,

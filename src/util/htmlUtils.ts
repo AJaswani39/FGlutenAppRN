@@ -41,11 +41,13 @@ export function htmlToTextSegments(html: string): string[] {
  */
 export function findMenuLink(html: string, baseUrl: string): string | null {
   const menuPattern = /href=["']([^"']*(?:menu|food|eat|dining)[^"']*)["']/gi;
+  const EXCLUDED_EXTENSIONS = /\.(?:pdf|jpg|jpeg|png|gif|svg|css|js|zip|mp4|webp)$/i;
   const seen = new Set<string>();
 
   for (const match of html.matchAll(menuPattern)) {
     const href = match[1]?.trim();
-    if (!href) continue;
+    if (!href || EXCLUDED_EXTENSIONS.test(href)) continue;
+    
     if (
       href.startsWith('#') ||
       href.toLowerCase().startsWith('javascript:') ||

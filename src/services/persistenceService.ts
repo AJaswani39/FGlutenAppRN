@@ -147,7 +147,11 @@ export function normalizeCachePayload(value: unknown): CachePayload | null {
 
   const restaurants = value.restaurants
     .map((restaurant) => normalizeRestaurant(restaurant))
-    .filter((restaurant): restaurant is Restaurant => restaurant !== null);
+    .filter((restaurant): restaurant is Restaurant => restaurant !== null)
+    // Sort by timestamp descending (newest first)
+    .sort((a, b) => b.menuScanTimestamp - a.menuScanTimestamp)
+    // Keep only the 50 most recent results to stay within storage limits
+    .slice(0, 50);
 
   return {
     restaurants,

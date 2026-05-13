@@ -154,18 +154,29 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
     });
   }, [emitFilteredState, filters, strictCeliac]);
 
-  const persistCache = useCallback(async () => {
-    try {
-      await PersistenceService.saveCache({
-        restaurants: rawRestaurants.current,
-        lat: userLat.current,
-        lng: userLng.current,
-        timestamp: Date.now(),
-      });
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : String(error);
-      logger.error(`Failed to save restaurant cache: ${message}`);
+  const persistTimeout = useRef<NodeJS.Timeout | null>(null);
+
+  const persistCache = useCallback(() => {
+    // Debounce persistence to avoid hammering the disk during batch scans
+    if (persistTimeout.current) {
+      clearTimeout(persistTimeout.current);
     }
+
+    persistTimeout.current = setTimeout(async () => {
+      try {
+        await PersistenceService.saveCache({
+          restaurants: rawRestaurants.current,
+          lat: userLat.current,
+          lng: userLng.current,
+          timestamp: Date.now(),
+        });
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error);
+        logger.error(`Failed to save restaurant cache: ${message}`);
+      } finally {
+        persistTimeout.current = null;
+      }
+    }, 2000);
   }, []);
 
   const orchestrator = useMemo(() => {
@@ -210,6 +221,9 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
   }, [loadCachedIfAvailable]);
 
   const loadNearbyRestaurants = useCallback(async () => {
+    // Prevent redundant fetches if one is already in progress
+    if (uiStateRef.current.status === 'loading') return;
+
     const mapsApiKey = getMapsApiKey();
     await loadCachedIfAvailable();
 

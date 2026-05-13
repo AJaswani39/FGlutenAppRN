@@ -26,6 +26,9 @@ export default {
     ios: {
       supportsTablet: true,
       bundleIdentifier: "io.fgluten.app",
+      config: {
+        googleMapsApiKey: process.env.GCP_API_KEY ?? "",
+      },
       infoPlist: {
         ITSAppUsesNonExemptEncryption: false,
         NSLocationWhenInUseUsageDescription:
@@ -42,6 +45,11 @@ export default {
         backgroundColor: "#0D1117",
       },
       package: isStaging ? "io.fgluten.app.staging" : "io.fgluten.app",
+      config: {
+        googleMaps: {
+          apiKey: process.env.GCP_API_KEY ?? "",
+        },
+      },
       permissions: [
         "ACCESS_FINE_LOCATION",
         "ACCESS_COARSE_LOCATION",

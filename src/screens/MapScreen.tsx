@@ -76,19 +76,23 @@ export default function MapScreen() {
         showsUserLocation={uiState.userLatitude != null && uiState.userLongitude != null}
         showsMyLocationButton
       >
-        {restaurants.map((restaurant) => (
-          <Marker
-            key={getRestaurantListKey(restaurant)}
-            coordinate={{
-              latitude: restaurant.latitude,
-              longitude: restaurant.longitude,
-            }}
-            title={restaurant.name}
-            description={restaurant.address}
-            pinColor={markerColor(restaurant)}
-            onPress={() => setPreviewRestaurant(restaurant)}
-          />
-        ))}
+        {restaurants.map((restaurant, index) => {
+          if (restaurant.latitude == null || restaurant.longitude == null) return null;
+          
+          return (
+            <Marker
+              key={getRestaurantListKey(restaurant, index)}
+              coordinate={{
+                latitude: restaurant.latitude,
+                longitude: restaurant.longitude,
+              }}
+              title={restaurant.name}
+              description={restaurant.address}
+              pinColor={markerColor(restaurant)}
+              onPress={() => setPreviewRestaurant(restaurant)}
+            />
+          );
+        })}
       </MapView>
 
       <View style={styles.summaryBar}>

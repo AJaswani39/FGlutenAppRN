@@ -1,11 +1,14 @@
+import { Restaurant } from '../types/restaurant';
+import {
+  fetchHtml,
+  fetchWebsiteForPlace,
+} from '../data/placesRepository';
 import {
   extractGfEvidence,
   extractRawMenuText,
-  fetchHtml,
-  fetchWebsiteForPlace,
   findMenuLink,
   htmlToTextSegments,
-} from '../data/placesRepository';
+} from '../util/htmlUtils';
 
 export interface MenuScanResult {
   menuUrl: string | null;

@@ -11,7 +11,8 @@ import { Colors, FontSize, FontWeight, Radius, Spacing } from '../theme/colors';
 import { useRestaurants } from '../context/RestaurantContext';
 import { useSettings } from '../context/SettingsContext';
 import { Restaurant } from '../types/restaurant';
-import { SettingsManager } from '../util/SettingsManager';
+import { formatDistance } from '../util/formatters';
+
 import RestaurantDetailModal from './components/RestaurantDetailModal';
 import { getRestaurantListKey } from '../util/restaurantUtils';
 import { Ionicons, StateMessage } from '../components/ui';
@@ -130,7 +131,8 @@ function markerColor(restaurant: Restaurant): string {
 
 function previewMeta(restaurant: Restaurant, useMiles: boolean): string {
   const parts = [
-    SettingsManager.formatDistance(restaurant.distanceMeters, useMiles),
+    formatDistance(restaurant.distanceMeters, useMiles),
+
     restaurant.rating != null ? `${restaurant.rating.toFixed(1)} stars` : '',
     restaurant.openNow === true ? 'Open' : restaurant.openNow === false ? 'Closed' : '',
   ].filter(Boolean);

@@ -4,6 +4,7 @@ import { getRestaurantIdentityKey } from '../util/restaurantUtils';
 
 export const MENU_SCAN_TTL_MS = 3 * 24 * 60 * 60 * 1000;
 export const MAX_SCANS_PER_BATCH = 5;
+export const CONCURRENT_SCAN_LIMIT = 2;
 
 export type EmptyResultsReason = 'filters' | 'nearby';
 
@@ -63,12 +64,15 @@ export function getScanProgressForRestaurants(
 
   let completed = 0;
   let fetching = 0;
+  let failed = 0;
 
   for (const key of scanBatchKeys) {
     const restaurant = restaurants.find((item) => getRestaurantIdentityKey(item) === key);
     if (!restaurant) continue;
     if (restaurant.menuScanStatus === 'FETCHING') {
       fetching += 1;
+    } else if (restaurant.menuScanStatus === 'FAILED') {
+      failed += 1;
     } else if (restaurant.menuScanStatus !== 'NOT_STARTED') {
       completed += 1;
     }
@@ -77,7 +81,8 @@ export function getScanProgressForRestaurants(
   return {
     completed,
     total: scanBatchKeys.length,
-    active: fetching > 0 || completed < scanBatchKeys.length,
+    failed,
+    active: fetching > 0 || (completed + failed) < scanBatchKeys.length,
   };
 }
 

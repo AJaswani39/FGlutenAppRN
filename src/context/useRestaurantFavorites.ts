@@ -1,6 +1,7 @@
 import { MutableRefObject, useCallback, useMemo, useRef, useState } from 'react';
 import { FavoriteStatus, Restaurant } from '../types/restaurant';
-import { SettingsManager } from '../util/SettingsManager';
+import { PersistenceService } from '../services/persistenceService';
+
 import { getRestaurantIdentityKey } from '../util/restaurantUtils';
 import { logger } from '../util/logger';
 import { applyFavoritesToRestaurants, getSavedRestaurants } from './restaurantState';
@@ -22,7 +23,8 @@ export function useRestaurantFavorites(rawRestaurants: MutableRefObject<Restaura
   }, [rawRestaurants]);
 
   const loadFavorites = useCallback(async () => {
-    const favorites = await SettingsManager.loadFavorites();
+    const favorites = await PersistenceService.loadFavorites();
+
     favoriteMap.current = favorites;
     return favorites;
   }, []);
@@ -38,7 +40,8 @@ export function useRestaurantFavorites(rawRestaurants: MutableRefObject<Restaura
         favoriteMap.current[key] = status;
       }
 
-      void SettingsManager.saveFavorites(favoriteMap.current).catch((error: unknown) => {
+      void PersistenceService.saveFavorites(favoriteMap.current).catch((error: unknown) => {
+
         const message = error instanceof Error ? error.message : String(error);
         logger.error(`Failed to save favorite status: ${message}`);
       });

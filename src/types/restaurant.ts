@@ -44,5 +44,6 @@ export interface RestaurantUiState {
 export interface MenuScanProgress {
   completed: number;
   total: number;
+  failed: number;
   active: boolean;
 }

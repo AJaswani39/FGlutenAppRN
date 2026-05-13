@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { FavoriteStatus, RestaurantFilters, SortMode, Restaurant } from '../types/restaurant';
-import { logger } from './logger';
+import { logger } from '../util/logger';
 
 export interface CachePayload {
   restaurants: Restaurant[];
@@ -25,8 +25,6 @@ const KEYS = {
   SETTINGS: 'fg_settings',
 };
 
-type JsonRecord = Record<string, unknown>;
-
 const MENU_SCAN_STATUSES = new Set<Restaurant['menuScanStatus']>([
   'NOT_STARTED',
   'FETCHING',
@@ -35,13 +33,11 @@ const MENU_SCAN_STATUSES = new Set<Restaurant['menuScanStatus']>([
   'FAILED',
 ]);
 
-const FAVORITE_STATUSES = new Set<Exclude<FavoriteStatus, null>>([
-  'safe',
-  'try',
-  'avoid',
-]);
+const FAVORITE_STATUSES = new Set<Exclude<FavoriteStatus, null>>(['safe', 'try', 'avoid']);
 
-function isRecord(value: unknown): value is JsonRecord {
+// ─── Normalization Helpers ─────────────────────────────────────
+
+function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
@@ -73,18 +69,15 @@ function normalizeFavoriteStatus(value: unknown): FavoriteStatus {
 
 function normalizeStringArray(value: unknown, maxLength?: number): string[] {
   if (!Array.isArray(value)) return [];
-
   const normalized = value
     .filter((entry): entry is string => typeof entry === 'string')
     .map((entry) => entry.trim())
     .filter(Boolean);
-
   return typeof maxLength === 'number' ? normalized.slice(0, maxLength) : normalized;
 }
 
 export function normalizeFilters(value: unknown): RestaurantFilters {
   const record = isRecord(value) ? value : {};
-
   return {
     gfOnly: normalizeBoolean(record.gfOnly),
     openNowOnly: normalizeBoolean(record.openNowOnly),
@@ -97,7 +90,6 @@ export function normalizeFilters(value: unknown): RestaurantFilters {
 
 export function normalizeFavoriteMap(value: unknown): Record<string, string> {
   if (!isRecord(value)) return {};
-
   const normalized: Record<string, string> = {};
   for (const [key, status] of Object.entries(value)) {
     if (!key.trim()) continue;
@@ -105,7 +97,6 @@ export function normalizeFavoriteMap(value: unknown): Record<string, string> {
       normalized[key] = status;
     }
   }
-
   return normalized;
 }
 
@@ -166,51 +157,25 @@ export function normalizeCachePayload(value: unknown): CachePayload | null {
   };
 }
 
-export const SettingsManager = {
-  // ─── Units ───────────────────────────────────────────────────
-  async useMiles(): Promise<boolean> {
-    const val = await AsyncStorage.getItem(`${KEYS.SETTINGS}:use_miles`);
+// ─── Persistence Service ───────────────────────────────────────
+
+export const PersistenceService = {
+  async getSetting(key: string): Promise<boolean> {
+    const val = await AsyncStorage.getItem(`${KEYS.SETTINGS}:${key}`);
     return val === 'true';
   },
-  async setUseMiles(useMiles: boolean): Promise<void> {
-    await AsyncStorage.setItem(`${KEYS.SETTINGS}:use_miles`, useMiles ? 'true' : 'false');
+
+  async setSetting(key: string, value: boolean): Promise<void> {
+    await AsyncStorage.setItem(`${KEYS.SETTINGS}:${key}`, value ? 'true' : 'false');
   },
 
-  // ─── Strict Celiac ───────────────────────────────────────────
-  async isStrictCeliac(): Promise<boolean> {
-    const val = await AsyncStorage.getItem(`${KEYS.SETTINGS}:strict_celiac`);
-    return val === 'true';
-  },
-  async setStrictCeliac(strict: boolean): Promise<void> {
-    await AsyncStorage.setItem(`${KEYS.SETTINGS}:strict_celiac`, strict ? 'true' : 'false');
-  },
-
-  // ─── Distance Units ──────────────────────────────────────────
-  formatDistance(meters: number, useMiles: boolean): string {
-    if (!Number.isFinite(meters) || meters <= 0) return '';
-
-    if (useMiles) {
-      const miles = meters / 1609.34;
-      if (miles >= 0.1) return `${miles.toFixed(1)} mi`;
-      const feet = Math.round(meters * 3.28084);
-      return `${feet} ft`;
-    } else {
-      if (meters >= 1000) return `${(meters / 1000).toFixed(1)} km`;
-      return `${Math.round(meters)} m`;
-    }
-  },
-
-  // ─── Filters ─────────────────────────────────────────────────
   async loadFilters(): Promise<RestaurantFilters> {
     try {
       const raw = await AsyncStorage.getItem(KEYS.FILTERS);
-      if (raw) {
-        return normalizeFilters(JSON.parse(raw));
-      }
+      if (raw) return normalizeFilters(JSON.parse(raw));
     } catch (error: unknown) {
-      logger.warn(`Failed to load filters from storage: ${error instanceof Error ? error.message : String(error)}`);
+      logger.warn(`Failed to load filters: ${error instanceof Error ? error.message : String(error)}`);
     }
-
     return DEFAULT_FILTERS;
   },
 
@@ -218,13 +183,12 @@ export const SettingsManager = {
     await AsyncStorage.setItem(KEYS.FILTERS, JSON.stringify(normalizeFilters(filters)));
   },
 
-  // ─── Favorites ───────────────────────────────────────────────
   async loadFavorites(): Promise<Record<string, string>> {
     try {
       const raw = await AsyncStorage.getItem(KEYS.FAVORITES);
       if (raw) return normalizeFavoriteMap(JSON.parse(raw));
     } catch (error: unknown) {
-      logger.warn(`Failed to load favorites from storage: ${error instanceof Error ? error.message : String(error)}`);
+      logger.warn(`Failed to load favorites: ${error instanceof Error ? error.message : String(error)}`);
     }
     return {};
   },
@@ -233,7 +197,6 @@ export const SettingsManager = {
     await AsyncStorage.setItem(KEYS.FAVORITES, JSON.stringify(normalizeFavoriteMap(map)));
   },
 
-  // ─── Restaurant cache ───────────────────────────────────────
   async saveCache(data: CachePayload): Promise<void> {
     await AsyncStorage.setItem(KEYS.CACHE, JSON.stringify(normalizeCachePayload(data)));
   },
@@ -243,7 +206,7 @@ export const SettingsManager = {
       const raw = await AsyncStorage.getItem(KEYS.CACHE);
       if (raw) return normalizeCachePayload(JSON.parse(raw));
     } catch (error: unknown) {
-      logger.warn(`Failed to load cache from storage: ${error instanceof Error ? error.message : String(error)}`);
+      logger.warn(`Failed to load cache: ${error instanceof Error ? error.message : String(error)}`);
     }
     return null;
   },

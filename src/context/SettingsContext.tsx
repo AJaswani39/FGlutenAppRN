@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { SettingsManager } from '../util/SettingsManager';
+import { PersistenceService } from '../services/persistenceService';
 import { logger } from '../util/logger';
 
 interface SettingsContextValue {
@@ -27,8 +27,8 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     (async () => {
       try {
         const [savedUseMiles, savedStrictCeliac] = await Promise.all([
-          SettingsManager.useMiles(),
-          SettingsManager.isStrictCeliac(),
+          PersistenceService.getSetting('use_miles'),
+          PersistenceService.getSetting('strict_celiac'),
         ]);
 
         if (!isMounted) return;
@@ -47,7 +47,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
 
   const setUseMiles = useCallback((val: boolean) => {
     setUseMilesState(val);
-    void SettingsManager.setUseMiles(val).catch((error: unknown) => {
+    void PersistenceService.setSetting('use_miles', val).catch((error: unknown) => {
       const message = error instanceof Error ? error.message : String(error);
       logger.error(`Failed to save distance unit setting: ${message}`);
     });
@@ -55,7 +55,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
 
   const setStrictCeliac = useCallback((val: boolean) => {
     setStrictCeliacState(val);
-    void SettingsManager.setStrictCeliac(val).catch((error: unknown) => {
+    void PersistenceService.setSetting('strict_celiac', val).catch((error: unknown) => {
       const message = error instanceof Error ? error.message : String(error);
       logger.error(`Failed to save strict celiac setting: ${message}`);
     });

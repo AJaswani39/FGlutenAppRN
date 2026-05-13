@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { RestaurantFilters } from '../types/restaurant';
-import { DEFAULT_FILTERS, SettingsManager } from '../util/SettingsManager';
+import { DEFAULT_FILTERS, PersistenceService } from '../services/persistenceService';
+
 import { logger } from '../util/logger';
 
 interface FiltersContextValue {
@@ -25,7 +26,8 @@ export function FiltersProvider({ children }: { children: React.ReactNode }) {
 
     (async () => {
       try {
-        const savedFilters = await SettingsManager.loadFilters();
+        const savedFilters = await PersistenceService.loadFilters();
+
         if (!isMounted) return;
         setFiltersState(savedFilters);
       } catch (error: unknown) {
@@ -42,7 +44,8 @@ export function FiltersProvider({ children }: { children: React.ReactNode }) {
   const setFilters = useCallback((partial: Partial<RestaurantFilters>) => {
     setFiltersState((prev) => {
       const next = { ...prev, ...partial };
-      void SettingsManager.saveFilters(next).catch((error: unknown) => {
+      void PersistenceService.saveFilters(next).catch((error: unknown) => {
+
         const message = error instanceof Error ? error.message : String(error);
         logger.error(`Failed to save restaurant filters: ${message}`);
       });
@@ -52,7 +55,8 @@ export function FiltersProvider({ children }: { children: React.ReactNode }) {
 
   const resetFilters = useCallback(() => {
     setFiltersState(DEFAULT_FILTERS);
-    void SettingsManager.saveFilters(DEFAULT_FILTERS).catch((error: unknown) => {
+    void PersistenceService.saveFilters(DEFAULT_FILTERS).catch((error: unknown) => {
+
       const message = error instanceof Error ? error.message : String(error);
       logger.error(`Failed to reset restaurant filters: ${message}`);
     });

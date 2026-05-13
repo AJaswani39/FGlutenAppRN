@@ -2,8 +2,9 @@ import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Colors, FontSize, FontWeight, Radius, Spacing } from '../theme/colors';
 import { Restaurant } from '../types/restaurant';
-import { SettingsManager } from '../util/SettingsManager';
+import { formatDistance } from '../util/formatters';
 import { getGfConfidenceLevel } from '../util/restaurantUtils';
+
 import { Ionicons, MetaPill, StatusBadge } from './ui';
 
 export function getFavoriteMeta(status: Restaurant['favoriteStatus']) {
@@ -35,13 +36,16 @@ export const RestaurantSummaryCard = React.memo(
     useMiles,
     onPress,
     compact,
+    onRescan,
   }: {
     restaurant: Restaurant;
     useMiles: boolean;
     onPress?: () => void;
     compact?: boolean;
+    onRescan?: () => void;
   }) {
-    const dist = SettingsManager.formatDistance(restaurant.distanceMeters, useMiles);
+    const dist = formatDistance(restaurant.distanceMeters, useMiles);
+
     const confidence = getConfidenceMeta(restaurant);
     const favorite = getFavoriteMeta(restaurant.favoriteStatus);
     const Container = onPress ? Pressable : View;
@@ -81,6 +85,20 @@ export const RestaurantSummaryCard = React.memo(
           ) : null}
           {restaurant.menuScanStatus === 'SUCCESS' && restaurant.gfMenu.length > 0 ? (
             <MetaPill icon="restaurant" text={`${restaurant.gfMenu.length} GF`} color={Colors.success} />
+          ) : null}
+          {restaurant.menuScanStatus === 'FAILED' ? (
+            <Pressable 
+              style={styles.retryPill} 
+              onPress={(e) => {
+                e.stopPropagation();
+                onRescan?.();
+              }}
+              accessibilityRole="button"
+              accessibilityLabel="Retry menu scan"
+            >
+              <Ionicons name="refresh" size={12} color={Colors.error} />
+              <Text style={styles.retryText}>Retry Scan</Text>
+            </Pressable>
           ) : null}
         </View>
       </Container>
@@ -145,5 +163,21 @@ const styles = StyleSheet.create({
     color: Colors.info,
     fontSize: FontSize.xs,
     fontWeight: FontWeight.medium,
+  },
+  retryPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    borderRadius: Radius.full,
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    backgroundColor: Colors.errorBg,
+    borderWidth: 1,
+    borderColor: Colors.error,
+  },
+  retryText: {
+    color: Colors.error,
+    fontSize: FontSize.xs,
+    fontWeight: FontWeight.bold,
   },
 });

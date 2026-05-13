@@ -12,7 +12,8 @@ import {
 } from 'react-native';
 import { Colors, Spacing, Radius, FontSize, FontWeight } from '../../theme/colors';
 import { Restaurant, FavoriteStatus } from '../../types/restaurant';
-import { SettingsManager } from '../../util/SettingsManager';
+import { formatDistance } from '../../util/formatters';
+
 import { getGfConfidenceLevel, isSameRestaurantIdentity } from '../../util/restaurantUtils';
 import { useRestaurants } from '../../context/RestaurantContext';
 import { useSettings } from '../../context/SettingsContext';
@@ -40,7 +41,8 @@ export default function RestaurantDetailModal({ restaurant: initial, useMiles, o
     savedRestaurants.find((r) => isSameRestaurantIdentity(r, initial)) ??
     initial;
 
-  const dist = SettingsManager.formatDistance(restaurant.distanceMeters, useMiles);
+  const dist = formatDistance(restaurant.distanceMeters, useMiles);
+
   const safeMenuUrl = getSafeExternalUrl(restaurant.menuUrl);
   const confidence = confidenceMeta(restaurant);
   const safetyScore = getRestaurantSafetyScore(restaurant, { strictCeliac });

@@ -14,7 +14,8 @@ import { useSettings } from '../context/SettingsContext';
 import { RootTabParamList } from '../types/navigation';
 import { Restaurant } from '../types/restaurant';
 import { getRestaurantListKey } from '../util/restaurantUtils';
-import { SettingsManager } from '../util/SettingsManager';
+import { formatDistance } from '../util/formatters';
+
 import { IconCircle, Ionicons, MetaPill } from '../components/ui';
 import { RestaurantSummaryCard } from '../components/RestaurantSummaryCard';
 import RestaurantDetailModal from './components/RestaurantDetailModal';
@@ -174,7 +175,8 @@ function SafePickCard({
   useMiles: boolean;
   onPress: () => void;
 }) {
-  const dist = SettingsManager.formatDistance(pick.restaurant.distanceMeters, useMiles);
+  const dist = formatDistance(pick.restaurant.distanceMeters, useMiles);
+
   const scoreTone = pick.safetyScore.level === 'safe' ? Colors.success : Colors.warning;
 
   return (

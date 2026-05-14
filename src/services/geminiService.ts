@@ -44,18 +44,20 @@ export class GeminiService {
           - If the menu mentions shared equipment or a "shared kitchen", highlight it.
           - Identify specific items that are safe vs unsafe for ALL selected restrictions combined.
           
-          OUTPUT FORMAT (Markdown):
-          ### Overall Safety: [SAFE | CAUTION | UNSAFE]
-          [Short summary of combined risk]
-          
-          ### Safe Options (Meets ALL criteria):
-          - [Dish Name]: [Short reason why it's safe]
-          
-          ### Warning Items:
-          - [Dish Name]: [Specific allergen found]
-          
-          ### Cross-Contamination Risk:
-          [Details on shared fryers, etc.]
+          OUTPUT FORMAT:
+          You must respond with a JSON object ONLY. Do not include markdown blocks or preamble.
+          {
+            "overallSafety": "SAFE" | "CAUTION" | "UNSAFE",
+            "summary": "...",
+            "safeItems": ["..."],
+            "warningItems": ["..."],
+            "crossContamRisk": "...",
+            "riskBreakdown": [
+              { "factor": "Shared Equipment", "severity": 0.0 to 1.0, "description": "..." },
+              { "factor": "Ingredient Quality", "severity": 0.0 to 1.0, "description": "..." },
+              { "factor": "Kitchen Procedures", "severity": 0.0 to 1.0, "description": "..." }
+            ]
+          }
         `,
       });
 
@@ -75,7 +77,10 @@ export class GeminiService {
 
       const result = await model.generateContent(prompt);
       const response = await result.response;
-      return response.text();
+      const text = response.text();
+      
+      // Clean up potential markdown formatting if Gemini includes it
+      return text.replace(/```json|```/gi, '').trim();
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
       logger.error(`Gemini deep analysis failed: ${message}`);

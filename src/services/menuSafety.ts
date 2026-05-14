@@ -10,6 +10,7 @@ export interface MenuAnalysisResult {
   warnings: string[];
   crossContamRisk: string;
   summary: string;
+  riskFactors?: { factor: string; severity: number; description: string }[];
 }
 
 export interface RestaurantSafetyScore {

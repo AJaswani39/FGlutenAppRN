@@ -84,25 +84,42 @@ export default function MenuAnalysisSheet({ restaurant, onClose }: Props) {
     setError(null);
     
     try {
-      // 1. Run local GF analysis for the score
-      const result = await analyseMenuText(text);
+      // 1. Run local GF analysis for the score (fast initial feedback)
+      const localResult = await analyseMenuText(text);
       if (isMounted.current) {
-        setAnalysisResult(result);
+        setAnalysisResult(localResult);
       }
 
-      // 2. If secondary allergens are active, run Deep AI Analysis
-      if (dairyFree || nutFree || soyFree) {
-        const deepResult = await GeminiService.analyzeMenu(text, {
-          strictCeliac,
-          dairyFree,
-          nutFree,
-          soyFree,
-        });
-        if (isMounted.current) {
-          setDeepAnalysisMarkdown(deepResult);
+      // 2. Run Deep AI Analysis (always if possible, or if allergens active)
+      // For #2, we'll run it to get the Risk Meter data
+      const deepResultRaw = await GeminiService.analyzeMenu(text, {
+        strictCeliac,
+        dairyFree,
+        nutFree,
+        soyFree,
+      });
+
+      if (isMounted.current) {
+        try {
+          const parsed = JSON.parse(deepResultRaw);
+          
+          // Merge deep results into analysisResult for UI rendering
+          setAnalysisResult((prev) => {
+            if (!prev) return localResult;
+            return {
+              ...prev,
+              overallSafety: parsed.overallSafety?.toLowerCase() as any || prev.overallSafety,
+              summary: parsed.summary || prev.summary,
+              safeItems: parsed.safeItems || prev.safeItems,
+              unsafeItems: parsed.warningItems || prev.unsafeItems,
+              riskFactors: parsed.riskBreakdown || [],
+            };
+          });
+          setDeepAnalysisMarkdown(null); // No longer needed as markdown if we have JSON
+        } catch (parseErr) {
+          logger.warn('Failed to parse Gemini JSON, falling back to markdown display');
+          setDeepAnalysisMarkdown(deepResultRaw);
         }
-      } else {
-        setDeepAnalysisMarkdown(null);
       }
     } catch (err: any) {
       if (!isMounted.current) return;
@@ -365,6 +382,17 @@ export default function MenuAnalysisSheet({ restaurant, onClose }: Props) {
                 )}
               </ResultSection>
 
+              {analysisResult.riskFactors && analysisResult.riskFactors.length > 0 && (
+                <View style={styles.riskMeterSection}>
+                  <Text style={styles.sectionLabel}>VISUAL RISK BREAKDOWN</Text>
+                  <View style={styles.riskGrid}>
+                    {analysisResult.riskFactors.map((rf, i) => (
+                      <RiskMeter key={i} factor={rf.factor} severity={rf.severity} description={rf.description} />
+                    ))}
+                  </View>
+                </View>
+              )}
+
               {deepAnalysisMarkdown && (
                 <View style={styles.deepAnalysisContainer}>
                   <Text style={styles.sectionLabel}>DEEP AI ANALYSIS (ALLERGENS)</Text>
@@ -453,6 +481,25 @@ function ResultSection({ title, icon, color, children }: { title: string; icon: 
         <Text style={[resultStyles.title, { color }]}>{title}</Text>
       </View>
       <View style={resultStyles.content}>{children}</View>
+    </View>
+  );
+}
+
+function RiskMeter({ factor, severity, description }: { factor: string; severity: number; description: string }) {
+  const color = severity > 0.7 ? Colors.error : severity > 0.3 ? Colors.warning : Colors.success;
+  
+  return (
+    <View style={styles.riskItem}>
+      <View style={styles.riskHeader}>
+        <Text style={styles.riskFactorName}>{factor}</Text>
+        <Text style={[styles.riskSeverityText, { color }]}>
+          {Math.round(severity * 100)}% Risk
+        </Text>
+      </View>
+      <View style={styles.progressBarBg}>
+        <View style={[styles.progressBarFill, { width: `${severity * 100}%`, backgroundColor: color }]} />
+      </View>
+      <Text style={styles.riskDescription}>{description}</Text>
     </View>
   );
 }
@@ -597,6 +644,51 @@ const styles = StyleSheet.create({
   chatHistory: {
     marginBottom: Spacing.md,
     gap: Spacing.sm,
+  },
+  riskMeterSection: {
+    marginTop: Spacing.md,
+    backgroundColor: Colors.surface,
+    padding: Spacing.md,
+    borderRadius: Radius.md,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  riskGrid: {
+    gap: Spacing.md,
+    marginTop: Spacing.sm,
+  },
+  riskItem: {
+    gap: 4,
+  },
+  riskHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  riskFactorName: {
+    color: Colors.textPrimary,
+    fontSize: FontSize.sm,
+    fontWeight: FontWeight.bold,
+  },
+  riskSeverityText: {
+    fontSize: FontSize.xs,
+    fontWeight: FontWeight.extraBold,
+  },
+  progressBarBg: {
+    height: 8,
+    backgroundColor: Colors.border,
+    borderRadius: Radius.full,
+    overflow: 'hidden',
+  },
+  progressBarFill: {
+    height: '100%',
+    borderRadius: Radius.full,
+  },
+  riskDescription: {
+    color: Colors.textSecondary,
+    fontSize: FontSize.xs,
+    lineHeight: 16,
+    marginTop: 2,
   },
   chatBubble: {
     maxWidth: '85%',

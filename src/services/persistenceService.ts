@@ -120,6 +120,13 @@ export function normalizeRestaurant(value: unknown): Restaurant | null {
   const gfMenu = normalizeStringArray(value.gfMenu, 15);
   const menuUrl = normalizeString(value.menuUrl).trim() || null;
   const rawMenuText = normalizeString(value.rawMenuText).trim() || null;
+  const aiAnalysisResult = isRecord(value.aiAnalysisResult) ? value.aiAnalysisResult : null;
+  const aiChatHistory = Array.isArray(value.aiChatHistory) ? (value.aiChatHistory as any[]).map(msg => ({
+    role: msg.role === 'user' ? 'user' : 'model',
+    text: normalizeString(msg.text),
+    timestamp: normalizeFiniteNumber(msg.timestamp, Date.now()),
+  })) : undefined;
+
   const menuScanStatus = MENU_SCAN_STATUSES.has(value.menuScanStatus as Restaurant['menuScanStatus'])
     ? (value.menuScanStatus as Restaurant['menuScanStatus'])
     : 'NOT_STARTED';
@@ -140,6 +147,17 @@ export function normalizeRestaurant(value: unknown): Restaurant | null {
     menuScanStatus,
     menuScanTimestamp: Math.max(0, normalizeFiniteNumber(value.menuScanTimestamp, 0)),
     favoriteStatus: normalizeFavoriteStatus(value.favoriteStatus),
+    aiAnalysisResult,
+    aiChatHistory,
+  };
+}
+
+export function stripLargeFields(restaurant: Restaurant): Restaurant {
+  return {
+    ...restaurant,
+    rawMenuText: null,
+    aiAnalysisResult: null,
+    aiChatHistory: undefined,
   };
 }
 
@@ -204,6 +222,15 @@ export const PersistenceService = {
 
   async saveCache(data: CachePayload): Promise<void> {
     await AsyncStorage.setItem(KEYS.CACHE, JSON.stringify(normalizeCachePayload(data)));
+  },
+
+  async saveCacheLight(data: CachePayload): Promise<void> {
+    const lightData = {
+      ...data,
+      restaurants: data.restaurants.map(stripLargeFields),
+    };
+    // We don't normalize here to save CPU, just stringify the already-vetted fields
+    await AsyncStorage.setItem(KEYS.CACHE, JSON.stringify(lightData));
   },
 
   async loadCache(): Promise<CachePayload | null> {

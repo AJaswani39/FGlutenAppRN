@@ -102,6 +102,7 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
   const updateRestaurant = useCallback(
     (target: Restaurant, updater: (restaurant: Restaurant) => Restaurant) => {
       let updated = false;
+      let worthPersisting = false;
 
       rawRestaurants.current = rawRestaurants.current.map((restaurant) => {
         if (!isSameRestaurantIdentity(restaurant, target)) {
@@ -111,14 +112,32 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
         const nextRestaurant = updater(restaurant);
         if (nextRestaurant !== restaurant) {
           updated = true;
+
+          // Determine if this change is worth a disk save (terminal states or data changes)
+          const statusChangedToTerminal =
+            nextRestaurant.menuScanStatus !== restaurant.menuScanStatus &&
+            ['SUCCESS', 'FAILED', 'NO_WEBSITE', 'JS_ONLY'].includes(nextRestaurant.menuScanStatus);
+
+          const favoriteChanged = nextRestaurant.favoriteStatus !== restaurant.favoriteStatus;
+          const aiChanged =
+            nextRestaurant.aiAnalysisResult !== restaurant.aiAnalysisResult ||
+            nextRestaurant.aiChatHistory !== restaurant.aiChatHistory;
+
+          if (statusChangedToTerminal || favoriteChanged || aiChanged) {
+            worthPersisting = true;
+          }
         }
 
         return nextRestaurant;
       });
 
+      if (worthPersisting) {
+        persistCache();
+      }
+
       return updated;
     },
-    []
+    [persistCache]
   );
 
   const getScanProgress = useCallback((): MenuScanProgress | null => {
@@ -215,7 +234,6 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
       mapsApiKey: getMapsApiKey(),
       onRestaurantUpdate: updateRestaurant,
       onNotifyUI: () => emitFilteredState(),
-      onPersist: persistCache,
       getIdentityKey: favoriteKey,
     };
 

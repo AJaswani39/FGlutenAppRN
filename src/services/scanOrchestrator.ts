@@ -11,7 +11,6 @@ export interface ScanOrchestratorConfig {
     updater: (current: Restaurant) => Restaurant
   ) => boolean;
   onNotifyUI: () => void;
-  onPersist: () => Promise<void>;
   getIdentityKey?: (restaurant: Restaurant) => string | null;
 }
 
@@ -215,7 +214,6 @@ export class ScanOrchestrator {
 
         if (applied) {
           this.config.onNotifyUI();
-          await this.config.onPersist();
         }
       }
     } catch (error) {

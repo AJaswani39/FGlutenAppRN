@@ -15,6 +15,75 @@ export class GeminiService {
   }
 
   /**
+   * Performs a comprehensive analysis of a menu based on multiple dietary restrictions.
+   */
+  static async analyzeMenu(
+    menuText: string, 
+    options: { strictCeliac?: boolean; dairyFree?: boolean; nutFree?: boolean; soyFree?: boolean } = {}
+  ): Promise<string> {
+    if (!this.genAI) {
+      throw new Error('Gemini API key is not configured.');
+    }
+
+    try {
+      const model = this.genAI.getGenerativeModel({
+        model: this.modelName,
+        systemInstruction: `
+          You are "FGluten AI", a strictly cautious dietary safety assistant. 
+          Analyze restaurant menus for multiple safety requirements simultaneously.
+          
+          ALWAYS check for:
+          1. Gluten-Free (Primary focus).
+          ${options.dairyFree ? '2. Dairy-Free (User is highly sensitive to dairy/lactose).' : ''}
+          ${options.nutFree ? '3. Nut-Free (User has a severe allergy to peanuts and tree nuts).' : ''}
+          ${options.soyFree ? '4. Soy-Free (User avoids soy and soy-based ingredients).' : ''}
+          
+          RULES:
+          - Be extremely conservative. 
+          - Prioritize cross-contamination risks.
+          - If the menu mentions shared equipment or a "shared kitchen", highlight it.
+          - Identify specific items that are safe vs unsafe for ALL selected restrictions combined.
+          
+          OUTPUT FORMAT (Markdown):
+          ### Overall Safety: [SAFE | CAUTION | UNSAFE]
+          [Short summary of combined risk]
+          
+          ### Safe Options (Meets ALL criteria):
+          - [Dish Name]: [Short reason why it's safe]
+          
+          ### Warning Items:
+          - [Dish Name]: [Specific allergen found]
+          
+          ### Cross-Contamination Risk:
+          [Details on shared fryers, etc.]
+        `,
+      });
+
+      const prompt = `
+        ANALYSIS REQUEST:
+        Analyze the following menu text for:
+        - Gluten-Free (Mandatory)
+        ${options.dairyFree ? '- Dairy-Free' : ''}
+        ${options.nutFree ? '- Nut-Free' : ''}
+        ${options.soyFree ? '- Soy-Free' : ''}
+
+        MENU TEXT:
+        """
+        ${menuText}
+        """
+      `;
+
+      const result = await model.generateContent(prompt);
+      const response = await result.response;
+      return response.text();
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      logger.error(`Gemini deep analysis failed: ${message}`);
+      throw new Error(`AI Deep Analysis failed: ${message}`);
+    }
+  }
+
+  /**
    * Asks a specific question about a menu's gluten-free safety.
    */
   static async askQuestion(menuText: string, question: string): Promise<string> {

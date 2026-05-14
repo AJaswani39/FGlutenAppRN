@@ -47,7 +47,7 @@ interface RestaurantContextValue {
   retryFailedScans: () => void;
   updateAiSession: (
     restaurant: Restaurant,
-    session: { analysis?: any; chat?: any[] }
+    session: { analysis?: any; chat?: any[]; deepAnalysis?: string | null }
   ) => void;
 }
 
@@ -474,11 +474,12 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
   }, []);
 
   const updateAiSession = useCallback(
-    (restaurant: Restaurant, session: { analysis?: any; chat?: any[] }) => {
+    (restaurant: Restaurant, session: { analysis?: any; chat?: any[]; deepAnalysis?: string | null }) => {
       updateRestaurant(restaurant, (current) => ({
         ...current,
         aiAnalysisResult: session.analysis !== undefined ? session.analysis : current.aiAnalysisResult,
         aiChatHistory: session.chat !== undefined ? session.chat : current.aiChatHistory,
+        aiDeepAnalysis: session.deepAnalysis !== undefined ? session.deepAnalysis : current.aiDeepAnalysis,
       }));
     },
     [updateRestaurant]

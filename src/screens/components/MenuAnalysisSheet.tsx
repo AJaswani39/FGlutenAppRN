@@ -21,6 +21,7 @@ import { extractMenuTextFromImage } from '../../services/menuOcr';
 import { GeminiService } from '../../services/geminiService';
 import { Ionicons } from '@expo/vector-icons';
 import { useRestaurants } from '../../context/RestaurantContext';
+import { useSettings } from '../../context/SettingsContext';
 import { Restaurant, AiChatMessage } from '../../types/restaurant';
 
 interface Props {
@@ -34,7 +35,10 @@ export default function MenuAnalysisSheet({ restaurant, onClose }: Props) {
   // Initialize state from persistent restaurant session if available
   const [editableText, setEditableText] = useState(restaurant.rawMenuText || '');
   const [analysisResult, setAnalysisResult] = useState<MenuAnalysisResult | null>(restaurant.aiAnalysisResult || null);
+  const [deepAnalysisMarkdown, setDeepAnalysisMarkdown] = useState<string | null>(restaurant.aiDeepAnalysis || null);
   const [chatHistory, setChatHistory] = useState<AiChatMessage[]>(restaurant.aiChatHistory || []);
+  
+  const { dairyFree, nutFree, soyFree, strictCeliac } = useSettings();
   
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isExtractingPhotoText, setIsExtractingPhotoText] = useState(false);
@@ -60,8 +64,9 @@ export default function MenuAnalysisSheet({ restaurant, onClose }: Props) {
     updateAiSession(restaurant, {
       analysis: analysisResult,
       chat: chatHistory,
+      deepAnalysis: deepAnalysisMarkdown,
     });
-  }, [analysisResult, chatHistory, restaurant, updateAiSession]);
+  }, [analysisResult, chatHistory, deepAnalysisMarkdown, restaurant, updateAiSession]);
 
   // Auto-analyse on mount if we have text but no previous result
   useEffect(() => {
@@ -79,9 +84,25 @@ export default function MenuAnalysisSheet({ restaurant, onClose }: Props) {
     setError(null);
     
     try {
+      // 1. Run local GF analysis for the score
       const result = await analyseMenuText(text);
       if (isMounted.current) {
         setAnalysisResult(result);
+      }
+
+      // 2. If secondary allergens are active, run Deep AI Analysis
+      if (dairyFree || nutFree || soyFree) {
+        const deepResult = await GeminiService.analyzeMenu(text, {
+          strictCeliac,
+          dairyFree,
+          nutFree,
+          soyFree,
+        });
+        if (isMounted.current) {
+          setDeepAnalysisMarkdown(deepResult);
+        }
+      } else {
+        setDeepAnalysisMarkdown(null);
       }
     } catch (err: any) {
       if (!isMounted.current) return;
@@ -290,6 +311,15 @@ export default function MenuAnalysisSheet({ restaurant, onClose }: Props) {
             )}
           </Pressable>
 
+          {(dairyFree || nutFree || soyFree) && (
+            <View style={styles.allergenBanner}>
+              <Ionicons name="sparkles" size={16} color={Colors.warning} />
+              <Text style={styles.allergenBannerText}>
+                Deep Scan active for: {[dairyFree && 'Dairy', nutFree && 'Nuts', soyFree && 'Soy'].filter(Boolean).join(', ')}
+              </Text>
+            </View>
+          )}
+
           {error && (
             <View style={styles.errorBanner}>
               <Text style={styles.errorText}>{error}</Text>
@@ -334,6 +364,15 @@ export default function MenuAnalysisSheet({ restaurant, onClose }: Props) {
                   <Text style={styles.emptyList}>No unsafe items found.</Text>
                 )}
               </ResultSection>
+
+              {deepAnalysisMarkdown && (
+                <View style={styles.deepAnalysisContainer}>
+                  <Text style={styles.sectionLabel}>DEEP AI ANALYSIS (ALLERGENS)</Text>
+                  <View style={styles.deepAnalysisBox}>
+                    <Text style={styles.deepAnalysisText}>{deepAnalysisMarkdown}</Text>
+                  </View>
+                </View>
+              )}
             </View>
           )}
 
@@ -522,6 +561,38 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: Colors.border,
     marginBottom: Spacing.lg,
+  },
+  allergenBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+    backgroundColor: Colors.warningBg,
+    padding: Spacing.sm,
+    borderRadius: Radius.sm,
+    marginBottom: Spacing.md,
+    borderWidth: 1,
+    borderColor: Colors.warning,
+  },
+  allergenBannerText: {
+    color: Colors.warning,
+    fontSize: FontSize.xs,
+    fontWeight: FontWeight.bold,
+  },
+  deepAnalysisContainer: {
+    marginTop: Spacing.md,
+  },
+  deepAnalysisBox: {
+    backgroundColor: Colors.surfaceElevated,
+    padding: Spacing.md,
+    borderRadius: Radius.md,
+    borderLeftWidth: 4,
+    borderLeftColor: Colors.warning,
+  },
+  deepAnalysisText: {
+    color: Colors.textPrimary,
+    fontSize: FontSize.sm,
+    lineHeight: 20,
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
   },
   chatHistory: {
     marginBottom: Spacing.md,

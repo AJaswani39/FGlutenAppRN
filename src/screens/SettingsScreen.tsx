@@ -5,7 +5,10 @@ import { useSettings } from '../context/SettingsContext';
 import { IconName, Ionicons } from '../components/ui';
 
 export default function SettingsScreen() {
-  const { useMiles, strictCeliac, setUseMiles, setStrictCeliac } = useSettings();
+  const { 
+    useMiles, strictCeliac, dairyFree, nutFree, soyFree,
+    setUseMiles, setStrictCeliac, setDairyFree, setNutFree, setSoyFree 
+  } = useSettings();
 
   return (
     <View style={styles.container}>
@@ -26,6 +29,32 @@ export default function SettingsScreen() {
           description="Only show restaurants with confirmed GF evidence or highly rated options"
         />
       </View>
+
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Dietary Preferences</Text>
+        <SettingRow
+          icon="water"
+          label="Dairy-Free"
+          value={dairyFree}
+          onToggle={() => setDairyFree(!dairyFree)}
+          description="Highlight items without dairy/lactose"
+        />
+        <SettingRow
+          icon="nutrition"
+          label="Nut-Free"
+          value={nutFree}
+          onToggle={() => setNutFree(!nutFree)}
+          description="Flag peanuts and tree nuts"
+        />
+        <SettingRow
+          icon="flask"
+          label="Soy-Free"
+          value={soyFree}
+          onToggle={() => setSoyFree(!soyFree)}
+          description="Highlight items without soy/lecithin"
+        />
+      </View>
+
     </View>
   );
 }

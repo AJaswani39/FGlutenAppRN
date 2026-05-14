@@ -27,6 +27,7 @@ export interface Restaurant {
   favoriteStatus: FavoriteStatus;
   aiAnalysisResult?: any | null; // Using any to avoid circular dependency for now, or we move the type
   aiChatHistory?: AiChatMessage[];
+  aiDeepAnalysis?: string | null;
 }
 
 export interface RestaurantFilters {

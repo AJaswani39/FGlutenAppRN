@@ -23,6 +23,9 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRestaurants } from '../../context/RestaurantContext';
 import { useSettings } from '../../context/SettingsContext';
 import { Restaurant, AiChatMessage } from '../../types/restaurant';
+import ViewShot, { captureRef } from 'react-native-view-shot';
+import * as Sharing from 'expo-sharing';
+import SafetyScorecard from './SafetyScorecard';
 
 interface Props {
   restaurant: Restaurant;
@@ -48,6 +51,9 @@ export default function MenuAnalysisSheet({ restaurant, onClose }: Props) {
   // AI Chat State
   const [userQuestion, setUserQuestion] = useState('');
   const [isAsking, setIsAsking] = useState(false);
+  const [isSharing, setIsSharing] = useState(false);
+  
+  const scorecardRef = useRef(null);
 
   useEffect(() => {
     // Initialize Gemini with key from config
@@ -232,6 +238,28 @@ export default function MenuAnalysisSheet({ restaurant, onClose }: Props) {
     }
   };
 
+  const handleShareCard = async () => {
+    if (!analysisResult) return;
+    setIsSharing(true);
+    
+    try {
+      const uri = await captureRef(scorecardRef, {
+        format: 'jpg',
+        quality: 0.9,
+      });
+      
+      await Sharing.shareAsync(uri, {
+        mimeType: 'image/jpeg',
+        dialogTitle: `Share ${restaurant.name} Safety Card`,
+        UTI: 'public.jpeg',
+      });
+    } catch (err: any) {
+      setError('Could not generate sharing card.');
+    } finally {
+      setIsSharing(false);
+    }
+  };
+
   const safetyColor =
     analysisResult?.overallSafety === 'safe'
       ? Colors.success
@@ -341,6 +369,23 @@ export default function MenuAnalysisSheet({ restaurant, onClose }: Props) {
             <View style={styles.errorBanner}>
               <Text style={styles.errorText}>{error}</Text>
             </View>
+          )}
+
+          {analysisResult && (
+            <Pressable 
+              style={[styles.shareBtn, isSharing && styles.analyseBtnDisabled]} 
+              onPress={handleShareCard}
+              disabled={isSharing}
+            >
+              {isSharing ? (
+                <ActivityIndicator color={Colors.primary} />
+              ) : (
+                <>
+                  <Ionicons name="share-social" size={20} color={Colors.primary} />
+                  <Text style={styles.shareBtnText}>Share Safety Card</Text>
+                </>
+              )}
+            </Pressable>
           )}
 
           {analysisResult && (
@@ -468,6 +513,19 @@ export default function MenuAnalysisSheet({ restaurant, onClose }: Props) {
             speaking to restaurant staff, especially if you have celiac disease.
           </Text>
         </ScrollView>
+
+        {/* Hidden Scorecard for Capture */}
+        <View style={styles.hiddenCapture} pointerEvents="none">
+          {analysisResult && (
+            <ViewShot ref={scorecardRef} options={{ format: 'jpg', quality: 0.9 }}>
+              <SafetyScorecard 
+                restaurant={restaurant} 
+                analysis={analysisResult} 
+                allergens={[dairyFree && 'Dairy', nutFree && 'Nuts', soyFree && 'Soy'].filter(Boolean) as string[]}
+              />
+            </ViewShot>
+          )}
+        </View>
       </KeyboardAvoidingView>
     </Modal>
   );
@@ -644,6 +702,28 @@ const styles = StyleSheet.create({
   chatHistory: {
     marginBottom: Spacing.md,
     gap: Spacing.sm,
+  },
+  shareBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.sm,
+    padding: Spacing.md,
+    borderRadius: Radius.md,
+    borderWidth: 1,
+    borderColor: Colors.primary,
+    marginBottom: Spacing.lg,
+    backgroundColor: Colors.surface,
+  },
+  shareBtnText: {
+    color: Colors.primary,
+    fontWeight: FontWeight.bold,
+    fontSize: FontSize.sm,
+  },
+  hiddenCapture: {
+    position: 'absolute',
+    left: -2000, // Way off screen
+    top: 0,
   },
   riskMeterSection: {
     marginTop: Spacing.md,

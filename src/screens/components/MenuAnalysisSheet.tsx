@@ -17,6 +17,8 @@ import {
 import { Colors, Spacing, Radius, FontSize, FontWeight } from '../../theme/colors';
 import { analyseMenuText, MenuAnalysisResult } from '../../services/menuSafety';
 import { extractMenuTextFromImage } from '../../services/menuOcr';
+import { GeminiService } from '../../services/geminiService';
+import { Ionicons } from '@expo/vector-icons';
 
 interface ExpoConfigExtra {
   VISION_API_KEY?: string;
@@ -44,11 +46,41 @@ export default function MenuAnalysisSheet({ restaurantName, menuText, onClose }:
   const [error, setError] = useState<string | null>(null);
   const isMounted = useRef(true);
 
+  // AI Chat State
+  const [userQuestion, setUserQuestion] = useState('');
+  const [aiAnswer, setAiAnswer] = useState<string | null>(null);
+  const [isAsking, setIsAsking] = useState(false);
+
   useEffect(() => {
+    // Initialize Gemini with key from config
+    const geminiKey = (Constants.expoConfig?.extra as any)?.GEMINI_API_KEY ?? '';
+    GeminiService.init(geminiKey);
+
     return () => {
       isMounted.current = false;
     };
   }, []);
+
+  const askAi = async () => {
+    if (!userQuestion.trim()) return;
+    setIsAsking(true);
+    setError(null);
+    try {
+      const answer = await GeminiService.askQuestion(editableText, userQuestion);
+      if (isMounted.current) {
+        setAiAnswer(answer);
+        setUserQuestion('');
+      }
+    } catch (err: any) {
+      if (isMounted.current) {
+        setError(err.message || 'Failed to get AI answer.');
+      }
+    } finally {
+      if (isMounted.current) {
+        setIsAsking(false);
+      }
+    }
+  };
 
   // Auto-analyse on mount if we have text
   useEffect(() => {
@@ -292,6 +324,42 @@ export default function MenuAnalysisSheet({ restaurantName, menuText, onClose }:
                 </ResultSection>
               )}
 
+              {/* AI Chat Section */}
+              <View style={styles.aiChatContainer}>
+                <Text style={styles.sectionLabel}>ASK FGLUTEN AI</Text>
+                
+                {aiAnswer && (
+                  <View style={styles.aiAnswerBubble}>
+                    <Text style={styles.aiAnswerText}>{aiAnswer}</Text>
+                    <Pressable onPress={() => setAiAnswer(null)}>
+                      <Text style={styles.clearChatText}>Clear</Text>
+                    </Pressable>
+                  </View>
+                )}
+
+                <View style={styles.chatInputRow}>
+                  <TextInput
+                    style={styles.chatInput}
+                    placeholder="Ask about an ingredient or dish..."
+                    placeholderTextColor={Colors.textMuted}
+                    value={userQuestion}
+                    onChangeText={setUserQuestion}
+                    onSubmitEditing={askAi}
+                  />
+                  <Pressable 
+                    style={[styles.askBtn, (!userQuestion.trim() || isAsking) && styles.askBtnDisabled]} 
+                    onPress={askAi}
+                    disabled={!userQuestion.trim() || isAsking}
+                  >
+                    {isAsking ? (
+                      <ActivityIndicator size="small" color={Colors.textInverse} />
+                    ) : (
+                      <Ionicons name="send" size={18} color={Colors.textInverse} />
+                    )}
+                  </Pressable>
+                </View>
+              </View>
+
               <Text style={styles.disclaimer}>
                 ⚠️ This analysis is based on keyword scanning and is not a substitute for
                 speaking to restaurant staff, especially if you have celiac disease.
@@ -428,6 +496,59 @@ const styles = StyleSheet.create({
     borderTopColor: Colors.border,
     paddingTop: Spacing.md,
     marginTop: Spacing.sm,
+  },
+  aiChatContainer: {
+    marginTop: Spacing.lg,
+    paddingTop: Spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: Colors.border,
+    marginBottom: Spacing.lg,
+  },
+  aiAnswerBubble: {
+    backgroundColor: Colors.surfaceElevated,
+    borderRadius: Radius.md,
+    padding: Spacing.md,
+    marginBottom: Spacing.md,
+    borderLeftWidth: 4,
+    borderLeftColor: Colors.primary,
+  },
+  aiAnswerText: {
+    color: Colors.textPrimary,
+    fontSize: FontSize.sm,
+    lineHeight: 20,
+  },
+  clearChatText: {
+    color: Colors.textMuted,
+    fontSize: FontSize.xs,
+    marginTop: Spacing.xs,
+    textAlign: 'right',
+  },
+  chatInputRow: {
+    flexDirection: 'row',
+    gap: Spacing.sm,
+    alignItems: 'center',
+  },
+  chatInput: {
+    flex: 1,
+    backgroundColor: Colors.surface,
+    borderRadius: Radius.full,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: 10,
+    color: Colors.textPrimary,
+    fontSize: FontSize.sm,
+  },
+  askBtn: {
+    backgroundColor: Colors.primary,
+    width: 44,
+    height: 44,
+    borderRadius: Radius.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  askBtnDisabled: {
+    opacity: 0.5,
   },
 });
 

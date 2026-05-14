@@ -17,14 +17,32 @@ import RestaurantDetailModal from './components/RestaurantDetailModal';
 import { getRestaurantListKey } from '../util/restaurantUtils';
 import { Ionicons, StateMessage } from '../components/ui';
 import { ScanProgressBanner } from '../components/ScanProgressBanner';
+import { distanceBetween } from '../util/geoUtils';
 
 export default function MapScreen() {
   const { uiState, loadNearbyRestaurants } = useRestaurants();
   const { useMiles } = useSettings();
   const [previewRestaurant, setPreviewRestaurant] = useState<Restaurant | null>(null);
   const [detailRestaurant, setDetailRestaurant] = useState<Restaurant | null>(null);
+  const [mapRegion, setMapRegion] = useState<Region | null>(null);
 
   const restaurants = uiState.restaurants;
+
+  const showSearchButton = useMemo(() => {
+    if (!mapRegion || !uiState.userLatitude || !uiState.userLongitude) return false;
+    if (uiState.status === 'loading') return false;
+
+    const dist = distanceBetween(
+      mapRegion.latitude,
+      mapRegion.longitude,
+      uiState.userLatitude,
+      uiState.userLongitude
+    );
+
+    // Show if map center has moved more than 3km from current search center
+    return dist > 3000;
+  }, [mapRegion, uiState.status, uiState.userLatitude, uiState.userLongitude]);
+
   const initialRegion = useMemo<Region | null>(() => {
     if (uiState.userLatitude != null && uiState.userLongitude != null) {
       return {
@@ -55,7 +73,7 @@ export default function MapScreen() {
     );
   }
 
-  if (!initialRegion || restaurants.length === 0) {
+  if (!initialRegion) {
     return (
       <View style={stateStyles.container}>
         <StateMessage
@@ -63,15 +81,18 @@ export default function MapScreen() {
           title={uiState.status === 'permission_required' ? 'Location needed' : 'Map is empty'}
           message={uiState.message ?? 'Search nearby restaurants to show them on the map.'}
           actionLabel={uiState.status === 'permission_required' ? 'Enable Location' : 'Find Restaurants'}
-          onAction={loadNearbyRestaurants}
+          onAction={() => loadNearbyRestaurants()}
         />
       </View>
     );
   }
 
+  const hasNoResults = uiState.status === 'success' && restaurants.length === 0;
+
   return (
     <View style={styles.container}>
       {uiState.scanProgress ? <ScanProgressBanner progress={uiState.scanProgress} /> : null}
+      
       <MapView
         style={styles.map}
         provider={PROVIDER_GOOGLE}
@@ -79,6 +100,7 @@ export default function MapScreen() {
         showsUserLocation={uiState.userLatitude != null && uiState.userLongitude != null}
         showsMyLocationButton
         onPress={() => setPreviewRestaurant(null)}
+        onRegionChangeComplete={setMapRegion}
       >
         {restaurants.map((restaurant, index) => {
           if (restaurant.latitude == null || restaurant.longitude == null) return null;
@@ -98,6 +120,23 @@ export default function MapScreen() {
           );
         })}
       </MapView>
+
+      {hasNoResults && (
+        <View style={styles.noResultsOverlay}>
+          <Ionicons name="alert-circle" size={16} color={Colors.textSecondary} />
+          <Text style={styles.noResultsText}>No restaurants found in this area</Text>
+        </View>
+      )}
+
+      {showSearchButton && (
+        <Pressable 
+          style={styles.searchAreaBtn} 
+          onPress={() => loadNearbyRestaurants({ latitude: mapRegion!.latitude, longitude: mapRegion!.longitude })}
+        >
+          <Ionicons name="search" size={16} color={Colors.textInverse} />
+          <Text style={styles.searchAreaBtnText}>Search this area</Text>
+        </Pressable>
+      )}
 
       <View style={styles.summaryBar}>
         <View style={styles.summaryTitleRow}>
@@ -161,6 +200,49 @@ const styles = StyleSheet.create({
     padding: Spacing.md,
     borderWidth: 1,
     borderColor: Colors.border,
+    opacity: 0.95,
+  },
+  searchAreaBtn: {
+    position: 'absolute',
+    top: Spacing.xl * 2, // Push below summary bar
+    alignSelf: 'center',
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.primary,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    borderRadius: Radius.full,
+    gap: Spacing.xs,
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+  },
+  searchAreaBtnText: {
+    color: Colors.textInverse,
+    fontSize: FontSize.sm,
+    fontWeight: FontWeight.bold,
+  },
+  noResultsOverlay: {
+    position: 'absolute',
+    top: Spacing.xl * 2,
+    alignSelf: 'center',
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.surface,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    borderRadius: Radius.full,
+    gap: Spacing.xs,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    elevation: 2,
+  },
+  noResultsText: {
+    color: Colors.textSecondary,
+    fontSize: FontSize.sm,
+    fontWeight: FontWeight.medium,
   },
   summaryTitle: {
     color: Colors.textPrimary,
@@ -187,6 +269,11 @@ const styles = StyleSheet.create({
     padding: Spacing.md,
     borderWidth: 1,
     borderColor: Colors.border,
+    elevation: 5,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4.65,
   },
   previewName: {
     color: Colors.textPrimary,

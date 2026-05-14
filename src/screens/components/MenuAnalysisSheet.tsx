@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import Constants from 'expo-constants';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
@@ -13,34 +13,29 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
+  Clipboard,
 } from 'react-native';
 import { Colors, Spacing, Radius, FontSize, FontWeight } from '../../theme/colors';
 import { analyseMenuText, MenuAnalysisResult } from '../../services/menuSafety';
 import { extractMenuTextFromImage } from '../../services/menuOcr';
 import { GeminiService } from '../../services/geminiService';
 import { Ionicons } from '@expo/vector-icons';
-
-interface ExpoConfigExtra {
-  VISION_API_KEY?: string;
-}
+import { useRestaurants } from '../../context/RestaurantContext';
+import { Restaurant, AiChatMessage } from '../../types/restaurant';
 
 interface Props {
-  restaurantName: string;
-  menuText: string;
+  restaurant: Restaurant;
   onClose: () => void;
 }
 
-/**
- * AI-powered menu analysis screen.
- * Mirrors MenuAnalysisBottomSheet.kt — performs local heuristic analysis
- * of raw menu text and surfaces gluten-free evidence.
- *
- * In production this could be backed by Google Vertex AI / Gemini API.
- * For now, a fast local keyword analysis is used.
- */
-export default function MenuAnalysisSheet({ restaurantName, menuText, onClose }: Props) {
-  const [editableText, setEditableText] = useState(menuText);
-  const [analysisResult, setAnalysisResult] = useState<MenuAnalysisResult | null>(null);
+export default function MenuAnalysisSheet({ restaurant, onClose }: Props) {
+  const { updateAiSession } = useRestaurants();
+  
+  // Initialize state from persistent restaurant session if available
+  const [editableText, setEditableText] = useState(restaurant.rawMenuText || '');
+  const [analysisResult, setAnalysisResult] = useState<MenuAnalysisResult | null>(restaurant.aiAnalysisResult || null);
+  const [chatHistory, setChatHistory] = useState<AiChatMessage[]>(restaurant.aiChatHistory || []);
+  
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isExtractingPhotoText, setIsExtractingPhotoText] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -48,7 +43,6 @@ export default function MenuAnalysisSheet({ restaurantName, menuText, onClose }:
 
   // AI Chat State
   const [userQuestion, setUserQuestion] = useState('');
-  const [aiAnswer, setAiAnswer] = useState<string | null>(null);
   const [isAsking, setIsAsking] = useState(false);
 
   useEffect(() => {
@@ -61,31 +55,18 @@ export default function MenuAnalysisSheet({ restaurantName, menuText, onClose }:
     };
   }, []);
 
-  const askAi = async () => {
-    if (!userQuestion.trim()) return;
-    setIsAsking(true);
-    setError(null);
-    try {
-      const answer = await GeminiService.askQuestion(editableText, userQuestion);
-      if (isMounted.current) {
-        setAiAnswer(answer);
-        setUserQuestion('');
-      }
-    } catch (err: any) {
-      if (isMounted.current) {
-        setError(err.message || 'Failed to get AI answer.');
-      }
-    } finally {
-      if (isMounted.current) {
-        setIsAsking(false);
-      }
-    }
-  };
-
-  // Auto-analyse on mount if we have text
+  // Persist session changes back to context
   useEffect(() => {
-    if (menuText && menuText.trim().length > 10) {
-      void runAnalysis(menuText);
+    updateAiSession(restaurant, {
+      analysis: analysisResult,
+      chat: chatHistory,
+    });
+  }, [analysisResult, chatHistory, restaurant, updateAiSession]);
+
+  // Auto-analyse on mount if we have text but no previous result
+  useEffect(() => {
+    if (!analysisResult && editableText.trim().length > 10) {
+      void runAnalysis(editableText);
     }
   }, []);
 
@@ -96,23 +77,70 @@ export default function MenuAnalysisSheet({ restaurantName, menuText, onClose }:
     }
     setIsAnalyzing(true);
     setError(null);
-    setAnalysisResult(null);
-
-    // Simulate async work (replace with real API call if desired)
-    await new Promise((r) => setTimeout(r, 900));
-
+    
     try {
-      const result = analyseMenuText(text);
+      const result = await analyseMenuText(text);
       if (isMounted.current) {
         setAnalysisResult(result);
       }
-    } catch (error: unknown) {
+    } catch (err: any) {
       if (!isMounted.current) return;
-      const message = error instanceof Error ? error.message : String(error);
+      const message = err instanceof Error ? err.message : String(err);
       setError(`Analysis failed: ${message}`);
     } finally {
       if (isMounted.current) {
         setIsAnalyzing(false);
+      }
+    }
+  };
+
+  const copyToClipboard = (text: string) => {
+    Clipboard.setString(text);
+  };
+
+  const clearChat = () => {
+    setChatHistory([]);
+    setError(null);
+  };
+
+  const askAi = async () => {
+    if (!userQuestion.trim()) return;
+    setIsAsking(true);
+    setError(null);
+    
+    const questionText = userQuestion;
+    setUserQuestion('');
+
+    const snapshotHistorySize = chatHistory.length;
+
+    try {
+      const answer = await GeminiService.askQuestion(editableText, questionText);
+      if (isMounted.current) {
+        // If history was cleared while waiting, don't re-populate it unless the user wants
+        const newMessage: AiChatMessage = {
+          role: 'user',
+          text: questionText,
+          timestamp: Date.now(),
+        };
+        const assistantMessage: AiChatMessage = {
+          role: 'model',
+          text: answer,
+          timestamp: Date.now(),
+        };
+        
+        setChatHistory((prev) => {
+          // If the chat was cleared (prev.length < snapshot), we only add the new response if it was empty
+          if (prev.length === 0 && snapshotHistorySize > 0) return [];
+          return [...prev, newMessage, assistantMessage];
+        });
+      }
+    } catch (err: any) {
+      if (isMounted.current) {
+        setError(err.message || 'Failed to get AI answer.');
+      }
+    } finally {
+      if (isMounted.current) {
+        setIsAsking(false);
       }
     }
   };
@@ -138,8 +166,6 @@ export default function MenuAnalysisSheet({ restaurantName, menuText, onClose }:
 
       const pickedAsset = result.assets[0];
       
-      // Resize to a reasonable max dimension for OCR (e.g. 1200px)
-      // This saves massive bandwidth and prevents memory issues with base64
       const manipulated = await ImageManipulator.manipulateAsync(
         pickedAsset.uri,
         [{ resize: { width: pickedAsset.width > pickedAsset.height ? 1200 : undefined, height: pickedAsset.height >= pickedAsset.width ? 1200 : undefined } }],
@@ -148,21 +174,19 @@ export default function MenuAnalysisSheet({ restaurantName, menuText, onClose }:
 
       const base64 = manipulated.base64;
       if (!base64) {
-        setError('Could not process that image. Try a clearer menu photo.');
-        return;
+        throw new Error('Failed to process image data.');
       }
 
-      const visionApiKey = (Constants.expoConfig?.extra as ExpoConfigExtra)?.VISION_API_KEY ?? '';
-      const text = await extractMenuTextFromImage({ base64, apiKey: visionApiKey });
-      
+      const text = await extractMenuTextFromImage(base64);
       if (isMounted.current) {
-        setEditableText(text);
-        void runAnalysis(text);
+        const combinedText = editableText ? `${editableText}\n\n${text}` : text;
+        setEditableText(combinedText);
+        void runAnalysis(combinedText);
       }
-    } catch (error: unknown) {
-      if (!isMounted.current) return;
-      const message = error instanceof Error ? error.message : String(error);
-      setError(`Photo scan failed: ${message}`);
+    } catch (err: any) {
+      if (isMounted.current) {
+        setError(err.message || 'Failed to extract text from photo.');
+      }
     } finally {
       if (isMounted.current) {
         setIsExtractingPhotoText(false);
@@ -203,14 +227,13 @@ export default function MenuAnalysisSheet({ restaurantName, menuText, onClose }:
         style={styles.container} 
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        {/* Header */}
         <View style={styles.header}>
           <View style={styles.handle} />
           <View style={styles.headerContent}>
             <View>
               <Text style={styles.headerTitle}>🤖 AI Menu Analysis</Text>
               <Text style={styles.headerSub} numberOfLines={1}>
-                {restaurantName}
+                {restaurant.name}
               </Text>
             </View>
             <Pressable style={styles.closeBtn} onPress={onClose} accessibilityRole="button" accessibilityLabel="Close">
@@ -224,7 +247,6 @@ export default function MenuAnalysisSheet({ restaurantName, menuText, onClose }:
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
-          {/* Menu text input */}
           <Text style={styles.sectionLabel}>MENU TEXT</Text>
           <View style={styles.textArea}>
             <TextInput
@@ -249,149 +271,160 @@ export default function MenuAnalysisSheet({ restaurantName, menuText, onClose }:
             {isExtractingPhotoText ? (
               <ActivityIndicator color={Colors.primary} />
             ) : (
-              <Text style={styles.photoBtnText}>📷 Scan Menu Photo</Text>
+              <>
+                <Ionicons name="camera" size={20} color={Colors.primary} />
+                <Text style={styles.photoBtnText}>Scan Menu Photo</Text>
+              </>
             )}
           </Pressable>
 
           <Pressable
             style={[styles.analyseBtn, isAnalyzing && styles.analyseBtnDisabled]}
             onPress={() => runAnalysis(editableText)}
-            disabled={isAnalyzing}
-            accessibilityRole="button"
-            accessibilityLabel="Analyze menu for gluten-free options"
+            disabled={isAnalyzing || isExtractingPhotoText}
           >
             {isAnalyzing ? (
               <ActivityIndicator color={Colors.textInverse} />
             ) : (
-              <Text style={styles.analyseBtnText}>🤖 Analyse for Gluten-Free Safety</Text>
+              <Text style={styles.analyseBtnText}>Run AI Safety Check</Text>
             )}
           </Pressable>
 
           {error && (
-            <View style={styles.errorCard}>
+            <View style={styles.errorBanner}>
               <Text style={styles.errorText}>{error}</Text>
             </View>
           )}
 
-          {/* Results */}
           {analysisResult && (
-            <>
-              {/* Overall safety card */}
-              <View style={[styles.safetyCard, { backgroundColor: safetyBg }]}>
-                <Text style={[styles.safetyEmoji]}>{safetyEmoji}</Text>
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.safetyTitle, { color: safetyColor }]}>
-                    {analysisResult.overallSafety === 'safe'
-                      ? `Generally Safe (${analysisResult.score}/100)`
-                      : analysisResult.overallSafety === 'caution'
-                      ? `Caution (${analysisResult.score}/100)`
-                      : analysisResult.overallSafety === 'unsafe'
-                      ? `Not Recommended (${analysisResult.score}/100)`
-                      : `Insufficient Information (${analysisResult.score}/100)`}
-                  </Text>
-                  <Text style={styles.safetySummary}>{analysisResult.summary}</Text>
-                </View>
+            <View style={styles.resultContainer}>
+              <View style={[styles.overallSafety, { backgroundColor: safetyBg }]}>
+                <Text style={[styles.safetyValue, { color: safetyColor }]}>
+                  {safetyEmoji} {analysisResult.overallSafety.toUpperCase()}
+                </Text>
+                <Text style={styles.safetySummary}>{analysisResult.summary}</Text>
               </View>
 
-              {/* Cross-contamination */}
-              {analysisResult.crossContamRisk && (
-                <ResultSection title="⚠️ Cross-Contamination Risk">
-                  <Text style={styles.resultText}>{analysisResult.crossContamRisk}</Text>
-                </ResultSection>
-              )}
-
-              {/* GF items */}
-              {analysisResult.glutenFreeItems.length > 0 && (
-                <ResultSection title={`✅ GF Items Found (${analysisResult.glutenFreeItems.length})`}>
-                  {analysisResult.glutenFreeItems.map((item, i) => (
-                    <View key={`gf-${item.slice(0, 20)}-${i}`} style={styles.listItem}>
-                      <Text style={styles.bullet}>•</Text>
-                      <Text style={styles.listItemText}>{item}</Text>
-                    </View>
-                  ))}
-                </ResultSection>
-              )}
-
-              {/* Warnings */}
-              {analysisResult.warnings.length > 0 && (
-                <ResultSection title={`🔶 Warnings (${analysisResult.warnings.length})`}>
-                  {analysisResult.warnings.map((w, i) => (
-                    <View key={`warn-${w.slice(0, 20)}-${i}`} style={styles.listItem}>
-                      <Text style={[styles.bullet, { color: Colors.warning }]}>⚠</Text>
-                      <Text style={[styles.listItemText, { color: Colors.warning }]}>{w}</Text>
-                    </View>
-                  ))}
-                </ResultSection>
-              )}
-
-              {/* AI Chat Section */}
-              <View style={styles.aiChatContainer}>
-                <Text style={styles.sectionLabel}>ASK FGLUTEN AI</Text>
-                
-                {aiAnswer && (
-                  <View style={styles.aiAnswerBubble}>
-                    <Text style={styles.aiAnswerText}>{aiAnswer}</Text>
-                    <Pressable onPress={() => setAiAnswer(null)}>
-                      <Text style={styles.clearChatText}>Clear</Text>
-                    </Pressable>
-                  </View>
+              <ResultSection title="SAFE OPTIONS (GF)" icon="checkmark-circle" color={Colors.success}>
+                {analysisResult.safeItems.length > 0 ? (
+                  analysisResult.safeItems.map((item, i) => (
+                    <Text key={i} style={styles.listItem}>• {item}</Text>
+                  ))
+                ) : (
+                  <Text style={styles.emptyList}>No clearly safe items found.</Text>
                 )}
+              </ResultSection>
 
-                <View style={styles.chatInputRow}>
-                  <TextInput
-                    style={styles.chatInput}
-                    placeholder="Ask about an ingredient or dish..."
-                    placeholderTextColor={Colors.textMuted}
-                    value={userQuestion}
-                    onChangeText={setUserQuestion}
-                    onSubmitEditing={askAi}
-                  />
-                  <Pressable 
-                    style={[styles.askBtn, (!userQuestion.trim() || isAsking) && styles.askBtnDisabled]} 
-                    onPress={askAi}
-                    disabled={!userQuestion.trim() || isAsking}
-                  >
-                    {isAsking ? (
-                      <ActivityIndicator size="small" color={Colors.textInverse} />
-                    ) : (
-                      <Ionicons name="send" size={18} color={Colors.textInverse} />
-                    )}
-                  </Pressable>
-                </View>
-              </View>
+              <ResultSection title="PROBABLY SAFE (CAUTION)" icon="warning" color={Colors.warning}>
+                {analysisResult.cautionItems.length > 0 ? (
+                  analysisResult.cautionItems.map((item, i) => (
+                    <Text key={i} style={styles.listItem}>• {item}</Text>
+                  ))
+                ) : (
+                  <Text style={styles.emptyList}>No caution items found.</Text>
+                )}
+              </ResultSection>
 
-              <Text style={styles.disclaimer}>
-                ⚠️ This analysis is based on keyword scanning and is not a substitute for
-                speaking to restaurant staff, especially if you have celiac disease.
-              </Text>
-            </>
+              <ResultSection title="AVOID (GLUTEN)" icon="close-circle" color={Colors.error}>
+                {analysisResult.unsafeItems.length > 0 ? (
+                  analysisResult.unsafeItems.map((item, i) => (
+                    <Text key={i} style={styles.listItem}>• {item}</Text>
+                  ))
+                ) : (
+                  <Text style={styles.emptyList}>No unsafe items found.</Text>
+                )}
+              </ResultSection>
+            </View>
           )}
 
-          <View style={{ height: 40 }} />
+          {/* AI Chat Section */}
+          <View style={styles.aiChatContainer}>
+            <Text style={styles.sectionLabel}>ASK FGLUTEN AI</Text>
+            
+            <View style={styles.chatHistory}>
+              {chatHistory.map((msg, i) => (
+                <Pressable 
+                  key={i} 
+                  style={[
+                    styles.chatBubble, 
+                    msg.role === 'user' ? styles.userBubble : styles.modelBubble
+                  ]}
+                  onLongPress={() => copyToClipboard(msg.text)}
+                  delayLongPress={300}
+                >
+                  <Text style={[
+                    styles.chatText,
+                    msg.role === 'user' ? styles.userChatText : styles.modelChatText
+                  ]}>
+                    {msg.text}
+                  </Text>
+                  {msg.role === 'model' && (
+                    <Pressable style={styles.copyIcon} onPress={() => copyToClipboard(msg.text)}>
+                      <Ionicons name="copy-outline" size={12} color={Colors.textMuted} />
+                    </Pressable>
+                  )}
+                </Pressable>
+              ))}
+            </View>
+
+            <View style={styles.chatInputRow}>
+              <TextInput
+                style={styles.chatInput}
+                placeholder="Ask about an ingredient or dish..."
+                placeholderTextColor={Colors.textMuted}
+                value={userQuestion}
+                onChangeText={setUserQuestion}
+                onSubmitEditing={askAi}
+              />
+              <Pressable 
+                style={[styles.askBtn, (!userQuestion.trim() || isAsking) && styles.askBtnDisabled]} 
+                onPress={askAi}
+                disabled={!userQuestion.trim() || isAsking}
+              >
+                {isAsking ? (
+                  <ActivityIndicator size="small" color={Colors.textInverse} />
+                ) : (
+                  <Ionicons name="send" size={18} color={Colors.textInverse} />
+                )}
+              </Pressable>
+            </View>
+            
+            {chatHistory.length > 0 && (
+              <Pressable onPress={() => setChatHistory([])} style={styles.clearHistoryBtn}>
+                <Text style={styles.clearChatText}>Clear Chat History</Text>
+              </Pressable>
+            )}
+          </View>
+
+          <Text style={styles.disclaimer}>
+            ⚠️ This analysis is based on keyword scanning and is not a substitute for
+            speaking to restaurant staff, especially if you have celiac disease.
+          </Text>
         </ScrollView>
       </KeyboardAvoidingView>
     </Modal>
   );
 }
 
-function ResultSection({ title, children }: { title: string; children: React.ReactNode }) {
+function ResultSection({ title, icon, color, children }: { title: string; icon: any; color: string; children: React.ReactNode }) {
   return (
     <View style={resultStyles.section}>
-      <Text style={resultStyles.title}>{title}</Text>
-      <View style={resultStyles.body}>{children}</View>
+      <View style={resultStyles.header}>
+        <Ionicons name={icon} size={18} color={color} />
+        <Text style={[resultStyles.title, { color }]}>{title}</Text>
+      </View>
+      <View style={resultStyles.content}>{children}</View>
     </View>
   );
 }
-
-// ── Styles ────────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
   header: {
     paddingTop: Spacing.md,
-    paddingBottom: Spacing.sm,
     borderBottomWidth: 1,
     borderBottomColor: Colors.border,
+    backgroundColor: Colors.surface,
   },
   handle: {
     width: 40,
@@ -403,91 +436,77 @@ const styles = StyleSheet.create({
   },
   headerContent: {
     flexDirection: 'row',
-    alignItems: 'center',
     justifyContent: 'space-between',
+    alignItems: 'center',
     paddingHorizontal: Spacing.md,
+    paddingBottom: Spacing.md,
   },
-  headerTitle: {
-    color: Colors.textPrimary,
-    fontSize: FontSize.lg,
-    fontWeight: FontWeight.bold,
-  },
-  headerSub: { color: Colors.textSecondary, fontSize: FontSize.sm, marginTop: 2 },
+  headerTitle: { fontSize: FontSize.lg, fontWeight: FontWeight.bold, color: Colors.textPrimary },
+  headerSub: { fontSize: FontSize.xs, color: Colors.textSecondary, marginTop: 2 },
   closeBtn: {
     width: 32,
     height: 32,
-    backgroundColor: Colors.surface,
     borderRadius: Radius.full,
+    backgroundColor: Colors.surfaceElevated,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: Colors.border,
   },
-  closeBtnText: { color: Colors.textSecondary, fontSize: 13 },
-  content: { padding: Spacing.md },
+  closeBtnText: { fontSize: 14, color: Colors.textSecondary },
+  content: { padding: Spacing.md, paddingBottom: 100 },
   sectionLabel: {
-    color: Colors.textMuted,
     fontSize: FontSize.xs,
-    fontWeight: FontWeight.semiBold,
-    letterSpacing: 0.8,
-    marginBottom: Spacing.sm,
+    fontWeight: FontWeight.bold,
+    color: Colors.textMuted,
+    marginBottom: Spacing.xs,
+    letterSpacing: 1,
   },
   textArea: {
-    backgroundColor: Colors.surface,
+    backgroundColor: Colors.surfaceElevated,
     borderRadius: Radius.md,
     borderWidth: 1,
     borderColor: Colors.border,
-    padding: Spacing.md,
     marginBottom: Spacing.md,
-    minHeight: 120,
   },
   textInput: {
+    padding: Spacing.md,
     color: Colors.textPrimary,
     fontSize: FontSize.sm,
-    lineHeight: 20,
-    minHeight: 100,
-  },
-  analyseBtn: {
-    backgroundColor: Colors.primary,
-    borderRadius: Radius.full,
-    paddingVertical: 14,
-    alignItems: 'center',
-    marginBottom: Spacing.md,
+    height: 120,
   },
   photoBtn: {
-    backgroundColor: Colors.primaryLight,
-    borderRadius: Radius.full,
-    paddingVertical: 13,
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.sm,
+    padding: Spacing.md,
+    borderRadius: Radius.md,
     borderWidth: 1,
     borderColor: Colors.primary,
     marginBottom: Spacing.sm,
   },
-  analyseBtnDisabled: { opacity: 0.6 },
-  photoBtnText: { color: Colors.primary, fontSize: FontSize.md, fontWeight: FontWeight.bold },
-  analyseBtnText: { color: Colors.textInverse, fontSize: FontSize.md, fontWeight: FontWeight.bold },
-  errorCard: {
-    backgroundColor: Colors.errorBg,
+  photoBtnText: { color: Colors.primary, fontWeight: FontWeight.semiBold, fontSize: FontSize.sm },
+  analyseBtn: {
+    backgroundColor: Colors.primary,
+    padding: Spacing.md,
     borderRadius: Radius.md,
-    padding: Spacing.md,
-    marginBottom: Spacing.md,
+    alignItems: 'center',
+    marginBottom: Spacing.lg,
   },
-  errorText: { color: Colors.error, fontSize: FontSize.sm },
-  safetyCard: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    borderRadius: Radius.lg,
+  analyseBtnText: { color: Colors.textInverse, fontWeight: FontWeight.bold, fontSize: FontSize.md },
+  analyseBtnDisabled: { opacity: 0.5 },
+  errorBanner: {
+    backgroundColor: Colors.errorBg,
     padding: Spacing.md,
-    gap: Spacing.sm,
-    marginBottom: Spacing.md,
+    borderRadius: Radius.md,
+    marginBottom: Spacing.lg,
   },
-  safetyEmoji: { fontSize: 28 },
-  safetyTitle: { fontSize: FontSize.md, fontWeight: FontWeight.bold, marginBottom: 4 },
-  safetySummary: { color: Colors.textSecondary, fontSize: FontSize.sm, lineHeight: 20 },
-  listItem: { flexDirection: 'row', gap: Spacing.sm, marginBottom: 4 },
-  bullet: { color: Colors.primary, fontSize: FontSize.md },
-  listItemText: { flex: 1, color: Colors.textSecondary, fontSize: FontSize.sm, lineHeight: 20 },
-  resultText: { color: Colors.textSecondary, fontSize: FontSize.sm, lineHeight: 20 },
+  errorText: { color: Colors.error, fontSize: FontSize.sm, fontWeight: FontWeight.medium },
+  resultContainer: { gap: Spacing.lg },
+  overallSafety: { padding: Spacing.md, borderRadius: Radius.md, gap: Spacing.xs },
+  safetyValue: { fontSize: FontSize.lg, fontWeight: FontWeight.extraBold },
+  safetySummary: { color: Colors.textPrimary, fontSize: FontSize.sm, lineHeight: 20 },
+  listItem: { color: Colors.textSecondary, fontSize: FontSize.sm, lineHeight: 22 },
+  emptyList: { color: Colors.textMuted, fontSize: FontSize.sm, fontStyle: 'italic' },
   disclaimer: {
     color: Colors.textMuted,
     fontSize: FontSize.xs,
@@ -504,24 +523,43 @@ const styles = StyleSheet.create({
     borderTopColor: Colors.border,
     marginBottom: Spacing.lg,
   },
-  aiAnswerBubble: {
-    backgroundColor: Colors.surfaceElevated,
-    borderRadius: Radius.md,
-    padding: Spacing.md,
+  chatHistory: {
     marginBottom: Spacing.md,
+    gap: Spacing.sm,
+  },
+  chatBubble: {
+    maxWidth: '85%',
+    padding: Spacing.md,
+    borderRadius: Radius.md,
+  },
+  userBubble: {
+    alignSelf: 'flex-end',
+    backgroundColor: Colors.primaryLight,
+    borderBottomRightRadius: 2,
+  },
+  modelBubble: {
+    alignSelf: 'flex-start',
+    backgroundColor: Colors.surfaceElevated,
+    borderBottomLeftRadius: 2,
     borderLeftWidth: 4,
     borderLeftColor: Colors.primary,
   },
-  aiAnswerText: {
-    color: Colors.textPrimary,
+  chatText: {
     fontSize: FontSize.sm,
     lineHeight: 20,
   },
-  clearChatText: {
-    color: Colors.textMuted,
-    fontSize: FontSize.xs,
-    marginTop: Spacing.xs,
-    textAlign: 'right',
+  userChatText: {
+    color: Colors.primary,
+    fontWeight: FontWeight.medium,
+  },
+  modelChatText: {
+    color: Colors.textPrimary,
+  },
+  copyIcon: {
+    position: 'absolute',
+    right: 8,
+    bottom: 8,
+    opacity: 0.8,
   },
   chatInputRow: {
     flexDirection: 'row',
@@ -550,22 +588,20 @@ const styles = StyleSheet.create({
   askBtnDisabled: {
     opacity: 0.5,
   },
+  clearHistoryBtn: {
+    marginTop: Spacing.md,
+    alignSelf: 'center',
+  },
+  clearChatText: {
+    color: Colors.textMuted,
+    fontSize: FontSize.xs,
+    fontWeight: FontWeight.medium,
+  },
 });
 
 const resultStyles = StyleSheet.create({
-  section: { marginBottom: Spacing.md },
-  title: {
-    color: Colors.textPrimary,
-    fontSize: FontSize.sm,
-    fontWeight: FontWeight.semiBold,
-    marginBottom: Spacing.sm,
-  },
-  body: {
-    backgroundColor: Colors.surface,
-    borderRadius: Radius.md,
-    padding: Spacing.md,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    gap: 4,
-  },
+  section: { gap: Spacing.xs },
+  header: { flexDirection: 'row', alignItems: 'center', gap: Spacing.xs },
+  title: { fontSize: FontSize.xs, fontWeight: FontWeight.bold, letterSpacing: 0.5 },
+  content: { paddingLeft: 22 },
 });

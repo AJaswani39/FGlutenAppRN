@@ -62,18 +62,26 @@ export function getScanProgressForRestaurants(
 ): MenuScanProgress | null {
   if (scanBatchKeys.length === 0) return null;
 
+  // Create a lookup map for O(1) access
+  const restaurantMap = new Map<string, Restaurant>();
+  for (const r of restaurants) {
+    const key = getRestaurantIdentityKey(r);
+    if (key) restaurantMap.set(key, r);
+  }
+
   let completed = 0;
   let fetching = 0;
   let failed = 0;
 
   for (const key of scanBatchKeys) {
-    const restaurant = restaurants.find((item) => getRestaurantIdentityKey(item) === key);
+    const restaurant = restaurantMap.get(key);
     if (!restaurant) continue;
+    
     if (restaurant.menuScanStatus === 'FETCHING') {
       fetching += 1;
     } else if (restaurant.menuScanStatus === 'FAILED') {
       failed += 1;
-    } else if (restaurant.menuScanStatus !== 'NOT_STARTED') {
+    } else if (restaurant.menuScanStatus !== 'NOT_STARTED' && restaurant.menuScanStatus !== 'IDLE') {
       completed += 1;
     }
   }

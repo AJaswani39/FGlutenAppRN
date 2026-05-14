@@ -41,10 +41,14 @@ interface EmitFilteredStateOptions {
 interface RestaurantContextValue {
   uiState: RestaurantUiState;
   savedRestaurants: Restaurant[];
-  loadNearbyRestaurants: () => Promise<void>;
+  loadNearbyRestaurants: (overrideCoords?: { latitude: number; longitude: number }) => Promise<void>;
   setFavoriteStatus: (restaurant: Restaurant, status: FavoriteStatus) => void;
   requestMenuRescan: (restaurant: Restaurant) => void;
   retryFailedScans: () => void;
+  updateAiSession: (
+    restaurant: Restaurant,
+    session: { analysis?: any; chat?: any[] }
+  ) => void;
 }
 
 const RestaurantContext = createContext<RestaurantContextValue | null>(null);
@@ -264,7 +268,7 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
     void loadCachedIfAvailable();
   }, [loadCachedIfAvailable]);
 
-  const loadNearbyRestaurants = useCallback(async () => {
+  const loadNearbyRestaurants = useCallback(async (overrideCoords?: { latitude: number; longitude: number }) => {
     // Prevent redundant fetches if one is already in progress
     if (uiStateRef.current.status === 'loading') return;
 
@@ -312,52 +316,64 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
       return;
     }
 
+    const isManualSearch = !!overrideCoords;
+
     if (rawRestaurants.current.length > 0) {
       emitFilteredState({
         emptyReason: 'filters',
-        message: 'Refreshing nearby restaurants…',
+        message: isManualSearch ? 'Searching this area…' : 'Refreshing nearby restaurants…',
         status: 'loading',
       });
     } else {
       setUiState({
         status: 'loading',
         restaurants: [],
-        message: 'Finding restaurants near you…',
-        userLatitude: userLat.current,
-        userLongitude: userLng.current,
+        message: isManualSearch ? 'Searching this area…' : 'Finding restaurants near you…',
+        userLatitude: overrideCoords?.latitude ?? userLat.current,
+        userLongitude: overrideCoords?.longitude ?? userLng.current,
         scanProgress: getScanProgress(),
       });
     }
 
     try {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') {
-        if (rawRestaurants.current.length > 0) {
-          emitFilteredState({
-            emptyReason: 'filters',
-            message:
-              'Showing cached results — location permission is needed to refresh nearby restaurants.',
-          });
-        } else {
-          setUiState({
-            status: 'permission_required',
-            restaurants: [],
-            message: 'Location permission is needed to find nearby restaurants.',
-            userLatitude: null,
-            userLongitude: null,
-            scanProgress: getScanProgress(),
-          });
-        }
-        return;
-      }
+      let latitude: number;
+      let longitude: number;
 
-      const location = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.Balanced,
-      });
-      const { latitude, longitude } = location.coords;
+      if (overrideCoords) {
+        latitude = overrideCoords.latitude;
+        longitude = overrideCoords.longitude;
+      } else {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status !== 'granted') {
+          if (rawRestaurants.current.length > 0) {
+            emitFilteredState({
+              emptyReason: 'filters',
+              message:
+                'Showing cached results — location permission is needed to refresh nearby restaurants.',
+            });
+          } else {
+            setUiState({
+              status: 'permission_required',
+              restaurants: [],
+              message: 'Location permission is needed to find nearby restaurants.',
+              userLatitude: null,
+              userLongitude: null,
+              scanProgress: getScanProgress(),
+            });
+          }
+          return;
+        }
+
+        const location = await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.Balanced,
+        });
+        latitude = location.coords.latitude;
+        longitude = location.coords.longitude;
+      }
 
       const searchRadiusMeters =
         filtersRef.current.maxDistanceMeters > 0 ? filtersRef.current.maxDistanceMeters : undefined;
+      
       const restaurants = await fetchNearbyRestaurants(
         latitude,
         longitude,
@@ -439,6 +455,17 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
     void orchestrator.current?.retryFailed(rawRestaurants.current);
   }, []);
 
+  const updateAiSession = useCallback(
+    (restaurant: Restaurant, session: { analysis?: any; chat?: any[] }) => {
+      updateRestaurant(restaurant, (current) => ({
+        ...current,
+        aiAnalysisResult: session.analysis !== undefined ? session.analysis : current.aiAnalysisResult,
+        aiChatHistory: session.chat !== undefined ? session.chat : current.aiChatHistory,
+      }));
+    },
+    [updateRestaurant]
+  );
+
   const contextValue = useMemo(
     () => ({
       uiState,
@@ -447,8 +474,9 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
       setFavoriteStatus,
       requestMenuRescan,
       retryFailedScans,
+      updateAiSession,
     }),
-    [uiState, savedRestaurants, loadNearbyRestaurants, setFavoriteStatus, requestMenuRescan, retryFailedScans]
+    [uiState, savedRestaurants, loadNearbyRestaurants, setFavoriteStatus, requestMenuRescan, retryFailedScans, updateAiSession]
   );
 
   return (

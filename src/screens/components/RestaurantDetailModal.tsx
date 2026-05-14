@@ -315,8 +315,7 @@ export default function RestaurantDetailModal({ restaurant: initial, useMiles, o
       {/* AI Analysis Sheet */}
       {showAI && (
         <MenuAnalysisSheet
-          restaurantName={restaurant.name}
-          menuText={buildAiText() ?? ''}
+          restaurant={restaurant}
           onClose={() => setShowAI(false)}
         />
       )}

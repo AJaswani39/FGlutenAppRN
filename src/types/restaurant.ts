@@ -3,6 +3,12 @@ export type FavoriteStatus = 'safe' | 'try' | 'avoid' | null;
 export type SortMode = 'distance' | 'name';
 export type GfConfidenceLevel = 'confirmed' | 'name_match' | 'no_evidence' | 'unavailable' | 'pending';
 
+export interface AiChatMessage {
+  role: 'user' | 'model';
+  text: string;
+  timestamp: number;
+}
+
 export interface Restaurant {
   placeId: string;
   name: string;
@@ -19,6 +25,8 @@ export interface Restaurant {
   menuScanStatus: MenuScanStatus;
   menuScanTimestamp: number;
   favoriteStatus: FavoriteStatus;
+  aiAnalysisResult?: any | null; // Using any to avoid circular dependency for now, or we move the type
+  aiChatHistory?: AiChatMessage[];
 }
 
 export interface RestaurantFilters {

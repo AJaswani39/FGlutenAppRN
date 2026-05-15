@@ -7,11 +7,11 @@ import { logger } from '../util/logger';
  */
 export class GeminiService {
   private static genAI: GoogleGenerativeAI | null = null;
-  private static modelName = 'gemini-1.5-flash-latest';
+  private static modelName = 'gemini-1.5-flash';
 
   static init(apiKey: string) {
     if (!apiKey) return;
-    this.genAI = new GoogleGenerativeAI(apiKey);
+    this.genAI = new GoogleGenerativeAI(apiKey, { apiVersion: 'v1' });
   }
 
   /**

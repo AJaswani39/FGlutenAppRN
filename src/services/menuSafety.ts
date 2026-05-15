@@ -46,7 +46,7 @@ const GLUTEN_SOURCES = [
   'teriyaki',
 ];
 
-const GLUTEN_SOURCES_REGEX = new RegExp(`\\b(${GLUTEN_SOURCES.join('|')})\\b`, 'i');
+const GLUTEN_SOURCES_REGEX = new RegExp(`\\b(${GLUTEN_SOURCES.join('|')})\\b`, 'gi');
 
 
 const CC_PATTERNS = [

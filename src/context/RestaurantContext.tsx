@@ -384,7 +384,8 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
 
         // Optimization: Try to get the last known position first (fast) before powering up the GPS
         const lastKnown = await Location.getLastKnownPositionAsync();
-        const isRecent = lastKnown && (Date.now() - lastKnown.timestamp) < 60000;
+        const lastTimestamp = lastKnown?.timestamp ?? 0;
+        const isRecent = lastKnown && (Date.now() - lastTimestamp) < 60000;
 
         if (isRecent && lastKnown) {
           latitude = lastKnown.coords.latitude;

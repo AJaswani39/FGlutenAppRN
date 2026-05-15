@@ -75,7 +75,7 @@ export default function SafetyScorecard({ restaurant, analysis, allergens }: Pro
             <Text style={styles.sectionTitle}>RECOMMENDED DISHES</Text>
           </View>
           <View style={styles.itemsList}>
-            {analysis.safeItems.slice(0, 5).map((item, i) => (
+            {(analysis.safeItems ?? []).slice(0, 5).map((item, i) => (
               <Text key={i} style={styles.itemText}>
                 • {item}
               </Text>

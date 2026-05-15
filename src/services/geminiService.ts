@@ -7,7 +7,7 @@ import { logger } from '../util/logger';
  */
 export class GeminiService {
   private static genAI: GoogleGenerativeAI | null = null;
-  private static modelName = 'gemini-1.5-flash'; // Fast and has a generous free tier
+  private static modelName = 'gemini-1.5-flash-latest';
 
   static init(apiKey: string) {
     if (!apiKey) return;

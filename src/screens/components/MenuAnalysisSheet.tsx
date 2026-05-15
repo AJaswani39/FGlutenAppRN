@@ -132,11 +132,11 @@ export default function MenuAnalysisSheet({ restaurant, onClose }: Props) {
             if (!prev) return localResult;
             return {
               ...prev,
-              overallSafety: parsed.overallSafety?.toLowerCase() as any || prev.overallSafety,
+              overallSafety: (parsed.overallSafety?.toLowerCase() as any) || prev.overallSafety,
               summary: parsed.summary || prev.summary,
-              safeItems: parsed.safeItems || prev.safeItems,
-              unsafeItems: parsed.warningItems || prev.unsafeItems,
-              riskFactors: parsed.riskBreakdown || [],
+              safeItems: parsed.safeItems ?? prev.safeItems ?? [],
+              unsafeItems: parsed.warningItems ?? prev.unsafeItems ?? [],
+              riskFactors: parsed.riskBreakdown ?? [],
             };
           });
           setDeepAnalysisMarkdown(null); // No longer needed as markdown if we have JSON
@@ -417,7 +417,7 @@ export default function MenuAnalysisSheet({ restaurant, onClose }: Props) {
               </View>
 
               <ResultSection title="SAFE OPTIONS (GF)" icon="checkmark-circle" color={Colors.success}>
-                {analysisResult.safeItems.length > 0 ? (
+                {(analysisResult.safeItems?.length ?? 0) > 0 ? (
                   analysisResult.safeItems.map((item, i) => (
                     <Text key={i} style={styles.listItem}>• {item}</Text>
                   ))
@@ -427,7 +427,7 @@ export default function MenuAnalysisSheet({ restaurant, onClose }: Props) {
               </ResultSection>
 
               <ResultSection title="PROBABLY SAFE (CAUTION)" icon="warning" color={Colors.warning}>
-                {analysisResult.cautionItems.length > 0 ? (
+                {(analysisResult.cautionItems?.length ?? 0) > 0 ? (
                   analysisResult.cautionItems.map((item, i) => (
                     <Text key={i} style={styles.listItem}>• {item}</Text>
                   ))
@@ -437,7 +437,7 @@ export default function MenuAnalysisSheet({ restaurant, onClose }: Props) {
               </ResultSection>
 
               <ResultSection title="AVOID (GLUTEN)" icon="close-circle" color={Colors.error}>
-                {analysisResult.unsafeItems.length > 0 ? (
+                {(analysisResult.unsafeItems?.length ?? 0) > 0 ? (
                   analysisResult.unsafeItems.map((item, i) => (
                     <Text key={i} style={styles.listItem}>• {item}</Text>
                   ))

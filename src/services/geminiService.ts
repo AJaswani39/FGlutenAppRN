@@ -28,6 +28,7 @@ export class GeminiService {
     try {
       const model = this.genAI.getGenerativeModel({
         model: this.modelName,
+        apiVersion: 'v1',
         systemInstruction: `
           You are "FGluten AI", a strictly cautious dietary safety assistant. 
           Analyze restaurant menus for multiple safety requirements simultaneously.
@@ -99,6 +100,7 @@ export class GeminiService {
     try {
       const model = this.genAI.getGenerativeModel({
         model: this.modelName,
+        apiVersion: 'v1',
         systemInstruction: `
           You are "FGluten AI", a strictly cautious Celiac Disease dining assistant. 
           Your goal is to analyze restaurant menus for gluten-free safety.

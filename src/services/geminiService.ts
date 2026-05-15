@@ -1,17 +1,19 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
 import { logger } from '../util/logger';
 
 /**
  * Service to interact with Google Gemini AI for deep menu analysis
  * and interactive Celiac safety questions.
+ * 
+ * Optimized: Uses direct fetch to the v1 stable API to bypass SDK versioning issues.
  */
 export class GeminiService {
-  private static genAI: GoogleGenerativeAI | null = null;
-  private static modelName = 'gemini-pro';
+  private static apiKey: string | null = null;
+  private static modelName = 'gemini-1.5-flash';
+  private static baseUrl = 'https://generativelanguage.googleapis.com/v1/models';
 
   static init(apiKey: string) {
     if (!apiKey) return;
-    this.genAI = new GoogleGenerativeAI(apiKey, { apiVersion: 'v1' });
+    this.apiKey = apiKey;
   }
 
   /**
@@ -21,16 +23,11 @@ export class GeminiService {
     menuText: string, 
     options: { strictCeliac?: boolean; dairyFree?: boolean; nutFree?: boolean; soyFree?: boolean } = {}
   ): Promise<string> {
-    if (!this.genAI) {
+    if (!this.apiKey) {
       throw new Error('Gemini API key is not configured.');
     }
 
     try {
-      const model = this.genAI.getGenerativeModel({
-        model: this.modelName,
-        apiVersion: 'v1',
-      });
-
       const systemInstruction = `
         You are "FGluten AI", a strictly cautious dietary safety assistant. 
         Analyze restaurant menus for multiple safety requirements simultaneously.
@@ -79,9 +76,21 @@ export class GeminiService {
         """
       `;
 
-      const result = await model.generateContent(prompt);
-      const response = await result.response;
-      const text = response.text();
+      const response = await fetch(`${this.baseUrl}/${this.modelName}:generateContent?key=${this.apiKey}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }]
+        })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error?.message || `HTTP ${response.status}`);
+      }
+
+      const data = await response.json();
+      const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
       
       // Clean up potential markdown formatting if Gemini includes it
       return text.replace(/```json|```/gi, '').trim();
@@ -96,16 +105,11 @@ export class GeminiService {
    * Asks a specific question about a menu's gluten-free safety.
    */
   static async askQuestion(menuText: string, question: string): Promise<string> {
-    if (!this.genAI) {
+    if (!this.apiKey) {
       throw new Error('Gemini API key is not configured.');
     }
 
     try {
-      const model = this.genAI.getGenerativeModel({
-        model: this.modelName,
-        apiVersion: 'v1',
-      });
-
       const systemInstruction = `
         You are "FGluten AI", a strictly cautious Celiac Disease dining assistant. 
         Your goal is to analyze restaurant menus for gluten-free safety.
@@ -130,9 +134,21 @@ export class GeminiService {
         "${question}"
       `;
 
-      const result = await model.generateContent(prompt);
-      const response = await result.response;
-      return response.text();
+      const response = await fetch(`${this.baseUrl}/${this.modelName}:generateContent?key=${this.apiKey}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }]
+        })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error?.message || `HTTP ${response.status}`);
+      }
+
+      const data = await response.json();
+      return data.candidates?.[0]?.content?.parts?.[0]?.text || '';
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
       logger.error(`Gemini analysis failed: ${message}`);

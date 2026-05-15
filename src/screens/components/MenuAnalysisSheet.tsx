@@ -23,6 +23,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRestaurants } from '../../context/RestaurantContext';
 import { useSettings } from '../../context/SettingsContext';
 import { Restaurant, AiChatMessage } from '../../types/restaurant';
+import { logger } from '../../util/logger';
 import ViewShot, { captureRef } from 'react-native-view-shot';
 import * as Sharing from 'expo-sharing';
 import SafetyScorecard from './SafetyScorecard';
@@ -121,7 +122,10 @@ export default function MenuAnalysisSheet({ restaurant, onClose }: Props) {
 
       if (isMounted.current) {
         try {
-          const parsed = JSON.parse(deepResultRaw);
+          // Robust JSON extraction: look for the first '{' and last '}'
+          const jsonMatch = deepResultRaw.match(/\{[\s\S]*\}/);
+          const jsonString = jsonMatch ? jsonMatch[0] : deepResultRaw;
+          const parsed = JSON.parse(jsonString);
           
           // Merge deep results into analysisResult for UI rendering
           setAnalysisResult((prev) => {

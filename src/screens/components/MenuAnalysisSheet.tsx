@@ -316,7 +316,10 @@ export default function MenuAnalysisSheet({ restaurant, onClose }: Props) {
           <View style={styles.handle} />
           <View style={styles.headerContent}>
             <View>
-              <Text style={styles.headerTitle}>🤖 AI Menu Analysis</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <Text style={styles.headerTitle}>🤖 AI Menu Analysis</Text>
+                <Text style={{ fontSize: 10, color: Colors.textMuted, fontWeight: 'bold' }}>v1.2-STABLE</Text>
+              </View>
               <Text style={styles.headerSub} numberOfLines={1}>
                 {restaurant.name}
               </Text>

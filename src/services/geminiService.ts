@@ -8,7 +8,7 @@ import { logger } from '../util/logger';
  */
 export class GeminiService {
   private static apiKey: string | null = null;
-  private static modelName = 'gemini-1.5-flash';
+  private static modelName = 'gemini-pro';
   private static baseUrl = 'https://generativelanguage.googleapis.com/v1/models';
 
   static init(apiKey: string) {

@@ -61,32 +61,32 @@ export function filterAndSortRestaurants(
 ): Restaurant[] {
   const query = filters.searchQuery.trim();
   const queryRegex = query ? new RegExp(query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i') : null;
-
+  
+  const needsGfEvidence = filters.gfOnly || strictCeliac;
+  const minRating = filters.minRating;
+  const maxDist = filters.maxDistanceMeters;
+  const openNowOnly = filters.openNowOnly;
+  
   const filtered = restaurants.filter((restaurant) => {
-    // 1. Check GF requirements first (logical checks are faster than string/regex)
-    if (filters.gfOnly || strictCeliac) {
+    // 1. Boolean/Numeric filters (Fastest)
+    if (openNowOnly && restaurant.openNow !== true) return false;
+    if (minRating > 0 && (restaurant.rating ?? 0) < minRating) return false;
+    if (maxDist > 0 && restaurant.distanceMeters > maxDist) return false;
+
+    // 2. GF Evidence check
+    if (needsGfEvidence) {
       const hasGfItems = restaurant.gfMenu.length > 0;
-      const hasAnyEvidence = restaurant.hasGFMenu || hasGfItems;
-      
       if (strictCeliac) {
-        // Strict celiac needs explicit menu items or high-rated general evidence
-        if (!hasGfItems && !(hasAnyEvidence && (restaurant.rating ?? 0) >= 4.0)) return false;
-      } else if (filters.gfOnly && !hasAnyEvidence) {
+        if (!hasGfItems && !(restaurant.hasGFMenu && (restaurant.rating ?? 0) >= 4.0)) return false;
+      } else if (filters.gfOnly && !(restaurant.hasGFMenu || hasGfItems)) {
         return false;
       }
     }
 
-    // 2. Simple numeric/boolean filters
-    if (filters.openNowOnly && restaurant.openNow !== true) return false;
-    if (filters.minRating > 0 && (restaurant.rating ?? 0) < filters.minRating) return false;
-    if (filters.maxDistanceMeters > 0 && restaurant.distanceMeters > filters.maxDistanceMeters) return false;
-
-    // 3. Search query (regex test is faster than toLowerCase() + includes() as it avoids allocations)
+    // 3. Search query
     if (queryRegex) {
-      const nameMatch = queryRegex.test(restaurant.name);
-      if (!nameMatch) {
-        const menuMatch = restaurant.gfMenu.some((item) => queryRegex.test(item));
-        if (!menuMatch) return false;
+      if (!queryRegex.test(restaurant.name)) {
+        if (!restaurant.gfMenu.some((item) => queryRegex.test(item))) return false;
       }
     }
 
@@ -94,10 +94,15 @@ export function filterAndSortRestaurants(
   });
 
   // Sort the filtered array directly to avoid extra shallow copy
-  return filtered.sort((left, right) => {
-    if (filters.sortMode === 'distance') {
-      return left.distanceMeters - right.distanceMeters;
-    }
-    return left.name.localeCompare(right.name);
-  });
+  if (filters.sortMode === 'distance') {
+    return filtered.sort((a, b) => a.distanceMeters - b.distanceMeters);
+  } else {
+    return filtered.sort((a, b) => {
+      const nameA = a.name.toLowerCase();
+      const nameB = b.name.toLowerCase();
+      if (nameA < nameB) return -1;
+      if (nameA > nameB) return 1;
+      return 0;
+    });
+  }
 }

@@ -65,14 +65,28 @@ export default function MenuAnalysisSheet({ restaurant, onClose }: Props) {
     };
   }, []);
 
-  // Persist session changes back to context
+  // Optimization: Track session data in a ref to avoid excessive context re-renders
+  // We only sync back to the global RestaurantContext when the sheet is closed (unmount)
+  const sessionDataRef = useRef({
+    analysis: analysisResult,
+    chat: chatHistory,
+    deepAnalysis: deepAnalysisMarkdown,
+  });
+
   useEffect(() => {
-    updateAiSession(restaurant, {
+    sessionDataRef.current = {
       analysis: analysisResult,
       chat: chatHistory,
       deepAnalysis: deepAnalysisMarkdown,
-    });
-  }, [analysisResult, chatHistory, deepAnalysisMarkdown, restaurant, updateAiSession]);
+    };
+  }, [analysisResult, chatHistory, deepAnalysisMarkdown]);
+
+  useEffect(() => {
+    return () => {
+      // Flush the latest state back to the context on unmount
+      updateAiSession(restaurant, sessionDataRef.current);
+    };
+  }, [restaurant, updateAiSession]);
 
   // Auto-analyse on mount if we have text but no previous result
   useEffect(() => {
@@ -212,8 +226,8 @@ export default function MenuAnalysisSheet({ restaurant, onClose }: Props) {
       
       const manipulated = await ImageManipulator.manipulateAsync(
         pickedAsset.uri,
-        [{ resize: { width: pickedAsset.width > pickedAsset.height ? 1200 : undefined, height: pickedAsset.height >= pickedAsset.width ? 1200 : undefined } }],
-        { base64: true, format: ImageManipulator.SaveFormat.JPEG, quality: 0.7 }
+        [{ resize: { width: 1024 } }],
+        { base64: true, format: ImageManipulator.SaveFormat.JPEG, quality: 0.5 }
       );
 
       const base64 = manipulated.base64;
@@ -221,7 +235,8 @@ export default function MenuAnalysisSheet({ restaurant, onClose }: Props) {
         throw new Error('Failed to process image data.');
       }
 
-      const text = await extractMenuTextFromImage(base64);
+      const visionKey = (Constants.expoConfig?.extra as any)?.GCP_API_KEY ?? '';
+      const text = await extractMenuTextFromImage({ base64, apiKey: visionKey });
       if (isMounted.current) {
         const combinedText = editableText ? `${editableText}\n\n${text}` : text;
         setEditableText(combinedText);

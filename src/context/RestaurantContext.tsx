@@ -382,11 +382,20 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
           return;
         }
 
-        const location = await Location.getCurrentPositionAsync({
-          accuracy: Location.Accuracy.Balanced,
-        });
-        latitude = location.coords.latitude;
-        longitude = location.coords.longitude;
+        // Optimization: Try to get the last known position first (fast) before powering up the GPS
+        const lastKnown = await Location.getLastKnownPositionAsync();
+        const isRecent = lastKnown && (Date.now() - lastKnown.timestamp) < 60000;
+
+        if (isRecent && lastKnown) {
+          latitude = lastKnown.coords.latitude;
+          longitude = lastKnown.coords.longitude;
+        } else {
+          const location = await Location.getCurrentPositionAsync({
+            accuracy: Location.Accuracy.Balanced,
+          });
+          latitude = location.coords.latitude;
+          longitude = location.coords.longitude;
+        }
       }
 
       const searchRadiusMeters =

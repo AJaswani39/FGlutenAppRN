@@ -21,13 +21,7 @@ export interface RestaurantSafetyScore {
   reasons: string[];
 }
 
-const GF_POSITIVE = [
-  /gluten[\s-]?free/i,
-  /\bgf\b/i,
-  /celiac[\s-]?friendly/i,
-  /coeliac[\s-]?friendly/i,
-  /no[\s-]?gluten/i,
-];
+const GF_POSITIVE_REGEX = /gluten[\s-]?free|\bgf\b|celiac[\s-]?friendly|coeliac[\s-]?friendly|no[\s-]?gluten/i;
 
 const GLUTEN_SOURCES = [
   'wheat',
@@ -70,25 +64,25 @@ export function analyseMenuText(text: string): MenuAnalysisResult {
   const glutenFreeItems: string[] = [];
   const foundGlutenSources = new Set<string>();
 
+  // 1. Efficiently find all gluten sources in one pass across the whole text
+  const sourcesMatch = text.matchAll(GLUTEN_SOURCES_REGEX);
+  for (const match of sourcesMatch) {
+    foundGlutenSources.add(match[0].toLowerCase());
+    if (foundGlutenSources.size >= 10) break; // Cap findings for performance
+  }
+
+  // 2. Optimized line-by-line pass for item extraction
   for (const line of lines) {
     const trimmed = line.trim();
-    if (trimmed.length === 0) continue;
+    if (trimmed.length < 5) continue;
 
-    // Check for GF positive patterns
-    const isGf = GF_POSITIVE.some((pattern) => pattern.test(trimmed));
-
-    if (isGf) {
+    // Fast check for GF marker
+    if (GF_POSITIVE_REGEX.test(trimmed)) {
       if (glutenFreeItems.length < 12 && trimmed.length >= 10 && trimmed.length <= 200) {
         const cleaned = extractGfItem(trimmed);
         if (cleaned && !glutenFreeItems.some((item) => item.toLowerCase() === cleaned.toLowerCase())) {
           glutenFreeItems.push(cleaned);
         }
-      }
-    } else {
-      // If not marked GF, check for gluten sources in a single pass
-      const match = trimmed.match(GLUTEN_SOURCES_REGEX);
-      if (match) {
-        foundGlutenSources.add(match[0].toLowerCase());
       }
     }
   }

@@ -1,16 +1,17 @@
 import { logger } from '../util/logger';
 
 /**
- * Service to interact with Puter.js AI for deep menu analysis
- * and interactive Celiac safety questions.
+ * Service to interact with Puter.js AI for deep menu analysis.
+ * Uses Puter's OpenAI-compatible stable endpoint.
  */
 export class GeminiService {
   private static apiKey: string | null = null;
-  private static baseUrl = 'https://api.puter.com/v1/ai/chat';
+  // Puter's OpenAI-compatible endpoint
+  private static baseUrl = 'https://api.puter.com/puterai/openai/v1/chat/completions';
+  // Puter's gpt-4o-mini identifier
+  private static modelName = 'openai/gpt-4o-mini';
 
   static init(apiKey: string) {
-    // Puter might not need the Gemini key, but we'll store it in case 
-    // we use a Puter-compatible proxy or token.
     this.apiKey = apiKey;
   }
 
@@ -21,6 +22,10 @@ export class GeminiService {
     menuText: string, 
     options: { strictCeliac?: boolean; dairyFree?: boolean; nutFree?: boolean; soyFree?: boolean } = {}
   ): Promise<string> {
+    if (!this.apiKey) {
+      throw new Error('Puter Auth Token is missing. Please add it to your .env file.');
+    }
+
     try {
       const prompt = `
         You are "FGluten AI", a strictly cautious dietary safety assistant. 
@@ -55,26 +60,25 @@ export class GeminiService {
         "${menuText}"
       `;
 
-      // Using Puter's free AI endpoint
-      // Note: In a production app, you'd use your Puter API Key here.
       const response = await fetch(this.baseUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          // 'Authorization': `Bearer ${this.apiKey}` // Uncomment if using a Puter Token
+          'Authorization': `Bearer ${this.apiKey}`
         },
         body: JSON.stringify({
-          model: 'gpt-4o-mini', // Puter often supports gpt-4o-mini for free
+          model: this.modelName,
           messages: [{ role: 'user', content: prompt }]
         })
       });
 
       if (!response.ok) {
-        throw new Error(`Puter API error: ${response.status}`);
+        const errText = await response.text();
+        throw new Error(`Puter API error (${response.status}): ${errText}`);
       }
 
       const data = await response.json();
-      const text = data.message?.content || '';
+      const text = data.choices?.[0]?.message?.content || '';
       return text.replace(/```json|```/gi, '').trim();
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
@@ -87,6 +91,10 @@ export class GeminiService {
    * Asks a specific question.
    */
   static async askQuestion(menuText: string, question: string): Promise<string> {
+    if (!this.apiKey) {
+      throw new Error('Puter Auth Token is missing.');
+    }
+
     try {
       const prompt = `
         You are "FGluten AI", a strictly cautious Celiac Disease dining assistant. 
@@ -97,16 +105,19 @@ export class GeminiService {
 
       const response = await fetch(this.baseUrl, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${this.apiKey}`
+        },
         body: JSON.stringify({
-          model: 'gpt-4o-mini',
+          model: this.modelName,
           messages: [{ role: 'user', content: prompt }]
         })
       });
 
       if (!response.ok) throw new Error(`Puter API error: ${response.status}`);
       const data = await response.json();
-      return data.message?.content || '';
+      return data.choices?.[0]?.message?.content || '';
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
       logger.error(`Puter chat failed: ${message}`);

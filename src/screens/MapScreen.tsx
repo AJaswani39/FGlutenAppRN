@@ -28,8 +28,25 @@ export default function MapScreen() {
   const [detailRestaurant, setDetailRestaurant] = useState<Restaurant | null>(null);
   const [mapRegion, setMapRegion] = useState<Region | null>(null);
   const mapRef = useRef<MapView>(null);
-
   const restaurants = uiState.restaurants;
+
+  const lastAnimatedCoords = useRef<{ lat: number; lng: number } | null>(null);
+
+  React.useEffect(() => {
+    const lat = uiState.userLatitude;
+    const lng = uiState.userLongitude;
+    if (lat == null || lng == null || !mapRef.current) return;
+
+    if (lastAnimatedCoords.current?.lat === lat && lastAnimatedCoords.current?.lng === lng) return;
+    lastAnimatedCoords.current = { lat, lng };
+
+    mapRef.current.animateToRegion({
+      latitude: lat,
+      longitude: lng,
+      latitudeDelta: 0.08,
+      longitudeDelta: 0.08,
+    }, 1000);
+  }, [uiState.userLatitude, uiState.userLongitude]);
 
   const showSearchButton = useMemo(() => {
     if (!mapRegion || !uiState.userLatitude || !uiState.userLongitude) return false;

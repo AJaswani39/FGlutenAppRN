@@ -88,9 +88,9 @@ export class GeminiService {
   }
 
   /**
-   * Asks a specific question.
+   * Asks a specific question. Can optionally stream the response.
    */
-  static async askQuestion(menuText: string, question: string): Promise<string> {
+  static async askQuestion(menuText: string, question: string, onUpdate?: (text: string) => void): Promise<string> {
     if (!this.apiKey) {
       throw new Error('Puter Auth Token is missing.');
     }
@@ -111,11 +111,42 @@ export class GeminiService {
         },
         body: JSON.stringify({
           model: this.modelName,
-          messages: [{ role: 'user', content: prompt }]
+          messages: [{ role: 'user', content: prompt }],
+          stream: !!onUpdate
         })
       });
 
       if (!response.ok) throw new Error(`Puter API error: ${response.status}`);
+
+      if (onUpdate && (response as any).body) {
+        let fullText = '';
+        const reader = (response as any).body.getReader();
+        const decoder = new TextDecoder('utf-8');
+        
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          
+          const chunk = decoder.decode(value, { stream: true });
+          const lines = chunk.split('\n');
+          for (const line of lines) {
+            if (line.startsWith('data: ') && !line.includes('[DONE]')) {
+              try {
+                const data = JSON.parse(line.substring(6));
+                const text = data.choices?.[0]?.delta?.content || '';
+                if (text) {
+                  fullText += text;
+                  onUpdate(fullText);
+                }
+              } catch (e) {
+                // Ignore partial JSON chunks
+              }
+            }
+          }
+        }
+        return fullText;
+      }
+
       const data = await response.json();
       return data.choices?.[0]?.message?.content || '';
     } catch (error: unknown) {

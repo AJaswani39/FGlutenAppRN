@@ -175,32 +175,29 @@ export default function MenuAnalysisSheet({ restaurant, onClose }: Props) {
     const questionText = userQuestion;
     setUserQuestion('');
 
-    const snapshotHistorySize = chatHistory.length;
+    const modelTimestamp = Date.now() + 1; // Ensure unique timestamp for the model message
+    
+    // Add placeholder messages immediately so the user sees their question right away
+    if (isMounted.current) {
+      setChatHistory((prev) => [
+        ...prev, 
+        { role: 'user', text: questionText, timestamp: Date.now() },
+        { role: 'model', text: '...', timestamp: modelTimestamp }
+      ]);
+    }
 
     try {
-      const answer = await GeminiService.askQuestion(editableText, questionText);
-      if (isMounted.current) {
-        // If history was cleared while waiting, don't re-populate it unless the user wants
-        const newMessage: AiChatMessage = {
-          role: 'user',
-          text: questionText,
-          timestamp: Date.now(),
-        };
-        const assistantMessage: AiChatMessage = {
-          role: 'model',
-          text: answer,
-          timestamp: Date.now(),
-        };
-        
-        setChatHistory((prev) => {
-          // If the chat was cleared (prev.length < snapshot), we only add the new response if it was empty
-          if (prev.length === 0 && snapshotHistorySize > 0) return [];
-          return [...prev, newMessage, assistantMessage];
-        });
-      }
+      await GeminiService.askQuestion(editableText, questionText, (chunk) => {
+        if (!isMounted.current) return;
+        setChatHistory((prev) => 
+          prev.map(msg => msg.timestamp === modelTimestamp ? { ...msg, text: chunk || '...' } : msg)
+        );
+      });
     } catch (err: any) {
       if (isMounted.current) {
         setError(err.message || 'Failed to get AI answer.');
+        // Remove the empty placeholder if it failed
+        setChatHistory((prev) => prev.filter(msg => msg.timestamp !== modelTimestamp));
       }
     } finally {
       if (isMounted.current) {

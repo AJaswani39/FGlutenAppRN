@@ -20,11 +20,12 @@ export function getGfConfidenceLevel(restaurant: Restaurant): GfConfidenceLevel 
 }
 
 export function getRestaurantIdentityKey(restaurant: Pick<Restaurant, 'placeId' | 'name' | 'address'>): string | null {
-  const placeId = restaurant.placeId.trim();
+  if (!restaurant) return null;
+  const placeId = restaurant.placeId?.trim() || '';
   if (placeId) return `pid:${placeId}`;
 
-  const name = restaurant.name.trim();
-  const address = restaurant.address.trim();
+  const name = restaurant.name?.trim() || '';
+  const address = restaurant.address?.trim() || '';
   if (name && address) return `na:${name}|${address}`;
 
   return null;

@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
-import { View, Text, StyleSheet, SectionList } from 'react-native';
+import { View, Text, StyleSheet, SectionList, Pressable } from 'react-native';
+import ReanimatedSwipeable from 'react-native-gesture-handler/ReanimatedSwipeable';
 import { Colors, FontSize, FontWeight, Radius, Spacing } from '../theme/colors';
 import { useRestaurants } from '../context/RestaurantContext';
 import { useSettings } from '../context/SettingsContext';
@@ -27,7 +28,7 @@ const SECTION_META: Array<{
 ];
 
 export default function SavedPlacesScreen() {
-  const { savedRestaurants } = useRestaurants();
+  const { savedRestaurants, requestMenuRescan, setFavoriteStatus } = useRestaurants();
   const { useMiles } = useSettings();
   const [selectedRestaurant, setSelectedRestaurant] = useState<Restaurant | null>(null);
 
@@ -67,11 +68,25 @@ export default function SavedPlacesScreen() {
         stickySectionHeadersEnabled={false}
         renderSectionHeader={({ section }) => <SectionHeader section={section} />}
         renderItem={({ item }) => (
-          <RestaurantSummaryCard
-            restaurant={item}
-            useMiles={useMiles}
-            onPress={() => setSelectedRestaurant(item)}
-          />
+          <ReanimatedSwipeable
+            renderRightActions={() => (
+              <Pressable
+                style={styles.deleteAction}
+                onPress={() => setFavoriteStatus(item, null)}
+              >
+                <Ionicons name="trash" size={24} color={Colors.textInverse} />
+              </Pressable>
+            )}
+            friction={2}
+            rightThreshold={40}
+          >
+            <RestaurantSummaryCard
+              restaurant={item}
+              useMiles={useMiles}
+              onPress={() => setSelectedRestaurant(item)}
+              onRescan={() => requestMenuRescan(item)}
+            />
+          </ReanimatedSwipeable>
         )}
         showsVerticalScrollIndicator={false}
       />
@@ -142,5 +157,14 @@ const styles = StyleSheet.create({
     color: Colors.textPrimary,
     fontSize: FontSize.lg,
     fontWeight: FontWeight.bold,
+  },
+  deleteAction: {
+    backgroundColor: Colors.error,
+    justifyContent: 'center',
+    alignItems: 'center',
+    width: 80,
+    marginBottom: Spacing.sm,
+    borderRadius: Radius.lg,
+    marginLeft: Spacing.sm,
   },
 });

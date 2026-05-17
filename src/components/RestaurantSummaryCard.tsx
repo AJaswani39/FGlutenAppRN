@@ -86,6 +86,12 @@ export const RestaurantSummaryCard = React.memo(
           {restaurant.menuScanStatus === 'SUCCESS' && restaurant.gfMenu.length > 0 ? (
             <MetaPill icon="restaurant" text={`${restaurant.gfMenu.length} GF`} color={Colors.success} />
           ) : null}
+          {restaurant.menuScanStatus === 'SUCCESS' && restaurant.menuScanTimestamp > 0 ? (
+            <MetaPill 
+              icon="calendar" 
+              text={new Date(restaurant.menuScanTimestamp).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} 
+            />
+          ) : null}
           {restaurant.menuScanStatus === 'FAILED' ? (
             <Pressable 
               style={styles.retryPill} 

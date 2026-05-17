@@ -7,6 +7,11 @@ import { AppProviders } from './src/context/AppProviders';
 import AppNavigator from './src/navigation/AppNavigator';
 import { Colors } from './src/theme/colors';
 import { AppErrorBoundary } from './src/components/AppErrorBoundary';
+import { getMapsApiKey } from './src/context/restaurantState';
+
+if (__DEV__ && !getMapsApiKey()) {
+  console.warn('[FGluten] MAPS_API_KEY is missing. Add GCP_API_KEY to your .env file.');
+}
 
 export default function App() {
   return (

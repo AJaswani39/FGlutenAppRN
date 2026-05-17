@@ -54,6 +54,7 @@ export default {
         "ACCESS_FINE_LOCATION",
         "ACCESS_COARSE_LOCATION",
         "INTERNET",
+        "READ_MEDIA_IMAGES",
       ],
     },
     web: {
@@ -74,6 +75,7 @@ export default {
             "FGlutenApp lets you choose menu photos to scan for gluten-free safety clues.",
         },
       ],
+      "expo-clipboard",
     ],
     extra: {
       appVariant,

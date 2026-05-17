@@ -367,58 +367,7 @@ const styles = StyleSheet.create({
   },
   listContent: { padding: Spacing.md, paddingBottom: Spacing.xl },
   loadingContainer: { padding: Spacing.md },
-  scanBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
-    marginHorizontal: Spacing.md,
-    marginTop: Spacing.md,
-    backgroundColor: Colors.infoBg,
-    borderRadius: Radius.md,
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.sm,
-    borderWidth: 1,
-    borderColor: Colors.info,
-  },
-  scanBannerDone: {
-    backgroundColor: Colors.successBg,
-    borderColor: Colors.success,
-  },
-  scanBannerText: {
-    color: Colors.info,
-    fontSize: FontSize.sm,
-    fontWeight: FontWeight.semiBold,
-  },
-  scanBannerDoneText: { color: Colors.success },
-  scanBannerError: {
-    backgroundColor: Colors.errorBg,
-    borderColor: Colors.error,
-  },
-  scanBannerErrorText: {
-    color: Colors.error,
-  },
-  scanBannerMain: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
-  },
-  retryBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: Radius.full,
-    backgroundColor: Colors.surface,
-    borderWidth: 1,
-    borderColor: Colors.error,
-  },
-  retryBtnText: {
-    color: Colors.error,
-    fontSize: FontSize.xs,
-    fontWeight: FontWeight.bold,
-  },
+
 });
 
 const filterStyles = StyleSheet.create({

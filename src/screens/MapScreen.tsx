@@ -302,16 +302,4 @@ const stateStyles = StyleSheet.create({
     lineHeight: 22,
     textAlign: 'center',
   },
-  button: {
-    backgroundColor: Colors.primary,
-    borderRadius: Radius.full,
-    paddingHorizontal: Spacing.xl,
-    paddingVertical: 13,
-    marginTop: Spacing.sm,
-  },
-  buttonText: {
-    color: Colors.textInverse,
-    fontSize: FontSize.md,
-    fontWeight: FontWeight.bold,
-  },
 });

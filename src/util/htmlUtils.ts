@@ -5,12 +5,15 @@ import { logger } from './logger';
  */
 export function stripNonContentTags(html: string): string {
   return html
-    .replace(/<script[\s\S]*?<\/script>/gi, '')
-    .replace(/<style[\s\S]*?<\/style>/gi, '')
-    .replace(/<nav[\s\S]*?<\/nav>/gi, '\n')
-    .replace(/<footer[\s\S]*?<\/footer>/gi, '\n')
-    .replace(/<header[\s\S]*?<\/header>/gi, '\n')
-    .replace(/<aside[\s\S]*?<\/aside>/gi, '\n');
+    .replace(/<!--[\s\S]*?-->/g, '') // Strip HTML comments
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '') // Strip scripts robustly
+    .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, '') // Strip styles robustly
+    .replace(/<noscript\b[^>]*>[\s\S]*?<\/noscript>/gi, '') // Strip noscript
+    .replace(/<svg\b[^>]*>[\s\S]*?<\/svg>/gi, '') // Strip SVG graphics (often contain huge paths)
+    .replace(/<nav\b[^>]*>[\s\S]*?<\/nav>/gi, '\n')
+    .replace(/<footer\b[^>]*>[\s\S]*?<\/footer>/gi, '\n')
+    .replace(/<header\b[^>]*>[\s\S]*?<\/header>/gi, '\n')
+    .replace(/<aside\b[^>]*>[\s\S]*?<\/aside>/gi, '\n');
 }
 
 /**
@@ -24,7 +27,11 @@ export function htmlToTextSegments(html: string): string[] {
       '\n'
     )
     .replace(/&nbsp;/gi, ' ')
-    .replace(/<[^>]+>/g, ' ')
+    .replace(/<[^>]+>/g, ' ') // Strip all remaining HTML tags
+    .replace(/\{[\s\S]*?\}/g, ' ') // Strip JSON-like objects (often leaked from JS hydration)
+    .replace(/\[[\s\S]*?\]/g, ' ') // Strip JSON-like arrays
+    .replace(/[{}()[\]]/g, '') // Strip remaining stray brackets
+    .replace(/[^\w\s.,!?'"$&%-]/g, ' ') // Strip weird unicode/garbled symbols
     .replace(/\r/g, '')
     .replace(/[ \t]+\n/g, '\n')
     .replace(/\n[ \t]+/g, '\n')
@@ -33,7 +40,8 @@ export function htmlToTextSegments(html: string): string[] {
   return withBreaks
     .split('\n')
     .map((segment) => segment.replace(/\s+/g, ' ').trim())
-    .filter(Boolean);
+    .filter(Boolean)
+    .filter(segment => segment.length > 2); // Filter out tiny random character fragments
 }
 
 /**

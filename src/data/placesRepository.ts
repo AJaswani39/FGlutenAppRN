@@ -1,24 +1,7 @@
 import { API_ENDPOINTS, API_TIMEOUTS } from '../constants';
 import { Restaurant } from '../types/restaurant';
 import { logger } from '../util/logger';
-
-async function fetchWithTimeout(
-  url: string,
-  options: RequestInit = {},
-  timeoutMs = API_TIMEOUTS.DEFAULT
-): Promise<Response> {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-
-  try {
-    return await fetch(url, {
-      ...options,
-      signal: controller.signal,
-    });
-  } finally {
-    clearTimeout(timeoutId);
-  }
-}
+import { fetchWithTimeout } from '../util/http';
 
 interface PlacesNearbyResult {
   places?: PlacesNearbyPlace[];

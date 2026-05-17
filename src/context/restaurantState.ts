@@ -81,7 +81,8 @@ export function getScanProgressForRestaurants(
       fetching += 1;
     } else if (restaurant.menuScanStatus === 'FAILED') {
       failed += 1;
-    } else if (restaurant.menuScanStatus !== 'NOT_STARTED' && restaurant.menuScanStatus !== 'IDLE') {
+    } else if (restaurant.menuScanStatus !== 'NOT_STARTED') {
+      // SUCCESS, NO_WEBSITE, JS_ONLY all count as completed
       completed += 1;
     }
   }

@@ -1,4 +1,5 @@
 import { API_ENDPOINTS, API_TIMEOUTS } from '../constants';
+import { fetchWithTimeout } from '../util/http';
 
 interface VisionAnnotateResponse {
   responses?: Array<{
@@ -71,20 +72,3 @@ export async function extractMenuTextFromImage({
   return normalized;
 }
 
-async function fetchWithTimeout(
-  url: string,
-  options: RequestInit = {},
-  timeoutMs = API_TIMEOUTS.DEFAULT
-): Promise<Response> {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-
-  try {
-    return await fetch(url, {
-      ...options,
-      signal: controller.signal,
-    });
-  } finally {
-    clearTimeout(timeoutId);
-  }
-}

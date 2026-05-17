@@ -6,11 +6,18 @@ export type MenuSafetyLevel = 'safe' | 'caution' | 'unknown' | 'unsafe';
 export interface MenuAnalysisResult {
   overallSafety: MenuSafetyLevel;
   score: number;
+  /** Items confirmed gluten-free by local scan */
   glutenFreeItems: string[];
   warnings: string[];
   crossContamRisk: string;
   summary: string;
   riskFactors?: { factor: string; severity: number; description: string }[];
+  /** Populated by Gemini deep-scan (safe items) */
+  safeItems?: string[];
+  /** Populated by Gemini deep-scan (caution items) */
+  cautionItems?: string[];
+  /** Populated by Gemini deep-scan (items to avoid) */
+  unsafeItems?: string[];
 }
 
 export interface RestaurantSafetyScore {

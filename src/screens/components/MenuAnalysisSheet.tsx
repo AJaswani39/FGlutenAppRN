@@ -1,7 +1,8 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import Constants from 'expo-constants';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
+import * as ExpoClipboard from 'expo-clipboard';
 import {
   View,
   Text,
@@ -13,7 +14,6 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
-  Clipboard,
 } from 'react-native';
 import { Colors, Spacing, Radius, FontSize, FontWeight } from '../../theme/colors';
 import { analyseMenuText, MenuAnalysisResult } from '../../services/menuSafety';
@@ -89,14 +89,7 @@ export default function MenuAnalysisSheet({ restaurant, onClose }: Props) {
     };
   }, [restaurant, updateAiSession]);
 
-  // Auto-analyse on mount if we have text but no previous result
-  useEffect(() => {
-    if (!analysisResult && editableText.trim().length > 10) {
-      void runAnalysis(editableText);
-    }
-  }, []);
-
-  const runAnalysis = async (text: string) => {
+  const runAnalysis = useCallback(async (text: string) => {
     if (!text.trim()) {
       setError('Please enter or paste menu text to analyse.');
       return;
@@ -106,13 +99,13 @@ export default function MenuAnalysisSheet({ restaurant, onClose }: Props) {
     
     try {
       // 1. Run local GF analysis for the score (fast initial feedback)
-      const localResult = await analyseMenuText(text);
+      // analyseMenuText is synchronous — no await needed
+      const localResult = analyseMenuText(text);
       if (isMounted.current) {
         setAnalysisResult(localResult);
       }
 
       // 2. Run Deep AI Analysis (always if possible, or if allergens active)
-      // For #2, we'll run it to get the Risk Meter data
       const deepResultRaw = await GeminiService.analyzeMenu(text, {
         strictCeliac,
         dairyFree,
@@ -154,16 +147,25 @@ export default function MenuAnalysisSheet({ restaurant, onClose }: Props) {
         setIsAnalyzing(false);
       }
     }
-  };
+  }, [dairyFree, nutFree, soyFree, strictCeliac]);
 
-  const copyToClipboard = (text: string) => {
-    Clipboard.setString(text);
-  };
+  const copyToClipboard = useCallback((text: string) => {
+    void ExpoClipboard.setStringAsync(text);
+  }, []);
 
-  const clearChat = () => {
+  const clearChat = useCallback(() => {
     setChatHistory([]);
     setError(null);
-  };
+  }, []);
+
+  // Auto-analyse on mount if we have text but no previous result.
+  // runAnalysis is stable (wrapped in useCallback) so it's safe in this dep array.
+  useEffect(() => {
+    if (!analysisResult && editableText.trim().length > 10) {
+      void runAnalysis(editableText);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [runAnalysis]);
 
   const askAi = async () => {
     if (!userQuestion.trim()) return;
@@ -231,7 +233,7 @@ export default function MenuAnalysisSheet({ restaurant, onClose }: Props) {
       const manipulated = await ImageManipulator.manipulateAsync(
         pickedAsset.uri,
         [{ resize: { width: 1024 } }],
-        { base64: true, format: ImageManipulator.SaveFormat.JPEG, quality: 0.5 }
+        { base64: true, format: ImageManipulator.SaveFormat.JPEG, compress: 0.5 }
       );
 
       const base64 = manipulated.base64;
@@ -318,7 +320,9 @@ export default function MenuAnalysisSheet({ restaurant, onClose }: Props) {
             <View>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                 <Text style={styles.headerTitle}>🤖 AI Menu Analysis</Text>
-                <Text style={{ fontSize: 10, color: Colors.textMuted, fontWeight: 'bold' }}>v1.2-STABLE</Text>
+                <Text style={{ fontSize: 10, color: Colors.textMuted, fontWeight: 'bold' }}>
+                  v{Constants.expoConfig?.version ?? '1.0'}
+                </Text>
               </View>
               <Text style={styles.headerSub} numberOfLines={1}>
                 {restaurant.name}
@@ -421,7 +425,7 @@ export default function MenuAnalysisSheet({ restaurant, onClose }: Props) {
 
               <ResultSection title="SAFE OPTIONS (GF)" icon="checkmark-circle" color={Colors.success}>
                 {(analysisResult.safeItems?.length ?? 0) > 0 ? (
-                  analysisResult.safeItems.map((item, i) => (
+                  (analysisResult.safeItems ?? []).map((item, i) => (
                     <Text key={i} style={styles.listItem}>• {item}</Text>
                   ))
                 ) : (
@@ -431,7 +435,7 @@ export default function MenuAnalysisSheet({ restaurant, onClose }: Props) {
 
               <ResultSection title="PROBABLY SAFE (CAUTION)" icon="warning" color={Colors.warning}>
                 {(analysisResult.cautionItems?.length ?? 0) > 0 ? (
-                  analysisResult.cautionItems.map((item, i) => (
+                  (analysisResult.cautionItems ?? []).map((item, i) => (
                     <Text key={i} style={styles.listItem}>• {item}</Text>
                   ))
                 ) : (
@@ -441,7 +445,7 @@ export default function MenuAnalysisSheet({ restaurant, onClose }: Props) {
 
               <ResultSection title="AVOID (GLUTEN)" icon="close-circle" color={Colors.error}>
                 {(analysisResult.unsafeItems?.length ?? 0) > 0 ? (
-                  analysisResult.unsafeItems.map((item, i) => (
+                  (analysisResult.unsafeItems ?? []).map((item, i) => (
                     <Text key={i} style={styles.listItem}>• {item}</Text>
                   ))
                 ) : (

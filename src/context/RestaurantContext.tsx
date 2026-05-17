@@ -10,11 +10,12 @@ import React, {
 import { AppState } from 'react-native';
 import * as Location from 'expo-location';
 import NetInfo from '@react-native-community/netinfo';
-import { FavoriteStatus, MenuScanProgress, Restaurant, RestaurantUiState } from '../types/restaurant';
+import { FavoriteStatus, MenuScanProgress, Restaurant, RestaurantUiState, AiChatMessage } from '../types/restaurant';
 import { fetchNearbyRestaurants } from '../data/placesRepository';
 import { distanceBetween } from '../util/geoUtils';
 import { PersistenceService } from '../services/persistenceService';
 
+import { MenuAnalysisResult } from '../services/menuSafety';
 import {
   filterAndSortRestaurants,
   isSameRestaurantIdentity,
@@ -22,7 +23,7 @@ import {
 import { useFilters } from './FiltersContext';
 import { useSettings } from './SettingsContext';
 import { logger } from '../util/logger';
-import { ScanOrchestrator } from '../services/scanOrchestrator';
+import { ScanOrchestrator, ScanOrchestratorConfig } from '../services/scanOrchestrator';
 import {
   EmptyResultsReason,
   getCachedResultsMessage,
@@ -47,7 +48,7 @@ interface RestaurantContextValue {
   retryFailedScans: () => void;
   updateAiSession: (
     restaurant: Restaurant,
-    session: { analysis?: any; chat?: any[]; deepAnalysis?: string | null }
+    session: { analysis?: MenuAnalysisResult | null; chat?: AiChatMessage[]; deepAnalysis?: string | null }
   ) => void;
 }
 
@@ -98,6 +99,40 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
   useEffect(() => {
     filtersRef.current = filters;
   }, [filters]);
+
+  // ── Persistence ──────────────────────────────────────────────
+  // persistCache must be declared before updateRestaurant, which depends on it.
+
+  const persistTimeout = useRef<NodeJS.Timeout | null>(null);
+
+  const flushPersistence = useCallback(async () => {
+    if (persistTimeout.current) {
+      clearTimeout(persistTimeout.current);
+      persistTimeout.current = null;
+    }
+    try {
+      await PersistenceService.saveCache({
+        restaurants: rawRestaurants.current,
+        lat: userLat.current,
+        lng: userLng.current,
+        timestamp: Date.now(),
+      });
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      logger.error(`Failed to flush persistence: ${message}`);
+    }
+  }, []);
+
+  const persistCache = useCallback(() => {
+    // Debounce persistence to avoid hammering the disk during batch scans
+    if (persistTimeout.current) {
+      clearTimeout(persistTimeout.current);
+    }
+
+    persistTimeout.current = setTimeout(flushPersistence, 2000);
+  }, [flushPersistence]);
+
+  // ── Restaurant mutation ───────────────────────────────────────
 
   const updateRestaurant = useCallback(
     (target: Restaurant, updater: (restaurant: Restaurant) => Restaurant) => {
@@ -183,35 +218,6 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
       status: uiStateRef.current.status,
     });
   }, [emitFilteredState, filters, strictCeliac]);
-
-  const persistTimeout = useRef<NodeJS.Timeout | null>(null);
-
-  const flushPersistence = useCallback(async () => {
-    if (persistTimeout.current) {
-      clearTimeout(persistTimeout.current);
-      persistTimeout.current = null;
-    }
-    try {
-      await PersistenceService.saveCache({
-        restaurants: rawRestaurants.current,
-        lat: userLat.current,
-        lng: userLng.current,
-        timestamp: Date.now(),
-      });
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : String(error);
-      logger.error(`Failed to flush persistence: ${message}`);
-    }
-  }, []);
-
-  const persistCache = useCallback(() => {
-    // Debounce persistence to avoid hammering the disk during batch scans
-    if (persistTimeout.current) {
-      clearTimeout(persistTimeout.current);
-    }
-
-    persistTimeout.current = setTimeout(flushPersistence, 2000);
-  }, [flushPersistence]);
 
   // Flush on app close/background
   useEffect(() => {
@@ -420,7 +426,8 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
       emitFilteredState({
         emptyReason: 'nearby',
       });
-      await persistCache();
+      // persistCache schedules a debounced write — it returns void, not a Promise
+      persistCache();
       kickOffMenuScans(restaurantsWithDistance);
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : String(error);
@@ -484,7 +491,7 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
   }, []);
 
   const updateAiSession = useCallback(
-    (restaurant: Restaurant, session: { analysis?: any; chat?: any[]; deepAnalysis?: string | null }) => {
+    (restaurant: Restaurant, session: { analysis?: MenuAnalysisResult | null; chat?: AiChatMessage[]; deepAnalysis?: string | null }) => {
       updateRestaurant(restaurant, (current) => ({
         ...current,
         aiAnalysisResult: session.analysis !== undefined ? session.analysis : current.aiAnalysisResult,

@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { FavoriteStatus, RestaurantFilters, SortMode, Restaurant } from '../types/restaurant';
+import { FavoriteStatus, RestaurantFilters, SortMode, Restaurant, AiChatMessage } from '../types/restaurant';
+import { MenuAnalysisResult } from './menuSafety';
 import { logger } from '../util/logger';
 
 export interface CachePayload {
@@ -120,12 +121,19 @@ export function normalizeRestaurant(value: unknown): Restaurant | null {
   const gfMenu = normalizeStringArray(value.gfMenu, 15);
   const menuUrl = normalizeString(value.menuUrl).trim() || null;
   const rawMenuText = normalizeString(value.rawMenuText).trim() || null;
-  const aiAnalysisResult = isRecord(value.aiAnalysisResult) ? value.aiAnalysisResult : null;
-  const aiChatHistory = Array.isArray(value.aiChatHistory) ? (value.aiChatHistory as any[]).map(msg => ({
-    role: msg.role === 'user' ? 'user' : 'model',
-    text: normalizeString(msg.text),
-    timestamp: normalizeFiniteNumber(msg.timestamp, Date.now()),
-  })) : undefined;
+  // aiAnalysisResult is opaque data from disk — cast to MenuAnalysisResult since we
+  // cannot revalidate every field without a full schema. Nulled if not a plain object.
+  const aiAnalysisResult = isRecord(value.aiAnalysisResult)
+    ? (value.aiAnalysisResult as unknown as MenuAnalysisResult)
+    : null;
+
+  const aiChatHistory: AiChatMessage[] | undefined = Array.isArray(value.aiChatHistory)
+    ? (value.aiChatHistory as any[]).map((msg): AiChatMessage => ({
+        role: msg.role === 'user' ? 'user' : 'model',
+        text: normalizeString(msg.text),
+        timestamp: normalizeFiniteNumber(msg.timestamp, Date.now()),
+      }))
+    : undefined;
 
   const menuScanStatus = MENU_SCAN_STATUSES.has(value.menuScanStatus as Restaurant['menuScanStatus'])
     ? (value.menuScanStatus as Restaurant['menuScanStatus'])

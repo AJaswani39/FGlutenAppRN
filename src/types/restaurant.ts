@@ -1,3 +1,5 @@
+import { MenuAnalysisResult } from '../services/menuSafety';
+
 export type MenuScanStatus = 'NOT_STARTED' | 'FETCHING' | 'SUCCESS' | 'NO_WEBSITE' | 'FAILED' | 'JS_ONLY';
 export type FavoriteStatus = 'safe' | 'try' | 'avoid' | null;
 export type SortMode = 'distance' | 'name';
@@ -25,7 +27,7 @@ export interface Restaurant {
   menuScanStatus: MenuScanStatus;
   menuScanTimestamp: number;
   favoriteStatus: FavoriteStatus;
-  aiAnalysisResult?: any | null; // Using any to avoid circular dependency for now, or we move the type
+  aiAnalysisResult?: MenuAnalysisResult | null;
   aiChatHistory?: AiChatMessage[];
   aiDeepAnalysis?: string | null;
 }

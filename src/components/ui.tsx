@@ -73,6 +73,7 @@ export function StateMessage({
   title,
   message,
   actionLabel,
+  actionIcon = 'refresh',
   onAction,
   loading,
 }: {
@@ -80,6 +81,7 @@ export function StateMessage({
   title: string;
   message: string;
   actionLabel?: string;
+  actionIcon?: IconName;
   onAction?: () => void;
   loading?: boolean;
 }) {
@@ -94,7 +96,7 @@ export function StateMessage({
             <ActivityIndicator color={Colors.textInverse} size="small" />
           ) : (
             <>
-              <Ionicons name="refresh" size={16} color={Colors.textInverse} />
+              {actionIcon && <Ionicons name={actionIcon} size={16} color={Colors.textInverse} />}
               <Text style={stateStyles.buttonText}>{actionLabel}</Text>
             </>
           )}

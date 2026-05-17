@@ -10,6 +10,8 @@ import RestaurantDetailModal from './components/RestaurantDetailModal';
 import { getRestaurantListKey } from '../util/restaurantUtils';
 import { Ionicons, StateMessage, StatusBadge } from '../components/ui';
 import { RestaurantSummaryCard } from '../components/RestaurantSummaryCard';
+import { useNavigation, NavigationProp } from '@react-navigation/native';
+import { RootTabParamList } from '../types/navigation';
 
 type SavedSection = {
   title: string;
@@ -29,6 +31,7 @@ const SECTION_META: Array<{
 ];
 
 export default function SavedPlacesScreen() {
+  const navigation = useNavigation<NavigationProp<RootTabParamList>>();
   const { savedRestaurants, requestMenuRescan, setFavoriteStatus } = useRestaurants();
   const { useMiles } = useSettings();
   const [selectedRestaurant, setSelectedRestaurant] = useState<Restaurant | null>(null);
@@ -50,6 +53,9 @@ export default function SavedPlacesScreen() {
           icon="heart"
           title="No saved places yet"
           message="Mark restaurants as Safe, Try, or Avoid from their detail page and they will appear here."
+          actionLabel="Start Exploring"
+          actionIcon="map"
+          onAction={() => navigation.navigate('Map')}
         />
       </View>
     );

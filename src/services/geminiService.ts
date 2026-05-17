@@ -95,6 +95,28 @@ export class GeminiService {
       throw new Error('Puter Auth Token is missing.');
     }
 
+    const JAILBREAK_KEYWORDS = [
+      'ignore previous',
+      'ignore all',
+      'system prompt',
+      'jailbreak',
+      'act as',
+      'roleplay',
+      'pretend to be',
+      'developer mode',
+      'dan ',
+      'do anything now',
+      'new instructions',
+      'write a poem',
+      'write code',
+      'write a script'
+    ];
+
+    const lowerQuestion = question.toLowerCase();
+    if (JAILBREAK_KEYWORDS.some(kw => lowerQuestion.includes(kw))) {
+      throw new Error('Security Error: Request blocked. I can only assist with menu safety and gluten-free dining.');
+    }
+
     try {
       const prompt = `
         You are "FGluten AI", a strictly cautious Celiac Disease dining assistant.

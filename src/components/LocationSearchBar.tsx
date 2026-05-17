@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, TextInput, StyleSheet, FlatList, Text, Pressable, ActivityIndicator, Keyboard } from 'react-native';
 import Constants from 'expo-constants';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors, Radius, Spacing, FontSize, FontWeight } from '../theme/colors';
 import { Ionicons } from './ui';
 
@@ -16,6 +17,7 @@ interface Props {
 }
 
 export function LocationSearchBar({ onLocationSelected }: Props) {
+  const insets = useSafeAreaInsets();
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<LocationSearchResult[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -83,7 +85,7 @@ export function LocationSearchBar({ onLocationSelected }: Props) {
   };
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { top: Math.max(insets.top, 12) + Spacing.xs }]}>
       <View style={[styles.searchBox, isFocused && styles.searchBoxFocused]}>
         <Ionicons name="search" size={20} color={Colors.textSecondary} />
         <TextInput
@@ -135,7 +137,6 @@ export function LocationSearchBar({ onLocationSelected }: Props) {
 const styles = StyleSheet.create({
   container: {
     position: 'absolute',
-    top: 60, // Clear safe area / status bar
     left: Spacing.md,
     right: Spacing.md,
     zIndex: 10,

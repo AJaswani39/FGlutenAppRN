@@ -82,6 +82,26 @@ export function useRestaurantFavorites(rawRestaurants: MutableRefObject<Restaura
     [favoriteKey]
   );
 
+  const updateSavedRestaurant = useCallback(
+    (restaurant: Restaurant, updater: (r: Restaurant) => Restaurant) => {
+      const key = favoriteKey(restaurant);
+      if (!key) return;
+
+      const existingIdx = savedDb.current.findIndex(r => favoriteKey(r) === key);
+      if (existingIdx >= 0) {
+        const next = updater(savedDb.current[existingIdx]);
+        if (next !== savedDb.current[existingIdx]) {
+          savedDb.current[existingIdx] = next;
+          void PersistenceService.saveSavedRestaurantsDb(savedDb.current).catch((error: unknown) => {
+            logger.error(`Failed to save updated saved DB: ${error instanceof Error ? error.message : String(error)}`);
+          });
+          syncSavedRestaurants();
+        }
+      }
+    },
+    [favoriteKey, syncSavedRestaurants]
+  );
+
   return useMemo(
     () => ({
       savedRestaurants,
@@ -90,6 +110,7 @@ export function useRestaurantFavorites(rawRestaurants: MutableRefObject<Restaura
       syncSavedRestaurants,
       loadFavorites,
       setFavoriteMapStatus,
+      updateSavedRestaurant,
     }),
     [
       savedRestaurants,
@@ -98,6 +119,7 @@ export function useRestaurantFavorites(rawRestaurants: MutableRefObject<Restaura
       syncSavedRestaurants,
       loadFavorites,
       setFavoriteMapStatus,
+      updateSavedRestaurant,
     ]
   );
 }

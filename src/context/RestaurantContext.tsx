@@ -94,6 +94,7 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
     syncSavedRestaurants,
     loadFavorites,
     setFavoriteMapStatus,
+    updateSavedRestaurant,
   } = useRestaurantFavorites(rawRestaurants);
 
   useEffect(() => {
@@ -166,13 +167,16 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
         return nextRestaurant;
       });
 
+      // Keep the persistent favorites database perfectly synced
+      updateSavedRestaurant(target, updater);
+
       if (worthPersisting) {
         persistCache();
       }
 
       return updated;
     },
-    [persistCache]
+    [persistCache, updateSavedRestaurant]
   );
 
   const getScanProgress = useCallback((): MenuScanProgress | null => {

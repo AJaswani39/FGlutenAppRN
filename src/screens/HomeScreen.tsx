@@ -24,7 +24,7 @@ import { SafeRestaurantPick, getSafeRestaurantPicks } from '../services/safePick
 
 export default function HomeScreen() {
   const navigation = useNavigation<NavigationProp<RootTabParamList>>();
-  const { uiState, loadNearbyRestaurants } = useRestaurants();
+  const { uiState, loadNearbyRestaurants, savedRestaurants } = useRestaurants();
   const { useMiles, strictCeliac } = useSettings();
   const [selectedRestaurant, setSelectedRestaurant] = React.useState<Restaurant | null>(null);
 
@@ -41,15 +41,13 @@ export default function HomeScreen() {
   }, [loadNearbyRestaurants, navigation]);
 
   const stats = React.useMemo(() => {
-    let favorites = 0;
     let scans = 0;
     let latestScan = 0;
     for (const r of cached) {
-      if (r.favoriteStatus) favorites += 1;
       if (r.menuScanStatus === 'SUCCESS') scans += 1;
       if (r.menuScanTimestamp > latestScan) latestScan = r.menuScanTimestamp;
     }
-    return { favorites, scans, latestScan };
+    return { scans, latestScan };
   }, [cached]);
 
   const safePicks = React.useMemo(
@@ -103,7 +101,7 @@ export default function HomeScreen() {
 
       <View style={styles.statsGrid}>
         <StatCard icon="location" label="Results" value={`${cached.length}`} />
-        <StatCard icon="heart" label="Saved" value={`${stats.favorites}`} />
+        <StatCard icon="heart" label="Saved" value={`${savedRestaurants.length}`} />
         <StatCard icon="scan" label="Scanned" value={`${stats.scans}`} />
       </View>
 

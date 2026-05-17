@@ -103,6 +103,57 @@ export class GeminiService {
         Rules: Be conservative. Use emojis ✅, ⚠️, ❌.
       `;
 
+      if (onUpdate) {
+        return new Promise((resolve, reject) => {
+          const xhr = new XMLHttpRequest();
+          xhr.open('POST', this.baseUrl);
+          xhr.setRequestHeader('Content-Type', 'application/json');
+          xhr.setRequestHeader('Authorization', `Bearer ${this.apiKey}`);
+
+          let seenBytes = 0;
+          let fullText = '';
+
+          xhr.onreadystatechange = () => {
+            if (xhr.readyState === 3 || xhr.readyState === 4) {
+              const responseText = xhr.responseText || '';
+              const newChunk = responseText.substring(seenBytes);
+              seenBytes = responseText.length;
+
+              const lines = newChunk.split('\n');
+              for (const line of lines) {
+                if (line.startsWith('data: ') && !line.includes('[DONE]')) {
+                  try {
+                    const data = JSON.parse(line.substring(6));
+                    const text = data.choices?.[0]?.delta?.content || '';
+                    if (text) {
+                      fullText += text;
+                      onUpdate(fullText);
+                    }
+                  } catch (e) {
+                    // Ignore partial JSON chunks
+                  }
+                }
+              }
+            }
+            if (xhr.readyState === 4) {
+              if (xhr.status >= 400) {
+                reject(new Error(`Puter API error: ${xhr.status}`));
+              } else {
+                resolve(fullText);
+              }
+            }
+          };
+
+          xhr.onerror = () => reject(new Error('Network request failed'));
+          xhr.send(JSON.stringify({
+            model: this.modelName,
+            messages: [{ role: 'user', content: prompt }],
+            stream: true
+          }));
+        });
+      }
+
+      // Fallback for non-streaming
       const response = await fetch(this.baseUrl, {
         method: 'POST',
         headers: {
@@ -112,41 +163,11 @@ export class GeminiService {
         body: JSON.stringify({
           model: this.modelName,
           messages: [{ role: 'user', content: prompt }],
-          stream: !!onUpdate
+          stream: false
         })
       });
 
       if (!response.ok) throw new Error(`Puter API error: ${response.status}`);
-
-      if (onUpdate && (response as any).body) {
-        let fullText = '';
-        const reader = (response as any).body.getReader();
-        const decoder = new TextDecoder('utf-8');
-        
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          
-          const chunk = decoder.decode(value, { stream: true });
-          const lines = chunk.split('\n');
-          for (const line of lines) {
-            if (line.startsWith('data: ') && !line.includes('[DONE]')) {
-              try {
-                const data = JSON.parse(line.substring(6));
-                const text = data.choices?.[0]?.delta?.content || '';
-                if (text) {
-                  fullText += text;
-                  onUpdate(fullText);
-                }
-              } catch (e) {
-                // Ignore partial JSON chunks
-              }
-            }
-          }
-        }
-        return fullText;
-      }
-
       const data = await response.json();
       return data.choices?.[0]?.message?.content || '';
     } catch (error: unknown) {

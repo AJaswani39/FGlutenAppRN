@@ -165,8 +165,6 @@ export function stripLargeFields(restaurant: Restaurant): Restaurant {
   return {
     ...restaurant,
     rawMenuText: null,
-    aiAnalysisResult: null,
-    aiChatHistory: undefined,
   };
 }
 

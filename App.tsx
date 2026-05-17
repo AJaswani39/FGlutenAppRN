@@ -8,6 +8,7 @@ import AppNavigator from './src/navigation/AppNavigator';
 import { Colors } from './src/theme/colors';
 import { AppErrorBoundary } from './src/components/AppErrorBoundary';
 import { NetworkBanner } from './src/components/NetworkBanner';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { getMapsApiKey } from './src/context/restaurantState';
 
 if (__DEV__ && !getMapsApiKey()) {
@@ -16,15 +17,17 @@ if (__DEV__ && !getMapsApiKey()) {
 
 export default function App() {
   return (
-    <GestureHandlerRootView style={styles.root}>
-      <StatusBar style="light" backgroundColor={Colors.background} />
-      <NetworkBanner />
-      <AppErrorBoundary>
-        <AppProviders>
-          <AppNavigator />
-        </AppProviders>
-      </AppErrorBoundary>
-    </GestureHandlerRootView>
+    <SafeAreaProvider>
+      <GestureHandlerRootView style={styles.root}>
+        <StatusBar style="light" backgroundColor={Colors.background} />
+        <NetworkBanner />
+        <AppErrorBoundary>
+          <AppProviders>
+            <AppNavigator />
+          </AppProviders>
+        </AppErrorBoundary>
+      </GestureHandlerRootView>
+    </SafeAreaProvider>
   );
 }
 

@@ -56,10 +56,13 @@ export default function RestaurantDetailModal({ restaurant: initial, useMiles, o
   });
   const cuisineRiskHints = getCuisineRiskHints(restaurant);
 
-  const mapsUrl = Platform.select({
-    ios: `maps://app?daddr=${restaurant.latitude},${restaurant.longitude}`,
-    android: `geo:${restaurant.latitude},${restaurant.longitude}?q=${encodeURIComponent(restaurant.name)}`,
-  });
+  const hasCoords = restaurant.latitude != null && restaurant.longitude != null;
+  const mapsUrl = hasCoords
+    ? Platform.select({
+        ios: `maps://app?daddr=${restaurant.latitude},${restaurant.longitude}`,
+        android: `geo:${restaurant.latitude},${restaurant.longitude}?q=${encodeURIComponent(restaurant.name)}`,
+      })
+    : undefined;
 
   const openMaps = () => {
     if (mapsUrl) {

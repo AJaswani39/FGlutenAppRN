@@ -132,6 +132,11 @@ export async function fetchWebsiteForPlace(placeId: string, apiKey: string): Pro
 }
 
 export async function fetchHtml(url: string): Promise<string | null> {
+  if (url.toLowerCase().trim().endsWith('.pdf')) {
+    logger.warn(`fetchHtml: Skipping direct PDF menu link: ${url}`);
+    return null;
+  }
+
   try {
     const response = await fetchWithTimeout(url, {
       headers: {
@@ -142,6 +147,12 @@ export async function fetchHtml(url: string): Promise<string | null> {
 
     if (!response.ok) {
       logger.warn(`fetchHtml: HTTP ${response.status} for ${url}`);
+      return null;
+    }
+
+    const contentType = response.headers.get('content-type') || '';
+    if (contentType.toLowerCase().includes('application/pdf')) {
+      logger.warn(`fetchHtml: Skipping resolved PDF content-type: ${url}`);
       return null;
     }
 

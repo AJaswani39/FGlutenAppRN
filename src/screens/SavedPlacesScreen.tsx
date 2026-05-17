@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { View, Text, StyleSheet, SectionList, Pressable } from 'react-native';
 import ReanimatedSwipeable from 'react-native-gesture-handler/ReanimatedSwipeable';
+import * as Haptics from 'expo-haptics';
 import { Colors, FontSize, FontWeight, Radius, Spacing } from '../theme/colors';
 import { useRestaurants } from '../context/RestaurantContext';
 import { useSettings } from '../context/SettingsContext';
@@ -72,7 +73,10 @@ export default function SavedPlacesScreen() {
             renderRightActions={() => (
               <Pressable
                 style={styles.deleteAction}
-                onPress={() => setFavoriteStatus(item, null)}
+                onPress={() => {
+                  void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                  setFavoriteStatus(item, null);
+                }}
               >
                 <Ionicons name="trash" size={24} color={Colors.textInverse} />
               </Pressable>

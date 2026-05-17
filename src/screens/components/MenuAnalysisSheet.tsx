@@ -3,6 +3,7 @@ import Constants from 'expo-constants';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
 import * as ExpoClipboard from 'expo-clipboard';
+import * as Haptics from 'expo-haptics';
 import {
   View,
   Text,
@@ -171,6 +172,7 @@ export default function MenuAnalysisSheet({ restaurant, onClose }: Props) {
     if (!userQuestion.trim()) return;
     setIsAsking(true);
     setError(null);
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     
     const questionText = userQuestion;
     setUserQuestion('');

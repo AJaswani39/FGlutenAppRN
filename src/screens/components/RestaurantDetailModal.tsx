@@ -10,6 +10,7 @@ import {
   Platform,
   ActivityIndicator,
 } from 'react-native';
+import * as Haptics from 'expo-haptics';
 import { Colors, Spacing, Radius, FontSize, FontWeight } from '../../theme/colors';
 import { Restaurant, FavoriteStatus } from '../../types/restaurant';
 import { formatDistance } from '../../util/formatters';
@@ -79,6 +80,7 @@ export default function RestaurantDetailModal({ restaurant: initial, useMiles, o
   };
 
   const handleFav = (status: FavoriteStatus) => {
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     if (restaurant.favoriteStatus === status) {
       setFavoriteStatus(restaurant, null);
     } else {
@@ -87,6 +89,7 @@ export default function RestaurantDetailModal({ restaurant: initial, useMiles, o
   };
 
   const handleRescan = () => {
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     requestMenuRescan(restaurant);
   };
 
@@ -303,7 +306,10 @@ export default function RestaurantDetailModal({ restaurant: initial, useMiles, o
               <ActionButton
                 icon="sparkles"
                 label="AI Analysis"
-                onPress={() => setShowAI(true)}
+                onPress={() => {
+                  void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+                  setShowAI(true);
+                }}
                 disabled={!buildAiText()}
                 primary
               />

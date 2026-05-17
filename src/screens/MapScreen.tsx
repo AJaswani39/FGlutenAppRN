@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useRef } from 'react';
 import {
   View,
   Text,
@@ -17,6 +17,8 @@ import RestaurantDetailModal from './components/RestaurantDetailModal';
 import { getRestaurantListKey } from '../util/restaurantUtils';
 import { Ionicons, StateMessage } from '../components/ui';
 import { ScanProgressBanner } from '../components/ScanProgressBanner';
+import { LocationSearchBar } from '../components/LocationSearchBar';
+import * as Haptics from 'expo-haptics';
 import { distanceBetween } from '../util/geoUtils';
 
 export default function MapScreen() {
@@ -25,6 +27,7 @@ export default function MapScreen() {
   const [previewRestaurant, setPreviewRestaurant] = useState<Restaurant | null>(null);
   const [detailRestaurant, setDetailRestaurant] = useState<Restaurant | null>(null);
   const [mapRegion, setMapRegion] = useState<Region | null>(null);
+  const mapRef = useRef<MapView>(null);
 
   const restaurants = uiState.restaurants;
 
@@ -91,9 +94,26 @@ export default function MapScreen() {
 
   return (
     <View style={styles.container}>
+      <LocationSearchBar 
+        onLocationSelected={(lat, lng) => {
+          void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+          if (mapRef.current) {
+            mapRef.current.animateToRegion({
+              latitude: lat,
+              longitude: lng,
+              latitudeDelta: 0.08,
+              longitudeDelta: 0.08,
+            }, 1000);
+          }
+          // Also automatically search that area
+          loadNearbyRestaurants({ latitude: lat, longitude: lng });
+        }}
+      />
+      
       {uiState.scanProgress ? <ScanProgressBanner progress={uiState.scanProgress} /> : null}
       
       <MapView
+        ref={mapRef}
         style={styles.map}
         provider={PROVIDER_GOOGLE}
         initialRegion={initialRegion}

@@ -34,6 +34,22 @@ interface Props {
   onClose: () => void;
 }
 
+// Bypasses the infamous Android nested Modal bug by using an absolute overlay on Android
+const ModalWrapper = ({ children, onClose }: { children: React.ReactNode; onClose: () => void }) => {
+  if (Platform.OS === 'android') {
+    return (
+      <View style={[StyleSheet.absoluteFill, { backgroundColor: Colors.background, zIndex: 100, elevation: 10 }]}>
+        {children}
+      </View>
+    );
+  }
+  return (
+    <Modal visible animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+      {children}
+    </Modal>
+  );
+};
+
 export default function MenuAnalysisSheet({ restaurant, onClose }: Props) {
   const { updateAiSession } = useRestaurants();
   
@@ -308,7 +324,7 @@ export default function MenuAnalysisSheet({ restaurant, onClose }: Props) {
       : '❓';
 
   return (
-    <Modal visible animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+    <ModalWrapper onClose={onClose}>
       <KeyboardAvoidingView 
         style={styles.container} 
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -552,7 +568,7 @@ export default function MenuAnalysisSheet({ restaurant, onClose }: Props) {
           )}
         </View>
       </KeyboardAvoidingView>
-    </Modal>
+    </ModalWrapper>
   );
 }
 

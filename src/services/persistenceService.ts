@@ -22,6 +22,7 @@ export const DEFAULT_FILTERS: RestaurantFilters = {
 const KEYS = {
   FILTERS: 'restaurant_filters',
   FAVORITES: 'restaurant_favorites',
+  SAVED_RESTAURANTS_DB: 'restaurant_saved_db',
   CACHE: 'restaurant_cache',
   SETTINGS: 'fg_settings',
 };
@@ -226,6 +227,23 @@ export const PersistenceService = {
 
   async saveFavorites(map: Record<string, string>): Promise<void> {
     await AsyncStorage.setItem(KEYS.FAVORITES, JSON.stringify(normalizeFavoriteMap(map)));
+  },
+
+  async loadSavedRestaurantsDb(): Promise<Restaurant[]> {
+    try {
+      const raw = await AsyncStorage.getItem(KEYS.SAVED_RESTAURANTS_DB);
+      if (!raw) return [];
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        return parsed.map(normalizeRestaurant).filter((r): r is Restaurant => r !== null);
+      }
+    } catch (e) {}
+    return [];
+  },
+
+  async saveSavedRestaurantsDb(restaurants: Restaurant[]): Promise<void> {
+    const light = restaurants.map(stripLargeFields);
+    await AsyncStorage.setItem(KEYS.SAVED_RESTAURANTS_DB, JSON.stringify(light));
   },
 
   async saveCache(data: CachePayload): Promise<void> {

@@ -126,7 +126,7 @@ export async function fetchWebsiteForPlace(placeId: string, apiKey: string): Pro
       : null;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    logger.error(`fetchWebsiteForPlace failed for ${placeId}: ${message}`);
+    logger.warn(`fetchWebsiteForPlace failed for ${placeId}: ${message}`);
     return null;
   }
 }
@@ -148,7 +148,7 @@ export async function fetchHtml(url: string): Promise<string | null> {
     return await response.text();
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    logger.error(`fetchHtml failed for ${url}: ${message}`);
+    logger.warn(`fetchHtml failed for ${url}: ${message}`);
     return null;
   }
 }

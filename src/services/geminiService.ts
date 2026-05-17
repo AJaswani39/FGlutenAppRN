@@ -47,6 +47,7 @@ export class GeminiService {
           "overallSafety": "SAFE" | "CAUTION" | "UNSAFE",
           "summary": "...",
           "safeItems": ["..."],
+          "cautionItems": ["..."],
           "warningItems": ["..."],
           "crossContamRisk": "...",
           "riskBreakdown": [

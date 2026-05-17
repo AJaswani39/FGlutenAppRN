@@ -145,6 +145,7 @@ export default function MenuAnalysisSheet({ restaurant, onClose }: Props) {
               overallSafety: (parsed.overallSafety?.toLowerCase() as any) || prev.overallSafety,
               summary: parsed.summary || prev.summary,
               safeItems: parsed.safeItems ?? prev.safeItems ?? [],
+              cautionItems: parsed.cautionItems ?? prev.cautionItems ?? [],
               unsafeItems: parsed.warningItems ?? prev.unsafeItems ?? [],
               riskFactors: parsed.riskBreakdown ?? [],
             };

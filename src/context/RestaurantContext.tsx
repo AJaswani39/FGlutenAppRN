@@ -397,9 +397,14 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
           latitude = lastKnown.coords.latitude;
           longitude = lastKnown.coords.longitude;
         } else {
-          const location = await Location.getCurrentPositionAsync({
-            accuracy: Location.Accuracy.Balanced,
-          });
+          const location = await Promise.race([
+            Location.getCurrentPositionAsync({
+              accuracy: Location.Accuracy.Balanced,
+            }),
+            new Promise<Location.LocationObject>((_, reject) =>
+              setTimeout(() => reject(new Error('Location request timed out')), 10000)
+            ),
+          ]);
           latitude = location.coords.latitude;
           longitude = location.coords.longitude;
         }

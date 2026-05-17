@@ -135,7 +135,7 @@ export async function fetchHtml(url: string): Promise<string | null> {
   try {
     const response = await fetchWithTimeout(url, {
       headers: {
-        'User-Agent': 'Mozilla/5.0 (compatible; FGlutenBot/1.0; +https://fgluten.io)',
+        'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.5 Mobile/15E148 Safari/604.1',
         Accept: 'text/html',
       },
     });

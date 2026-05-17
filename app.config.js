@@ -75,7 +75,6 @@ export default {
             "FGlutenApp lets you choose menu photos to scan for gluten-free safety clues.",
         },
       ],
-      "expo-clipboard",
     ],
     extra: {
       appVariant,

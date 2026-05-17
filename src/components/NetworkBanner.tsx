@@ -12,6 +12,8 @@ export function NetworkBanner() {
 
   useEffect(() => {
     const unsubscribe = NetInfo.addEventListener((state) => {
+      if (state.isConnected === null) return;
+
       const connected = state.isConnected === true && state.isInternetReachable !== false;
       setIsConnected(connected);
 

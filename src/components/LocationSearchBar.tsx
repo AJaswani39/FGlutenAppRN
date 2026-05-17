@@ -96,10 +96,11 @@ export function LocationSearchBar({ onLocationSelected }: Props) {
           onChangeText={setQuery}
           onFocus={() => setIsFocused(true)}
           onBlur={() => {
-            // Keep focused if we have results so they don't disappear on iOS
-            if (results.length === 0 && !query) {
+            // Delay closing slightly so any active suggestion tap has time to process,
+            // but successfully hide the autocomplete box if they click away.
+            setTimeout(() => {
               setIsFocused(false);
-            }
+            }, 180);
           }}
           returnKeyType="search"
         />

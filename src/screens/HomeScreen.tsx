@@ -6,6 +6,7 @@ import {
   Pressable,
   ScrollView,
   ActivityIndicator,
+  Linking,
 } from 'react-native';
 import { NavigationProp, TabActions, useNavigation } from '@react-navigation/native';
 import { Colors, Spacing, Radius, FontSize, FontWeight } from '../theme/colors';
@@ -89,7 +90,14 @@ export default function HomeScreen() {
           )}
         </Pressable>
         {shouldShowStatusMessage ? (
-          <Text style={styles.statusMessage}>{uiState.message}</Text>
+          <View style={styles.statusContainer}>
+            <Text style={styles.statusMessage}>{uiState.message}</Text>
+            {uiState.status === 'permission_required' && (
+              <Pressable style={styles.settingsBtn} onPress={() => Linking.openSettings()}>
+                <Text style={styles.settingsBtnText}>Open App Settings</Text>
+              </Pressable>
+            )}
+          </View>
         ) : null}
       </View>
 
@@ -283,15 +291,31 @@ const styles = StyleSheet.create({
   ctaButtonDisabled: { opacity: 0.65 },
   ctaText: {
     color: Colors.textInverse,
-    fontSize: FontSize.md,
     fontWeight: FontWeight.bold,
+    fontSize: FontSize.md,
+  },
+  statusContainer: {
+    marginTop: Spacing.sm,
+    alignItems: 'center',
   },
   statusMessage: {
-    color: Colors.textSecondary,
+    color: Colors.warning,
     fontSize: FontSize.sm,
-    lineHeight: 20,
-    marginTop: Spacing.md,
     textAlign: 'center',
+  },
+  settingsBtn: {
+    marginTop: Spacing.sm,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    backgroundColor: Colors.surfaceElevated,
+    borderRadius: Radius.full,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  settingsBtnText: {
+    color: Colors.textPrimary,
+    fontSize: FontSize.sm,
+    fontWeight: FontWeight.bold,
   },
   statsGrid: {
     flexDirection: 'row',

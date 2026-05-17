@@ -331,9 +331,9 @@ export default function RestaurantDetailModal({ restaurant: initial, useMiles, o
 
 function getSafeExternalUrl(url: string | null): string | null {
   const trimmed = url?.trim();
-  if (!trimmed || !/^https?:\/\//i.test(trimmed)) return null;
-
-  return trimmed;
+  if (!trimmed) return null;
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  return `http://${trimmed}`;
 }
 
 function confidenceMeta(restaurant: Restaurant) {

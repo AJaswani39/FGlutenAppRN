@@ -151,7 +151,7 @@ export function getRestaurantSafetyScore(
   options: { strictCeliac?: boolean } = {}
 ): RestaurantSafetyScore {
   const text = restaurant.rawMenuText?.trim() || restaurant.gfMenu.join('\n');
-  const analysis = text.length > 0 ? analyseMenuText(text) : null;
+  const analysis = restaurant.aiAnalysisResult || (text.length > 0 ? analyseMenuText(text) : null);
   const reasons: string[] = [];
   let score = analysis?.score ?? 35;
 

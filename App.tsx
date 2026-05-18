@@ -5,6 +5,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SplashScreen from 'expo-splash-screen';
 import { Colors, applyTheme } from './src/theme/colors';
 import { getMapsApiKey } from './src/context/restaurantState';
+import { CustomSplashScreen } from './src/components/CustomSplashScreen';
 
 // Keep splash screen visible while we load theme from storage
 SplashScreen.preventAutoHideAsync();
@@ -13,8 +14,10 @@ if (__DEV__ && !getMapsApiKey()) {
   console.warn('[FGluten] MAPS_API_KEY is missing. Add GCP_API_KEY to your .env file.');
 }
 
+type BootStage = 'init' | 'animating' | 'ready';
+
 export default function App() {
-  const [isThemeLoaded, setIsThemeLoaded] = useState(false);
+  const [bootStage, setBootStage] = useState<BootStage>('init');
 
   useEffect(() => {
     async function initTheme() {
@@ -27,15 +30,22 @@ export default function App() {
         // Fallback to dark
         applyTheme(true);
       } finally {
-        setIsThemeLoaded(true);
+        // Theme is loaded, proceed to custom JS splash animation
+        setBootStage('animating');
+        // We can now safely hide the native splash screen, transitioning instantly 
+        // to our custom JS splash screen which matches the newly loaded theme!
         SplashScreen.hideAsync();
       }
     }
     initTheme();
   }, []);
 
-  if (!isThemeLoaded) {
-    return null;
+  if (bootStage === 'init') {
+    return null; // Native splash screen is still visible
+  }
+
+  if (bootStage === 'animating') {
+    return <CustomSplashScreen onFinish={() => setBootStage('ready')} />;
   }
 
   // ─── DYNAMIC IMPORTS ──────────────────────────────────────────────────────────

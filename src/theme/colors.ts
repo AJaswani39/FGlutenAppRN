@@ -1,3 +1,5 @@
+import { Dimensions } from 'react-native';
+
 // Design tokens for FGlutenApp React Native
 export const Colors = {
   // Primary brand palette - deep green gluten-free theme
@@ -64,14 +66,36 @@ export const Radius = {
   full: 999,
 };
 
+// ─── Responsive Font Scaling ──────────────────────────────────────────────────
+// Baseline design width is 375px (iPhone SE / standard RN target).
+// Fonts scale proportionally to the actual device width, clamped to safe bounds.
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const DESIGN_WIDTH = 375;
+
+// Scale factor: how much larger/smaller the device is vs our design baseline
+const fontScale = SCREEN_WIDTH / DESIGN_WIDTH;
+
+/**
+ * Returns a font size scaled to the current device width.
+ * @param size - Base size in points (as designed for 375px width)
+ * @param min  - Minimum allowed size (prevents tiny text on small devices)
+ * @param max  - Maximum allowed size (prevents oversized text on tablets)
+ */
+function rf(size: number, min?: number, max?: number): number {
+  const scaled = Math.round(size * fontScale);
+  if (min !== undefined && scaled < min) return min;
+  if (max !== undefined && scaled > max) return max;
+  return scaled;
+}
+
 export const FontSize = {
-  xs: 11,
-  sm: 13,
-  md: 15,
-  lg: 17,
-  xl: 20,
-  xxl: 26,
-  display: 34,
+  xs:      rf(11,  10, 13),
+  sm:      rf(13,  12, 15),
+  md:      rf(15,  14, 18),
+  lg:      rf(17,  16, 20),
+  xl:      rf(20,  18, 24),
+  xxl:     rf(26,  22, 30),
+  display: rf(34,  28, 40),
 };
 
 export const FontWeight = {

@@ -4,6 +4,10 @@ import { logger } from '../util/logger';
  * Service to interact with Puter.js AI for deep menu analysis.
  * Uses Puter's OpenAI-compatible stable endpoint.
  */
+
+/** Maximum time in ms to wait for any Puter AI response before aborting. */
+const AI_REQUEST_TIMEOUT_MS = 30_000;
+
 export class GeminiService {
   private static apiKey: string | null = null;
   // Puter's OpenAI-compatible endpoint
@@ -19,7 +23,7 @@ export class GeminiService {
    * Performs a comprehensive analysis of a menu using Puter AI.
    */
   static async analyzeMenu(
-    menuText: string, 
+    menuText: string,
     options: { strictCeliac?: boolean; dairyFree?: boolean; nutFree?: boolean; soyFree?: boolean } = {}
   ): Promise<string> {
     if (!this.apiKey) {
@@ -61,17 +65,26 @@ export class GeminiService {
         "${menuText}"
       `;
 
-      const response = await fetch(this.baseUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${this.apiKey}`
-        },
-        body: JSON.stringify({
-          model: this.modelName,
-          messages: [{ role: 'user', content: prompt }]
-        })
-      });
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), AI_REQUEST_TIMEOUT_MS);
+
+      let response: Response;
+      try {
+        response = await fetch(this.baseUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${this.apiKey}`,
+          },
+          body: JSON.stringify({
+            model: this.modelName,
+            messages: [{ role: 'user', content: prompt }],
+          }),
+          signal: controller.signal,
+        });
+      } finally {
+        clearTimeout(timeoutId);
+      }
 
       if (!response.ok) {
         const errText = await response.text();
@@ -82,9 +95,10 @@ export class GeminiService {
       const text = data.choices?.[0]?.message?.content || '';
       return text.replace(/```json|```/gi, '').trim();
     } catch (error: unknown) {
+      const isTimeout = error instanceof Error && error.name === 'AbortError';
       const message = error instanceof Error ? error.message : String(error);
-      logger.error(`Puter analysis failed: ${message}`);
-      throw new Error(`AI Analysis failed: ${message}`);
+      logger.error(`Puter analysis failed${isTimeout ? ' (timeout)' : ''}: ${message}`);
+      throw new Error(isTimeout ? 'AI Analysis timed out. Please try again.' : `AI Analysis failed: ${message}`);
     }
   }
 
@@ -110,7 +124,7 @@ export class GeminiService {
       'new instructions',
       'write a poem',
       'write code',
-      'write a script'
+      'write a script',
     ];
 
     const lowerQuestion = question.toLowerCase();
@@ -148,6 +162,10 @@ export class GeminiService {
           xhr.setRequestHeader('Content-Type', 'application/json');
           xhr.setRequestHeader('Authorization', `Bearer ${this.apiKey}`);
 
+          // Abort the XHR if it exceeds the timeout threshold
+          xhr.timeout = AI_REQUEST_TIMEOUT_MS;
+          xhr.ontimeout = () => reject(new Error('AI Chat timed out. Please try again.'));
+
           let seenBytes = 0;
           let fullText = '';
 
@@ -168,7 +186,7 @@ export class GeminiService {
                       onUpdate(fullText);
                     }
                   } catch (e) {
-                    // Ignore partial JSON chunks
+                    // Ignore partial JSON chunks during streaming
                   }
                 }
               }
@@ -186,32 +204,44 @@ export class GeminiService {
           xhr.send(JSON.stringify({
             model: this.modelName,
             messages: [{ role: 'user', content: prompt }],
-            stream: true
+            stream: true,
           }));
         });
       }
 
-      // Fallback for non-streaming
-      const response = await fetch(this.baseUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${this.apiKey}`
-        },
-        body: JSON.stringify({
-          model: this.modelName,
-          messages: [{ role: 'user', content: prompt }],
-          stream: false
-        })
-      });
+      // Non-streaming fallback path
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), AI_REQUEST_TIMEOUT_MS);
+
+      let response: Response;
+      try {
+        response = await fetch(this.baseUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${this.apiKey}`,
+          },
+          body: JSON.stringify({
+            model: this.modelName,
+            messages: [{ role: 'user', content: prompt }],
+            stream: false,
+          }),
+          signal: controller.signal,
+        });
+      } finally {
+        clearTimeout(timeoutId);
+      }
 
       if (!response.ok) throw new Error(`Puter API error: ${response.status}`);
       const data = await response.json();
       return data.choices?.[0]?.message?.content || '';
     } catch (error: unknown) {
+      const isTimeout =
+        error instanceof Error &&
+        (error.name === 'AbortError' || error.message.includes('timed out'));
       const message = error instanceof Error ? error.message : String(error);
-      logger.error(`Puter chat failed: ${message}`);
-      throw new Error(`AI Chat failed: ${message}`);
+      logger.error(`Puter chat failed${isTimeout ? ' (timeout)' : ''}: ${message}`);
+      throw new Error(isTimeout ? 'AI Chat timed out. Please try again.' : `AI Chat failed: ${message}`);
     }
   }
 }

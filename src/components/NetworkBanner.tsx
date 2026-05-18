@@ -34,6 +34,7 @@ export function NetworkBanner() {
 
   return (
     <Animated.View
+      pointerEvents={isConnected ? 'none' : 'auto'}
       style={[
         styles.container,
         {

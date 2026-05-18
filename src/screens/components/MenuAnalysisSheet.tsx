@@ -72,6 +72,7 @@ export default function MenuAnalysisSheet({ restaurant, onClose }: Props) {
   const [isSharing, setIsSharing] = useState(false);
   
   const scorecardRef = useRef(null);
+  const chatScrollRef = useRef<ScrollView>(null);
 
   useEffect(() => {
     // Initialize Gemini with key from config
@@ -105,6 +106,15 @@ export default function MenuAnalysisSheet({ restaurant, onClose }: Props) {
       updateAiSession(restaurant, sessionDataRef.current);
     };
   }, [restaurant, updateAiSession]);
+
+  // Auto-scroll to the bottom of the chat history whenever a new message arrives
+  useEffect(() => {
+    if (chatHistory.length > 0) {
+      setTimeout(() => {
+        chatScrollRef.current?.scrollToEnd({ animated: true });
+      }, 80);
+    }
+  }, [chatHistory]);
 
   const runAnalysis = useCallback(async (text: string) => {
     if (!text.trim()) {
@@ -351,6 +361,7 @@ export default function MenuAnalysisSheet({ restaurant, onClose }: Props) {
         </View>
 
         <ScrollView
+          ref={chatScrollRef}
           contentContainerStyle={styles.content}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"

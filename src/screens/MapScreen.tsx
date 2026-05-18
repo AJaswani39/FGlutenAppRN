@@ -14,7 +14,7 @@ import { Restaurant } from '../types/restaurant';
 import { formatDistance } from '../util/formatters';
 
 import RestaurantDetailModal from './components/RestaurantDetailModal';
-import { getRestaurantListKey } from '../util/restaurantUtils';
+import { getRestaurantListKey, isSameRestaurantIdentity } from '../util/restaurantUtils';
 import { Ionicons, StateMessage } from '../components/ui';
 import { ScanProgressBanner } from '../components/ScanProgressBanner';
 import { LocationSearchBar } from '../components/LocationSearchBar';
@@ -22,7 +22,7 @@ import * as Haptics from 'expo-haptics';
 import { distanceBetween } from '../util/geoUtils';
 
 export default function MapScreen() {
-  const { uiState, loadNearbyRestaurants } = useRestaurants();
+  const { uiState, loadNearbyRestaurants, savedRestaurants } = useRestaurants();
   const { useMiles } = useSettings();
   const [previewRestaurant, setPreviewRestaurant] = useState<Restaurant | null>(null);
   const [detailRestaurant, setDetailRestaurant] = useState<Restaurant | null>(null);
@@ -109,6 +109,19 @@ export default function MapScreen() {
 
   const hasNoResults = uiState.status === 'success' && restaurants.length === 0;
 
+  // Synchronize preview and detail states with the live context to get immediate scans/favorites updates
+  const activePreview = previewRestaurant
+    ? (uiState.restaurants.find((r) => isSameRestaurantIdentity(r, previewRestaurant)) ??
+       savedRestaurants.find((r) => isSameRestaurantIdentity(r, previewRestaurant)) ??
+       previewRestaurant)
+    : null;
+
+  const activeDetail = detailRestaurant
+    ? (uiState.restaurants.find((r) => isSameRestaurantIdentity(r, detailRestaurant)) ??
+       savedRestaurants.find((r) => isSameRestaurantIdentity(r, detailRestaurant)) ??
+       detailRestaurant)
+    : null;
+
   return (
     <View style={styles.container}>
       <LocationSearchBar 
@@ -142,17 +155,20 @@ export default function MapScreen() {
         {restaurants.map((restaurant, index) => {
           if (restaurant.latitude == null || restaurant.longitude == null) return null;
           
+          // Match with saved status so pinColor updates instantly on favorite status toggling
+          const activeRestaurant = savedRestaurants.find(r => isSameRestaurantIdentity(r, restaurant)) ?? restaurant;
+          
           return (
             <Marker
-              key={getRestaurantListKey(restaurant, index)}
+              key={getRestaurantListKey(activeRestaurant, index)}
               coordinate={{
-                latitude: restaurant.latitude,
-                longitude: restaurant.longitude,
+                latitude: activeRestaurant.latitude,
+                longitude: activeRestaurant.longitude,
               }}
-              title={restaurant.name}
-              description={restaurant.address}
-              pinColor={markerColor(restaurant)}
-              onPress={() => setPreviewRestaurant(restaurant)}
+              title={activeRestaurant.name}
+              description={activeRestaurant.address}
+              pinColor={markerColor(activeRestaurant)}
+              onPress={() => setPreviewRestaurant(activeRestaurant)}
             />
           );
         })}
@@ -185,18 +201,18 @@ export default function MapScreen() {
         </Text>
       </View>
 
-      {previewRestaurant ? (
-        <Pressable style={styles.previewCard} onPress={() => setDetailRestaurant(previewRestaurant)}>
-          <Text style={styles.previewName} numberOfLines={1}>{previewRestaurant.name}</Text>
+      {activePreview ? (
+        <Pressable style={styles.previewCard} onPress={() => setDetailRestaurant(activePreview)}>
+          <Text style={styles.previewName} numberOfLines={1}>{activePreview.name}</Text>
           <Text style={styles.previewMeta} numberOfLines={1}>
-            {previewMeta(previewRestaurant, useMiles)}
+            {previewMeta(activePreview, useMiles)}
           </Text>
         </Pressable>
       ) : null}
 
-      {detailRestaurant ? (
+      {activeDetail ? (
         <RestaurantDetailModal
-          restaurant={detailRestaurant}
+          restaurant={activeDetail}
           useMiles={useMiles}
           onClose={() => setDetailRestaurant(null)}
         />

@@ -1,25 +1,18 @@
 import { Dimensions } from 'react-native';
 
 // Design tokens for FGlutenApp React Native
-export const Colors = {
-  // Primary brand palette - deep green gluten-free theme
-  primary: '#1DB954',       // Vivid green - brand accent
+export const DarkColors = {
+  primary: '#1DB954',
   primaryDark: '#17A347',
   primaryLight: '#E8F9EE',
-
-  // Backgrounds
-  background: '#0D1117',    // Rich dark
-  surface: '#161B22',       // Card/sheet bg
-  surfaceElevated: '#1C2128', // Elevated card
+  background: '#0D1117',
+  surface: '#161B22',
+  surfaceElevated: '#1C2128',
   border: '#30363D',
-
-  // Text hierarchy
   textPrimary: '#E6EDF3',
   textSecondary: '#8B949E',
   textMuted: '#484F58',
   textInverse: '#0D1117',
-
-  // Status colors
   success: '#3FB950',
   successBg: '#0D2A1A',
   warning: '#D29922',
@@ -28,26 +21,58 @@ export const Colors = {
   errorBg: '#2B0F0E',
   info: '#58A6FF',
   infoBg: '#0C2A4A',
-
-  // Gluten-free specific
   gfGreen: '#1DB954',
   gfGold: '#E3B341',
   gfRed: '#F85149',
-
-  // Favorite statuses
   favSafe: '#1DB954',
   favTry: '#E3B341',
   favAvoid: '#F85149',
-
-  // Tab / Navigation
   tabActive: '#1DB954',
   tabInactive: '#484F58',
-
-  // Overlay
   overlay: 'rgba(0,0,0,0.6)',
   shimmer1: '#1C2128',
   shimmer2: '#21262D',
 };
+
+export const LightColors: typeof DarkColors = {
+  primary: '#1DB954',
+  primaryDark: '#17A347',
+  primaryLight: '#E8F9EE',
+  background: '#F6F8FA',
+  surface: '#FFFFFF',
+  surfaceElevated: '#FFFFFF',
+  border: '#D0D7DE',
+  textPrimary: '#24292F',
+  textSecondary: '#57606A',
+  textMuted: '#8C959F',
+  textInverse: '#FFFFFF',
+  success: '#2DA44E',
+  successBg: '#DAFBE1',
+  warning: '#BF8700',
+  warningBg: '#FFF8C5',
+  error: '#CF222E',
+  errorBg: '#FFEBE9',
+  info: '#0969DA',
+  infoBg: '#DDF4FF',
+  gfGreen: '#1DB954',
+  gfGold: '#BF8700',
+  gfRed: '#CF222E',
+  favSafe: '#1DB954',
+  favTry: '#BF8700',
+  favAvoid: '#CF222E',
+  tabActive: '#1DB954',
+  tabInactive: '#6E7781',
+  overlay: 'rgba(0,0,0,0.4)',
+  shimmer1: '#EAECEF',
+  shimmer2: '#D0D7DE',
+};
+
+// Mutable runtime object. Starts as Dark.
+export const Colors = { ...DarkColors };
+
+export function applyTheme(isDark: boolean) {
+  Object.assign(Colors, isDark ? DarkColors : LightColors);
+}
 
 export const Spacing = {
   xs: 4,

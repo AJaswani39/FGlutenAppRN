@@ -1,8 +1,10 @@
-import React from 'react';
-import { View, Text, StyleSheet, Switch } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, StyleSheet, Switch, Alert } from 'react-native';
 import { Colors, Spacing, Radius, FontSize, FontWeight } from '../theme/colors';
 import { useSettings } from '../context/SettingsContext';
 import { IconName, Ionicons } from '../components/ui';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Updates from 'expo-updates';
 
 export default function SettingsScreen() {
   const { 
@@ -10,10 +12,34 @@ export default function SettingsScreen() {
     setUseMiles, setStrictCeliac, setDairyFree, setNutFree, setSoyFree 
   } = useSettings();
 
+  const [isDark, setIsDark] = useState(Colors.background === '#0D1117');
+
+  const handleThemeToggle = async () => {
+    const newIsDark = !isDark;
+    setIsDark(newIsDark);
+    await AsyncStorage.setItem('@fgluten_theme', newIsDark ? 'dark' : 'light');
+    
+    Alert.alert(
+      'Theme Changed',
+      'The app needs to reload to apply the new theme.',
+      [
+        { text: 'Later', style: 'cancel' },
+        { text: 'Reload Now', onPress: () => Updates.reloadAsync().catch(() => {}) }
+      ]
+    );
+  };
+
   return (
     <View style={styles.container}>
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Preferences</Text>
+        <SettingRow
+          icon="moon"
+          label="Dark Mode"
+          value={isDark}
+          onToggle={handleThemeToggle}
+          description="Requires an app reload to apply."
+        />
         <SettingRow
           icon="speedometer"
           label="Use Miles"

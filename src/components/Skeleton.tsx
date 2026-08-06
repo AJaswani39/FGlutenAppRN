@@ -1,11 +1,11 @@
 import React from 'react';
-import { View, StyleSheet, Animated, Easing } from 'react-native';
+import { View, StyleSheet, Animated, Easing, DimensionValue, StyleProp, ViewStyle } from 'react-native';
 import { Colors } from '../theme/colors';
 
 interface SkeletonProps {
-  width?: number | string;
+  width?: DimensionValue;
   height?: number;
-  style?: any;
+  style?: StyleProp<ViewStyle>;
 }
 
 export function Skeleton({ width, height, style }: SkeletonProps) {

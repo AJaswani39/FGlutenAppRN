@@ -28,12 +28,17 @@ export default {
     ios: {
       supportsTablet: true,
       bundleIdentifier: "io.fgluten.app",
+      config: {
+        googleMapsApiKey: process.env.GCP_API_KEY ?? "",
+      },
       infoPlist: {
         ITSAppUsesNonExemptEncryption: false,
         NSLocationWhenInUseUsageDescription:
           "FGlutenApp uses your location to find gluten-free friendly restaurants near you.",
         NSLocationAlwaysAndWhenInUseUsageDescription:
           "FGlutenApp uses your location to find gluten-free friendly restaurants near you.",
+        NSPhotoLibraryUsageDescription:
+          "FGlutenApp lets you choose menu photos to scan for gluten-free safety clues.",
       },
     },
     android: {
@@ -42,10 +47,16 @@ export default {
         backgroundColor: "#0D1117",
       },
       package: isStaging ? "io.fgluten.app.staging" : "io.fgluten.app",
+      config: {
+        googleMaps: {
+          apiKey: process.env.GCP_API_KEY ?? "",
+        },
+      },
       permissions: [
         "ACCESS_FINE_LOCATION",
         "ACCESS_COARSE_LOCATION",
         "INTERNET",
+        "READ_MEDIA_IMAGES",
       ],
     },
     web: {
@@ -57,6 +68,13 @@ export default {
         {
           locationWhenInUsePermission:
             "FGlutenApp uses your location to find gluten-free restaurants near you.",
+        },
+      ],
+      [
+        "expo-image-picker",
+        {
+          photosPermission:
+            "FGlutenApp lets you choose menu photos to scan for gluten-free safety clues.",
         },
       ],
     ],

@@ -1,17 +1,17 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   DEFAULT_FILTERS,
-  SettingsManager,
+  PersistenceService,
   normalizeCachePayload,
   normalizeFavoriteMap,
   normalizeFilters,
-} from '../SettingsManager';
+} from '../persistenceService';
 
 jest.mock('@react-native-async-storage/async-storage');
 
 const storage = AsyncStorage as typeof AsyncStorage & { __reset: () => void };
 
-describe('SettingsManager', () => {
+describe('PersistenceService', () => {
   beforeEach(() => {
     storage.__reset();
   });
@@ -29,7 +29,7 @@ describe('SettingsManager', () => {
       })
     );
 
-    await expect(SettingsManager.loadFilters()).resolves.toEqual({
+    await expect(PersistenceService.loadFilters()).resolves.toEqual({
       ...DEFAULT_FILTERS,
       openNowOnly: true,
       minRating: 5,
@@ -102,14 +102,6 @@ describe('SettingsManager', () => {
       lng: -70,
       timestamp: 999,
     });
-  });
-
-  it('formats distance boundaries safely', () => {
-    expect(SettingsManager.formatDistance(Number.NaN, false)).toBe('');
-    expect(SettingsManager.formatDistance(0, false)).toBe('');
-    expect(SettingsManager.formatDistance(90, true)).toBe('295 ft');
-    expect(SettingsManager.formatDistance(1609.34, true)).toBe('1.0 mi');
-    expect(SettingsManager.formatDistance(1400, false)).toBe('1.4 km');
   });
 
   it('normalizes filter helpers directly', () => {

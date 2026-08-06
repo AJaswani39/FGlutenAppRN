@@ -1,11 +1,10 @@
 import {
-  distanceBetween,
   extractGfEvidence,
   extractRawMenuText,
   findMenuLink,
-} from '../placesRepository';
+} from '../htmlUtils';
 
-describe('placesRepository helpers', () => {
+describe('htmlUtils', () => {
   it('extracts gluten-free evidence from single-line html without duplicates', () => {
     const html =
       '<div><p>Menu</p><p>Gluten-Free Pizza</p><p>gluten free pizza</p><p>Celiac friendly pasta</p></div>';
@@ -36,10 +35,5 @@ describe('placesRepository helpers', () => {
     `;
 
     expect(findMenuLink(html, 'https://example.com/restaurants')).toBe('https://example.com/menu');
-  });
-
-  it('calculates geographic distance', () => {
-    expect(distanceBetween(40.7128, -74.006, 40.7128, -74.006)).toBeCloseTo(0, 5);
-    expect(distanceBetween(40.7128, -74.006, 40.7138, -74.006)).toBeGreaterThan(100);
   });
 });

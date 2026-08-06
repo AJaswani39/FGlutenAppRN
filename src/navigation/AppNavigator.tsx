@@ -1,21 +1,26 @@
 import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { Text, View, StyleSheet, Platform } from 'react-native';
+import { View, StyleSheet, Platform } from 'react-native';
 import { Colors, FontSize } from '../theme/colors';
 import HomeScreen from '../screens/HomeScreen';
 import RestaurantListScreen from '../screens/RestaurantListScreen';
 import SettingsScreen from '../screens/SettingsScreen';
-import FilterScreen from '../screens/FilterScreen';
+import MapScreen from '../screens/MapScreen';
+import SavedPlacesScreen from '../screens/SavedPlacesScreen';
 import { RootTabParamList } from '../types/navigation';
+import { IconName, Ionicons } from '../components/ui';
 
 const Tab = createBottomTabNavigator<RootTabParamList>();
 
-function TabIcon({ emoji, focused }: { emoji: string; focused: boolean }) {
+function TabIcon({ name, focused }: { name: IconName; focused: boolean }) {
   return (
-    <View style={iconStyles.container}>
-      <Text style={[iconStyles.emoji, focused && iconStyles.emojiActive]}>{emoji}</Text>
-      {focused && <Text style={iconStyles.dot}>•</Text>}
+    <View style={[iconStyles.container, focused && iconStyles.containerActive]}>
+      <Ionicons
+        name={name}
+        size={20}
+        color={focused ? Colors.primary : Colors.tabInactive}
+      />
     </View>
   );
 }
@@ -56,10 +61,10 @@ function TabNavigator() {
           name="Home"
           component={HomeScreen}
           options={{
-            title: '🌾 FGlutenApp',
+            title: 'FGlutenApp',
             tabBarLabel: 'Home',
             tabBarIcon: ({ focused }) => (
-              <TabIcon emoji="🏠" focused={focused} />
+              <TabIcon name="home" focused={focused} />
             ),
           }}
         />
@@ -70,18 +75,29 @@ function TabNavigator() {
             title: 'Find Restaurants',
             tabBarLabel: 'Explore',
             tabBarIcon: ({ focused }) => (
-              <TabIcon emoji="🍽️" focused={focused} />
+              <TabIcon name="restaurant" focused={focused} />
             ),
           }}
         />
       <Tab.Screen
-        name="Filter"
-        component={FilterScreen}
+        name="Map"
+        component={MapScreen}
         options={{
-          title: 'Filters',
-          tabBarLabel: 'Filter',
+          title: 'Map',
+          tabBarLabel: 'Map',
           tabBarIcon: ({ focused }) => (
-            <TabIcon emoji="⚙️" focused={focused} />
+            <TabIcon name="map" focused={focused} />
+          ),
+        }}
+      />
+      <Tab.Screen
+        name="Saved"
+        component={SavedPlacesScreen}
+        options={{
+          title: 'Saved Places',
+          tabBarLabel: 'Saved',
+          tabBarIcon: ({ focused }) => (
+            <TabIcon name="heart" focused={focused} />
           ),
         }}
       />
@@ -92,7 +108,7 @@ function TabNavigator() {
           title: 'Settings',
           tabBarLabel: 'Settings',
           tabBarIcon: ({ focused }) => (
-            <TabIcon emoji="⚙️" focused={focused} />
+            <TabIcon name="settings" focused={focused} />
           ),
         }}
       />
@@ -104,19 +120,11 @@ const iconStyles = StyleSheet.create({
   container: {
     alignItems: 'center',
     justifyContent: 'center',
-    minWidth: 28,
+    width: 32,
+    height: 28,
+    borderRadius: 14,
   },
-  emoji: {
-    fontSize: 18,
-    opacity: 0.8,
-  },
-  emojiActive: {
-    opacity: 1,
-  },
-  dot: {
-    color: Colors.primary,
-    fontSize: 10,
-    lineHeight: 10,
-    marginTop: -1,
+  containerActive: {
+    backgroundColor: Colors.primaryLight,
   },
 });

@@ -1,6 +1,15 @@
-export type MenuScanStatus = 'NOT_STARTED' | 'FETCHING' | 'SUCCESS' | 'NO_WEBSITE' | 'FAILED';
+import { MenuAnalysisResult } from '../services/menuSafety';
+
+export type MenuScanStatus = 'NOT_STARTED' | 'FETCHING' | 'SUCCESS' | 'NO_WEBSITE' | 'FAILED' | 'JS_ONLY';
 export type FavoriteStatus = 'safe' | 'try' | 'avoid' | null;
 export type SortMode = 'distance' | 'name';
+export type GfConfidenceLevel = 'confirmed' | 'name_match' | 'no_evidence' | 'unavailable' | 'pending';
+
+export interface AiChatMessage {
+  role: 'user' | 'model';
+  text: string;
+  timestamp: number;
+}
 
 export interface Restaurant {
   placeId: string;
@@ -18,6 +27,9 @@ export interface Restaurant {
   menuScanStatus: MenuScanStatus;
   menuScanTimestamp: number;
   favoriteStatus: FavoriteStatus;
+  aiAnalysisResult?: MenuAnalysisResult | null;
+  aiChatHistory?: AiChatMessage[];
+  aiDeepAnalysis?: string | null;
 }
 
 export interface RestaurantFilters {
@@ -37,4 +49,12 @@ export interface RestaurantUiState {
   message: string | null;
   userLatitude: number | null;
   userLongitude: number | null;
+  scanProgress: MenuScanProgress | null;
+}
+
+export interface MenuScanProgress {
+  completed: number;
+  total: number;
+  failed: number;
+  active: boolean;
 }

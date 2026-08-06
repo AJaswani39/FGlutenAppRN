@@ -1,6 +1,8 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { RestaurantFilters } from '../types/restaurant';
-import { DEFAULT_FILTERS, SettingsManager } from '../util/SettingsManager';
+import { DEFAULT_FILTERS, PersistenceService } from '../services/persistenceService';
+
+import { logger } from '../util/logger';
 
 interface FiltersContextValue {
   filters: RestaurantFilters;
@@ -20,25 +22,44 @@ export function FiltersProvider({ children }: { children: React.ReactNode }) {
   const [filters, setFiltersState] = useState<RestaurantFilters>(DEFAULT_FILTERS);
 
   useEffect(() => {
+    let isMounted = true;
+
     (async () => {
-      const savedFilters = await SettingsManager.loadFilters();
-      if (savedFilters) {
+      try {
+        const savedFilters = await PersistenceService.loadFilters();
+
+        if (!isMounted) return;
         setFiltersState(savedFilters);
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error);
+        logger.error(`Failed to load restaurant filters: ${message}`);
       }
     })();
+
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   const setFilters = useCallback((partial: Partial<RestaurantFilters>) => {
     setFiltersState((prev) => {
       const next = { ...prev, ...partial };
-      SettingsManager.saveFilters(next);
+      void PersistenceService.saveFilters(next).catch((error: unknown) => {
+
+        const message = error instanceof Error ? error.message : String(error);
+        logger.error(`Failed to save restaurant filters: ${message}`);
+      });
       return next;
     });
   }, []);
 
   const resetFilters = useCallback(() => {
     setFiltersState(DEFAULT_FILTERS);
-    SettingsManager.saveFilters(DEFAULT_FILTERS);
+    void PersistenceService.saveFilters(DEFAULT_FILTERS).catch((error: unknown) => {
+
+      const message = error instanceof Error ? error.message : String(error);
+      logger.error(`Failed to reset restaurant filters: ${message}`);
+    });
   }, []);
 
   return (

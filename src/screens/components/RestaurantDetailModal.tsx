@@ -10,10 +10,19 @@ import {
   Platform,
   ActivityIndicator,
 } from 'react-native';
+import * as Haptics from 'expo-haptics';
 import { Colors, Spacing, Radius, FontSize, FontWeight } from '../../theme/colors';
 import { Restaurant, FavoriteStatus } from '../../types/restaurant';
-import { SettingsManager } from '../../util/SettingsManager';
+import { formatDistance } from '../../util/formatters';
+
+import { getGfConfidenceLevel, isSameRestaurantIdentity } from '../../util/restaurantUtils';
 import { useRestaurants } from '../../context/RestaurantContext';
+import { useSettings } from '../../context/SettingsContext';
+import { logger } from '../../util/logger';
+import { IconName, Ionicons } from '../../components/ui';
+import { getRestaurantSafetyScore, MenuSafetyLevel } from '../../services/menuSafety';
+import { getDiningChecklist } from '../../services/diningChecklist';
+import { getCuisineRiskHints } from '../../services/cuisineRiskHints';
 import MenuAnalysisSheet from './MenuAnalysisSheet';
 
 interface Props {
@@ -23,29 +32,58 @@ interface Props {
 }
 
 export default function RestaurantDetailModal({ restaurant: initial, useMiles, onClose }: Props) {
-  const { uiState, setFavoriteStatus, requestMenuRescan } = useRestaurants();
+  const { uiState, savedRestaurants, setFavoriteStatus, requestMenuRescan } = useRestaurants();
+  const { strictCeliac } = useSettings();
   const [showAI, setShowAI] = useState(false);
+
+  if (!initial) return null;
 
   // Keep the displayed restaurant in sync with ViewModel updates
   const restaurant =
-    uiState.restaurants.find((r) => r.placeId === initial.placeId) ?? initial;
+    uiState.restaurants.find((r) => isSameRestaurantIdentity(r, initial)) ??
+    savedRestaurants.find((r) => isSameRestaurantIdentity(r, initial)) ??
+    initial;
 
-  const dist = SettingsManager.formatDistance(restaurant.distanceMeters, useMiles);
-  const isGF = restaurant.hasGFMenu || restaurant.gfMenu.length > 0;
+  const dist = formatDistance(restaurant.distanceMeters, useMiles);
+
+  const safeMenuUrl = getSafeExternalUrl(restaurant.menuUrl);
+  const confidence = confidenceMeta(restaurant);
+  const safetyScore = getRestaurantSafetyScore(restaurant, { strictCeliac });
+  const safety = safetyMeta(safetyScore.level);
+  const diningChecklist = getDiningChecklist(restaurant, {
+    strictCeliac,
+    safetyLevel: safetyScore.level,
+  });
+  const cuisineRiskHints = getCuisineRiskHints(restaurant);
+
+  const hasCoords = restaurant.latitude != null && restaurant.longitude != null;
+  const mapsUrl = hasCoords
+    ? Platform.select({
+        ios: `maps://app?daddr=${restaurant.latitude},${restaurant.longitude}`,
+        android: `geo:${restaurant.latitude},${restaurant.longitude}?q=${encodeURIComponent(restaurant.name)}`,
+      })
+    : undefined;
 
   const openMaps = () => {
-    const url = Platform.select({
-      ios: `maps://app?daddr=${restaurant.latitude},${restaurant.longitude}`,
-      android: `geo:${restaurant.latitude},${restaurant.longitude}?q=${encodeURIComponent(restaurant.name)}`,
-    });
-    if (url) Linking.openURL(url);
+    if (mapsUrl) {
+      void Linking.openURL(mapsUrl).catch((error: unknown) => {
+        const message = error instanceof Error ? error.message : String(error);
+        logger.error(`Failed to open maps link: ${message}`);
+      });
+    }
   };
 
   const openMenu = () => {
-    if (restaurant.menuUrl) Linking.openURL(restaurant.menuUrl);
+    if (safeMenuUrl) {
+      void Linking.openURL(safeMenuUrl).catch((error: unknown) => {
+        const message = error instanceof Error ? error.message : String(error);
+        logger.error(`Failed to open menu link: ${message}`);
+      });
+    }
   };
 
   const handleFav = (status: FavoriteStatus) => {
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     if (restaurant.favoriteStatus === status) {
       setFavoriteStatus(restaurant, null);
     } else {
@@ -54,13 +92,14 @@ export default function RestaurantDetailModal({ restaurant: initial, useMiles, o
   };
 
   const handleRescan = () => {
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     requestMenuRescan(restaurant);
   };
 
-  const buildAiText = (): string => {
+  const buildAiText = (): string | null => {
     if (restaurant.rawMenuText) return restaurant.rawMenuText;
     if (restaurant.gfMenu.length > 0) return restaurant.gfMenu.join('\n');
-    return `Menu scan results for ${restaurant.name}`;
+    return null;
   };
 
   return (
@@ -101,14 +140,102 @@ export default function RestaurantDetailModal({ restaurant: initial, useMiles, o
 
           {/* GF status */}
           <Section title="Gluten-Free Status">
-            <View style={[styles.gfCard, { backgroundColor: isGF ? Colors.successBg : Colors.surfaceElevated }]}>
-              <Text style={[styles.gfCardTitle, { color: isGF ? Colors.success : Colors.textMuted }]}>
-                {isGF
-                  ? restaurant.gfMenu.length >= 3
-                    ? '✅ Many GF options found'
-                    : '✅ Some GF options found'
-                  : '❓ GF options unknown'}
+            <View style={[styles.gfCard, { backgroundColor: confidence.bg }]}>
+              <Text style={[styles.gfCardTitle, { color: confidence.color }]}>
+                {confidence.icon} {confidence.title}
               </Text>
+              <Text style={styles.gfCardBody}>{confidence.description}</Text>
+            </View>
+          </Section>
+
+          <Section title="Safety Score">
+            <View style={[styles.safetyScoreCard, { backgroundColor: safety.bg }]}>
+              <View style={styles.safetyScoreHeader}>
+                <View>
+                  <Text style={[styles.safetyScoreValue, { color: safety.color }]}>
+                    {safetyScore.score}
+                    <Text style={styles.safetyScoreMax}>/100</Text>
+                  </Text>
+                  <Text style={[styles.safetyScoreTitle, { color: safety.color }]}>
+                    {safety.icon} {safetyScore.title}
+                  </Text>
+                </View>
+                <View style={[styles.safetyMeter, { borderColor: safety.color }]}>
+                  <View
+                    style={[
+                      styles.safetyMeterFill,
+                      {
+                        width: `${safetyScore.score}%`,
+                        backgroundColor: safety.color,
+                      },
+                    ]}
+                  />
+                </View>
+              </View>
+              <Text style={styles.safetyScoreSummary}>{safetyScore.summary}</Text>
+              {safetyScore.reasons.length > 0 && (
+                <View style={styles.safetyReasons}>
+                  {safetyScore.reasons.map((reason) => (
+                    <View key={reason} style={styles.safetyReason}>
+                      <Text style={[styles.safetyReasonDot, { color: safety.color }]}>•</Text>
+                      <Text style={styles.safetyReasonText}>{reason}</Text>
+                    </View>
+                  ))}
+                </View>
+              )}
+            </View>
+          </Section>
+
+          <Section title="Ask Before You Eat">
+            <View style={styles.checklistCard}>
+              {diningChecklist.map((item) => (
+                <View key={item.id} style={styles.checklistItem}>
+                  <View
+                    style={[
+                      styles.checklistPriority,
+                      {
+                        backgroundColor: item.priority === 'high' ? Colors.warningBg : Colors.infoBg,
+                        borderColor: item.priority === 'high' ? Colors.warning : Colors.info,
+                      },
+                    ]}
+                  >
+                    <Ionicons
+                      name={item.priority === 'high' ? 'alert-circle' : 'chatbubble-ellipses'}
+                      size={15}
+                      color={item.priority === 'high' ? Colors.warning : Colors.info}
+                    />
+                  </View>
+                  <View style={styles.checklistTextGroup}>
+                    <Text style={styles.checklistQuestion}>{item.question}</Text>
+                    <Text style={styles.checklistNote}>{item.note}</Text>
+                  </View>
+                </View>
+              ))}
+            </View>
+          </Section>
+
+          <Section title="Cuisine Risk Hints">
+            <View style={styles.riskHintsGrid}>
+              {cuisineRiskHints.map((hint) => {
+                const color = hint.tone === 'warning' ? Colors.warning : Colors.info;
+                const bg = hint.tone === 'warning' ? Colors.warningBg : Colors.infoBg;
+                return (
+                  <View key={hint.id} style={styles.riskHintCard}>
+                    <View style={styles.riskHintHeader}>
+                      <View style={[styles.riskHintIcon, { backgroundColor: bg, borderColor: color }]}>
+                        <Ionicons
+                          name={hint.tone === 'warning' ? 'warning' : 'information-circle'}
+                          size={15}
+                          color={color}
+                        />
+                      </View>
+                      <Text style={styles.riskHintLabel}>{hint.label}</Text>
+                    </View>
+                    <Text style={styles.riskHintText}>{hint.risk}</Text>
+                    <Text style={[styles.riskHintAsk, { color }]}>Ask: {hint.saferAsk}</Text>
+                  </View>
+                );
+              })}
             </View>
           </Section>
 
@@ -161,27 +288,32 @@ export default function RestaurantDetailModal({ restaurant: initial, useMiles, o
           <Section title="Actions">
             <View style={styles.actionsGrid}>
               <ActionButton
-                icon="🗺️"
+                icon="map"
                 label="Open in Maps"
                 onPress={openMaps}
+                disabled={!mapsUrl}
                 primary
               />
               <ActionButton
-                icon="🌐"
+                icon="globe"
                 label="View Menu"
                 onPress={openMenu}
-                disabled={!restaurant.menuUrl}
+                disabled={!safeMenuUrl}
               />
               <ActionButton
-                icon="🔍"
+                icon="scan"
                 label="Rescan Menu"
                 onPress={handleRescan}
                 disabled={!restaurant.placeId || restaurant.menuScanStatus === 'FETCHING'}
               />
               <ActionButton
-                icon="🤖"
+                icon="sparkles"
                 label="AI Analysis"
-                onPress={() => setShowAI(true)}
+                onPress={() => {
+                  void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+                  setShowAI(true);
+                }}
+                disabled={!buildAiText()}
                 primary
               />
             </View>
@@ -192,13 +324,82 @@ export default function RestaurantDetailModal({ restaurant: initial, useMiles, o
       {/* AI Analysis Sheet */}
       {showAI && (
         <MenuAnalysisSheet
-          restaurantName={restaurant.name}
-          menuText={buildAiText()}
+          restaurant={restaurant}
           onClose={() => setShowAI(false)}
         />
       )}
     </Modal>
   );
+}
+
+function getSafeExternalUrl(url: string | null): string | null {
+  const trimmed = url?.trim();
+  if (!trimmed) return null;
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  return `http://${trimmed}`;
+}
+
+function confidenceMeta(restaurant: Restaurant) {
+  const level = getGfConfidenceLevel(restaurant);
+  switch (level) {
+    case 'confirmed':
+      return {
+        icon: '✅',
+        title: 'Confirmed GF evidence',
+        description:
+          restaurant.gfMenu.length >= 3
+            ? 'Multiple gluten-free menu references were found during the latest scan.'
+            : 'Gluten-free menu evidence was found during the latest scan.',
+        color: Colors.success,
+        bg: Colors.successBg,
+      };
+    case 'name_match':
+      return {
+        icon: '🌾',
+        title: 'Name suggests GF',
+        description: 'The restaurant name suggests gluten-free options, but menu evidence is not confirmed yet.',
+        color: Colors.warning,
+        bg: Colors.warningBg,
+      };
+    case 'no_evidence':
+      return {
+        icon: '🔎',
+        title: 'No GF evidence found',
+        description: 'The menu scan completed, but no specific gluten-free items or claims were found.',
+        color: Colors.textSecondary,
+        bg: Colors.surfaceElevated,
+      };
+    case 'unavailable':
+      return {
+        icon: '⚠️',
+        title: 'Menu evidence unavailable',
+        description: 'The app could not inspect a menu for this restaurant. Ask staff before relying on it.',
+        color: Colors.warning,
+        bg: Colors.warningBg,
+      };
+    default:
+      return {
+        icon: '⏳',
+        title: 'Awaiting menu scan',
+        description: 'The app has not finished checking this restaurant for gluten-free menu evidence.',
+        color: Colors.info,
+        bg: Colors.infoBg,
+      };
+  }
+}
+
+function safetyMeta(level: MenuSafetyLevel) {
+  if (level === 'safe') {
+    return { icon: '✅', color: Colors.success, bg: Colors.successBg };
+  }
+  if (level === 'caution') {
+    return { icon: '⚠️', color: Colors.warning, bg: Colors.warningBg };
+  }
+  if (level === 'unsafe') {
+    return { icon: '❌', color: Colors.error, bg: Colors.errorBg };
+  }
+
+  return { icon: '❓', color: Colors.textSecondary, bg: Colors.surfaceElevated };
 }
 
 function menuStatusText(r: Restaurant): string {
@@ -301,7 +502,7 @@ function ActionButton({
   disabled,
   primary,
 }: {
-  icon: string;
+  icon: IconName;
   label: string;
   onPress: () => void;
   disabled?: boolean;
@@ -321,7 +522,11 @@ function ActionButton({
       accessibilityLabel={label}
       accessibilityState={{ disabled }}
     >
-      <Text style={actionStyles.icon}>{icon}</Text>
+      <Ionicons
+        name={icon}
+        size={17}
+        color={disabled ? Colors.textMuted : primary ? Colors.primary : Colors.textSecondary}
+      />
       <Text style={[actionStyles.label, primary && actionStyles.primaryLabel, disabled && actionStyles.disabledLabel]}>
         {label}
       </Text>
@@ -372,6 +577,149 @@ const styles = StyleSheet.create({
     padding: Spacing.md,
   },
   gfCardTitle: { fontSize: FontSize.md, fontWeight: FontWeight.semiBold },
+  gfCardBody: {
+    color: Colors.textSecondary,
+    fontSize: FontSize.sm,
+    lineHeight: 20,
+    marginTop: Spacing.xs,
+  },
+  safetyScoreCard: {
+    borderRadius: Radius.md,
+    padding: Spacing.md,
+  },
+  safetyScoreHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: Spacing.md,
+  },
+  safetyScoreValue: {
+    fontSize: FontSize.xxl,
+    fontWeight: FontWeight.extraBold,
+  },
+  safetyScoreMax: {
+    color: Colors.textSecondary,
+    fontSize: FontSize.md,
+    fontWeight: FontWeight.semiBold,
+  },
+  safetyScoreTitle: {
+    fontSize: FontSize.md,
+    fontWeight: FontWeight.semiBold,
+    marginTop: 2,
+  },
+  safetyMeter: {
+    flex: 1,
+    height: 10,
+    borderRadius: Radius.full,
+    borderWidth: 1,
+    overflow: 'hidden',
+    backgroundColor: Colors.surface,
+  },
+  safetyMeterFill: {
+    height: '100%',
+    borderRadius: Radius.full,
+  },
+  safetyScoreSummary: {
+    color: Colors.textSecondary,
+    fontSize: FontSize.sm,
+    lineHeight: 20,
+    marginTop: Spacing.sm,
+  },
+  safetyReasons: {
+    marginTop: Spacing.sm,
+    gap: 4,
+  },
+  safetyReason: {
+    flexDirection: 'row',
+    gap: Spacing.sm,
+  },
+  safetyReasonDot: {
+    fontSize: FontSize.md,
+    lineHeight: 20,
+  },
+  safetyReasonText: {
+    flex: 1,
+    color: Colors.textSecondary,
+    fontSize: FontSize.sm,
+    lineHeight: 20,
+  },
+  checklistCard: {
+    backgroundColor: Colors.surface,
+    borderRadius: Radius.md,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    padding: Spacing.md,
+    gap: Spacing.md,
+  },
+  checklistItem: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: Spacing.sm,
+  },
+  checklistPriority: {
+    width: 30,
+    height: 30,
+    borderRadius: Radius.full,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 1,
+  },
+  checklistTextGroup: {
+    flex: 1,
+  },
+  checklistQuestion: {
+    color: Colors.textPrimary,
+    fontSize: FontSize.sm,
+    fontWeight: FontWeight.semiBold,
+    lineHeight: 19,
+  },
+  checklistNote: {
+    color: Colors.textSecondary,
+    fontSize: FontSize.xs,
+    lineHeight: 17,
+    marginTop: 3,
+  },
+  riskHintsGrid: {
+    gap: Spacing.sm,
+  },
+  riskHintCard: {
+    backgroundColor: Colors.surface,
+    borderRadius: Radius.md,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    padding: Spacing.md,
+  },
+  riskHintHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    marginBottom: Spacing.xs,
+  },
+  riskHintIcon: {
+    width: 28,
+    height: 28,
+    borderRadius: Radius.full,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  riskHintLabel: {
+    color: Colors.textPrimary,
+    fontSize: FontSize.sm,
+    fontWeight: FontWeight.bold,
+  },
+  riskHintText: {
+    color: Colors.textSecondary,
+    fontSize: FontSize.sm,
+    lineHeight: 19,
+  },
+  riskHintAsk: {
+    fontSize: FontSize.xs,
+    fontWeight: FontWeight.semiBold,
+    lineHeight: 17,
+    marginTop: Spacing.xs,
+  },
   scanRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -444,7 +792,6 @@ const actionStyles = StyleSheet.create({
     borderColor: Colors.primary,
   },
   disabledBtn: { opacity: 0.4 },
-  icon: { fontSize: 16 },
   label: { color: Colors.textSecondary, fontSize: FontSize.sm, fontWeight: FontWeight.medium },
   primaryLabel: { color: Colors.primary },
   disabledLabel: { color: Colors.textMuted },

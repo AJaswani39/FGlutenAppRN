@@ -1,24 +1,7 @@
 import { API_ENDPOINTS, API_TIMEOUTS } from '../constants';
 import { Restaurant } from '../types/restaurant';
 import { logger } from '../util/logger';
-
-async function fetchWithTimeout(
-  url: string,
-  options: RequestInit = {},
-  timeoutMs = API_TIMEOUTS.DEFAULT
-): Promise<Response> {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-
-  try {
-    return await fetch(url, {
-      ...options,
-      signal: controller.signal,
-    });
-  } finally {
-    clearTimeout(timeoutId);
-  }
-}
+import { fetchWithTimeout } from '../util/http';
 
 interface PlacesNearbyResult {
   places?: PlacesNearbyPlace[];
@@ -82,65 +65,6 @@ function normalizeNearbyRestaurant(place: PlacesNearbyPlace): Restaurant | null 
   };
 }
 
-function stripNonContentTags(html: string): string {
-  return html
-    .replace(/<script[\s\S]*?<\/script>/gi, '')
-    .replace(/<style[\s\S]*?<\/style>/gi, '')
-    .replace(/<nav[\s\S]*?<\/nav>/gi, '\n')
-    .replace(/<footer[\s\S]*?<\/footer>/gi, '\n')
-    .replace(/<header[\s\S]*?<\/header>/gi, '\n')
-    .replace(/<aside[\s\S]*?<\/aside>/gi, '\n');
-}
-
-function htmlToTextSegments(html: string): string[] {
-  const withBreaks = stripNonContentTags(html)
-    .replace(
-      /<(?:br\s*\/?|\/p|\/div|\/li|\/ul|\/ol|\/section|\/article|\/tr|\/table|\/h[1-6])>/gi,
-      '\n'
-    )
-    .replace(/&nbsp;/gi, ' ')
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/\r/g, '')
-    .replace(/[ \t]+\n/g, '\n')
-    .replace(/\n[ \t]+/g, '\n')
-    .replace(/\n{2,}/g, '\n');
-
-  return withBreaks
-    .split('\n')
-    .map((segment) => segment.replace(/\s+/g, ' ').trim())
-    .filter(Boolean);
-}
-
-function cleanMenuLine(line: string): string {
-  let cleaned = line.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
-  if (cleaned.length > 100) {
-    const fragments = cleaned.split(/[.!?]/);
-    for (const fragment of fragments) {
-      if (
-        /gluten[\s-]?free|\bgf\b|celiac|coeliac/i.test(fragment) &&
-        fragment.trim().length > 15
-      ) {
-        cleaned = fragment.trim();
-        break;
-      }
-    }
-  }
-
-  return cleaned.slice(0, 200);
-}
-
-function findMainContent(segments: string[]): string {
-  const menuIndicators = ['menu', 'food', 'dining', 'entree', 'appetizer', 'dessert'];
-
-  for (let index = 0; index < segments.length; index += 1) {
-    const lower = segments[index].toLowerCase();
-    if (menuIndicators.some((indicator) => lower.includes(indicator)) && segments[index].length < 60) {
-      return segments.slice(index, Math.min(index + 80, segments.length)).join('\n');
-    }
-  }
-
-  return segments.slice(0, 120).join('\n');
-}
 
 export async function fetchNearbyRestaurants(
   lat: number,
@@ -202,16 +126,21 @@ export async function fetchWebsiteForPlace(placeId: string, apiKey: string): Pro
       : null;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    logger.error(`fetchWebsiteForPlace failed for ${placeId}: ${message}`);
+    logger.warn(`fetchWebsiteForPlace failed for ${placeId}: ${message}`);
     return null;
   }
 }
 
 export async function fetchHtml(url: string): Promise<string | null> {
+  if (url.toLowerCase().trim().endsWith('.pdf')) {
+    logger.warn(`fetchHtml: Skipping direct PDF menu link: ${url}`);
+    return null;
+  }
+
   try {
     const response = await fetchWithTimeout(url, {
       headers: {
-        'User-Agent': 'Mozilla/5.0 (compatible; FGlutenBot/1.0; +https://fgluten.io)',
+        'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.5 Mobile/15E148 Safari/604.1',
         Accept: 'text/html',
       },
     });
@@ -221,87 +150,17 @@ export async function fetchHtml(url: string): Promise<string | null> {
       return null;
     }
 
+    const contentType = response.headers.get('content-type') || '';
+    if (contentType.toLowerCase().includes('application/pdf')) {
+      logger.warn(`fetchHtml: Skipping resolved PDF content-type: ${url}`);
+      return null;
+    }
+
     return await response.text();
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    logger.error(`fetchHtml failed for ${url}: ${message}`);
+    logger.warn(`fetchHtml failed for ${url}: ${message}`);
     return null;
   }
 }
 
-export function extractGfEvidence(html: string): string[] {
-  const evidence: string[] = [];
-  const seen = new Set<string>();
-
-  for (const segment of htmlToTextSegments(html)) {
-    if (!/gluten[\s-]?free|\bgf\b|celiac|coeliac/i.test(segment)) continue;
-    if (segment.length <= 10 || segment.length >= 250) continue;
-
-    const cleaned = cleanMenuLine(segment);
-    const normalized = cleaned.toLowerCase().replace(/[\s-]+/g, ' ').trim();
-    if (!cleaned || seen.has(normalized)) continue;
-
-    seen.add(normalized);
-    evidence.push(cleaned);
-
-    if (evidence.length >= 15) {
-      break;
-    }
-  }
-
-  return evidence;
-}
-
-export function extractRawMenuText(html: string): string {
-  const segments = htmlToTextSegments(html);
-  return findMainContent(segments).slice(0, 3000);
-}
-
-export function findMenuLink(html: string, baseUrl: string): string | null {
-  const menuPattern = /href=["']([^"']*(?:menu|food|eat|dining)[^"']*)["']/gi;
-  const seen = new Set<string>();
-
-  for (const match of html.matchAll(menuPattern)) {
-    const href = match[1]?.trim();
-    if (!href) continue;
-    if (
-      href.startsWith('#') ||
-      href.toLowerCase().startsWith('javascript:') ||
-      href.toLowerCase().startsWith('mailto:') ||
-      href.toLowerCase().startsWith('tel:')
-    ) {
-      continue;
-    }
-
-    try {
-      const resolved = href.startsWith('http') ? href : new URL(href, baseUrl).toString();
-      const normalized = resolved.toLowerCase();
-      if (seen.has(normalized)) continue;
-
-      seen.add(normalized);
-      return resolved;
-    } catch (error) {
-      logger.warn(`findMenuLink: failed to parse URL ${href}: ${error}`);
-    }
-  }
-
-  return null;
-}
-
-export function distanceBetween(
-  lat1: number,
-  lon1: number,
-  lat2: number,
-  lon2: number
-): number {
-  const radius = 6371000;
-  const dLat = ((lat2 - lat1) * Math.PI) / 180;
-  const dLon = ((lon2 - lon1) * Math.PI) / 180;
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos((lat1 * Math.PI) / 180) *
-      Math.cos((lat2 * Math.PI) / 180) *
-      Math.sin(dLon / 2) ** 2;
-
-  return radius * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-}

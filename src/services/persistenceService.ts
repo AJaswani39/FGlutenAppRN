@@ -1,5 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { FavoriteStatus, RestaurantFilters, SortMode, Restaurant } from '../types/restaurant';
+import { FavoriteStatus, RestaurantFilters, SortMode, Restaurant, AiChatMessage } from '../types/restaurant';
+import { MenuAnalysisResult } from './menuSafety';
+import { logger } from '../util/logger';
 
 export interface CachePayload {
   restaurants: Restaurant[];
@@ -20,11 +22,10 @@ export const DEFAULT_FILTERS: RestaurantFilters = {
 const KEYS = {
   FILTERS: 'restaurant_filters',
   FAVORITES: 'restaurant_favorites',
+  SAVED_RESTAURANTS_DB: 'restaurant_saved_db',
   CACHE: 'restaurant_cache',
   SETTINGS: 'fg_settings',
 };
-
-type JsonRecord = Record<string, unknown>;
 
 const MENU_SCAN_STATUSES = new Set<Restaurant['menuScanStatus']>([
   'NOT_STARTED',
@@ -32,15 +33,14 @@ const MENU_SCAN_STATUSES = new Set<Restaurant['menuScanStatus']>([
   'SUCCESS',
   'NO_WEBSITE',
   'FAILED',
+  'JS_ONLY',
 ]);
 
-const FAVORITE_STATUSES = new Set<Exclude<FavoriteStatus, null>>([
-  'safe',
-  'try',
-  'avoid',
-]);
+const FAVORITE_STATUSES = new Set<Exclude<FavoriteStatus, null>>(['safe', 'try', 'avoid']);
 
-function isRecord(value: unknown): value is JsonRecord {
+// ─── Normalization Helpers ─────────────────────────────────────
+
+function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
@@ -72,18 +72,15 @@ function normalizeFavoriteStatus(value: unknown): FavoriteStatus {
 
 function normalizeStringArray(value: unknown, maxLength?: number): string[] {
   if (!Array.isArray(value)) return [];
-
   const normalized = value
     .filter((entry): entry is string => typeof entry === 'string')
     .map((entry) => entry.trim())
     .filter(Boolean);
-
   return typeof maxLength === 'number' ? normalized.slice(0, maxLength) : normalized;
 }
 
 export function normalizeFilters(value: unknown): RestaurantFilters {
   const record = isRecord(value) ? value : {};
-
   return {
     gfOnly: normalizeBoolean(record.gfOnly),
     openNowOnly: normalizeBoolean(record.openNowOnly),
@@ -96,7 +93,6 @@ export function normalizeFilters(value: unknown): RestaurantFilters {
 
 export function normalizeFavoriteMap(value: unknown): Record<string, string> {
   if (!isRecord(value)) return {};
-
   const normalized: Record<string, string> = {};
   for (const [key, status] of Object.entries(value)) {
     if (!key.trim()) continue;
@@ -104,7 +100,6 @@ export function normalizeFavoriteMap(value: unknown): Record<string, string> {
       normalized[key] = status;
     }
   }
-
   return normalized;
 }
 
@@ -114,8 +109,10 @@ export function normalizeRestaurant(value: unknown): Restaurant | null {
   const placeId = normalizeString(value.placeId).trim();
   const name = normalizeString(value.name, 'Unknown restaurant').trim() || 'Unknown restaurant';
   const address = normalizeString(value.address).trim();
+  const latitude = normalizeNullableFiniteNumber(value.latitude);
+  const longitude = normalizeNullableFiniteNumber(value.longitude);
 
-  if (!placeId && !address && name === 'Unknown restaurant') {
+  if ((!placeId && !address && name === 'Unknown restaurant') || latitude == null || longitude == null) {
     return null;
   }
 
@@ -125,6 +122,20 @@ export function normalizeRestaurant(value: unknown): Restaurant | null {
   const gfMenu = normalizeStringArray(value.gfMenu, 15);
   const menuUrl = normalizeString(value.menuUrl).trim() || null;
   const rawMenuText = normalizeString(value.rawMenuText).trim() || null;
+  // aiAnalysisResult is opaque data from disk — cast to MenuAnalysisResult since we
+  // cannot revalidate every field without a full schema. Nulled if not a plain object.
+  const aiAnalysisResult = isRecord(value.aiAnalysisResult)
+    ? (value.aiAnalysisResult as unknown as MenuAnalysisResult)
+    : null;
+
+  const aiChatHistory: AiChatMessage[] | undefined = Array.isArray(value.aiChatHistory)
+    ? (value.aiChatHistory as any[]).map((msg): AiChatMessage => ({
+        role: msg.role === 'user' ? 'user' : 'model',
+        text: normalizeString(msg.text),
+        timestamp: normalizeFiniteNumber(msg.timestamp, Date.now()),
+      }))
+    : undefined;
+
   const menuScanStatus = MENU_SCAN_STATUSES.has(value.menuScanStatus as Restaurant['menuScanStatus'])
     ? (value.menuScanStatus as Restaurant['menuScanStatus'])
     : 'NOT_STARTED';
@@ -133,8 +144,8 @@ export function normalizeRestaurant(value: unknown): Restaurant | null {
     placeId,
     name,
     address,
-    latitude: normalizeFiniteNumber(value.latitude, 0),
-    longitude: normalizeFiniteNumber(value.longitude, 0),
+    latitude,
+    longitude,
     rating: rating != null ? Math.min(5, Math.max(0, rating)) : null,
     openNow,
     hasGFMenu,
@@ -145,6 +156,15 @@ export function normalizeRestaurant(value: unknown): Restaurant | null {
     menuScanStatus,
     menuScanTimestamp: Math.max(0, normalizeFiniteNumber(value.menuScanTimestamp, 0)),
     favoriteStatus: normalizeFavoriteStatus(value.favoriteStatus),
+    aiAnalysisResult,
+    aiChatHistory,
+  };
+}
+
+export function stripLargeFields(restaurant: Restaurant): Restaurant {
+  return {
+    ...restaurant,
+    rawMenuText: null,
   };
 }
 
@@ -153,7 +173,11 @@ export function normalizeCachePayload(value: unknown): CachePayload | null {
 
   const restaurants = value.restaurants
     .map((restaurant) => normalizeRestaurant(restaurant))
-    .filter((restaurant): restaurant is Restaurant => restaurant !== null);
+    .filter((restaurant): restaurant is Restaurant => restaurant !== null)
+    // Sort by timestamp descending (newest first)
+    .sort((a, b) => b.menuScanTimestamp - a.menuScanTimestamp)
+    // Keep only the 50 most recent results to stay within storage limits
+    .slice(0, 50);
 
   return {
     restaurants,
@@ -163,49 +187,25 @@ export function normalizeCachePayload(value: unknown): CachePayload | null {
   };
 }
 
-export const SettingsManager = {
-  // ─── Units ───────────────────────────────────────────────────
-  async useMiles(): Promise<boolean> {
-    const val = await AsyncStorage.getItem(`${KEYS.SETTINGS}:use_miles`);
+// ─── Persistence Service ───────────────────────────────────────
+
+export const PersistenceService = {
+  async getSetting(key: string): Promise<boolean> {
+    const val = await AsyncStorage.getItem(`${KEYS.SETTINGS}:${key}`);
     return val === 'true';
   },
-  async setUseMiles(useMiles: boolean): Promise<void> {
-    await AsyncStorage.setItem(`${KEYS.SETTINGS}:use_miles`, useMiles ? 'true' : 'false');
+
+  async setSetting(key: string, value: boolean): Promise<void> {
+    await AsyncStorage.setItem(`${KEYS.SETTINGS}:${key}`, value ? 'true' : 'false');
   },
 
-  // ─── Strict Celiac ───────────────────────────────────────────
-  async isStrictCeliac(): Promise<boolean> {
-    const val = await AsyncStorage.getItem(`${KEYS.SETTINGS}:strict_celiac`);
-    return val === 'true';
-  },
-  async setStrictCeliac(strict: boolean): Promise<void> {
-    await AsyncStorage.setItem(`${KEYS.SETTINGS}:strict_celiac`, strict ? 'true' : 'false');
-  },
-
-  // ─── Distance Units ──────────────────────────────────────────
-  formatDistance(meters: number, useMiles: boolean): string {
-    if (!Number.isFinite(meters) || meters <= 0) return '';
-
-    if (useMiles) {
-      const miles = meters / 1609.34;
-      if (miles >= 0.1) return `${miles.toFixed(1)} mi`;
-      const feet = Math.round(meters * 3.28084);
-      return `${feet} ft`;
-    } else {
-      if (meters >= 1000) return `${(meters / 1000).toFixed(1)} km`;
-      return `${Math.round(meters)} m`;
-    }
-  },
-
-  // ─── Filters ─────────────────────────────────────────────────
   async loadFilters(): Promise<RestaurantFilters> {
     try {
       const raw = await AsyncStorage.getItem(KEYS.FILTERS);
-      if (raw) {
-        return normalizeFilters(JSON.parse(raw));
-      }
-    } catch (_) {}
-
+      if (raw) return normalizeFilters(JSON.parse(raw));
+    } catch (error: unknown) {
+      logger.warn(`Failed to load filters: ${error instanceof Error ? error.message : String(error)}`);
+    }
     return DEFAULT_FILTERS;
   },
 
@@ -213,12 +213,13 @@ export const SettingsManager = {
     await AsyncStorage.setItem(KEYS.FILTERS, JSON.stringify(normalizeFilters(filters)));
   },
 
-  // ─── Favorites ───────────────────────────────────────────────
   async loadFavorites(): Promise<Record<string, string>> {
     try {
       const raw = await AsyncStorage.getItem(KEYS.FAVORITES);
       if (raw) return normalizeFavoriteMap(JSON.parse(raw));
-    } catch (_) {}
+    } catch (error: unknown) {
+      logger.warn(`Failed to load favorites: ${error instanceof Error ? error.message : String(error)}`);
+    }
     return {};
   },
 
@@ -226,16 +227,43 @@ export const SettingsManager = {
     await AsyncStorage.setItem(KEYS.FAVORITES, JSON.stringify(normalizeFavoriteMap(map)));
   },
 
-  // ─── Restaurant cache ───────────────────────────────────────
+  async loadSavedRestaurantsDb(): Promise<Restaurant[]> {
+    try {
+      const raw = await AsyncStorage.getItem(KEYS.SAVED_RESTAURANTS_DB);
+      if (!raw) return [];
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        return parsed.map(normalizeRestaurant).filter((r): r is Restaurant => r !== null);
+      }
+    } catch (e) {}
+    return [];
+  },
+
+  async saveSavedRestaurantsDb(restaurants: Restaurant[]): Promise<void> {
+    const light = restaurants.map(stripLargeFields);
+    await AsyncStorage.setItem(KEYS.SAVED_RESTAURANTS_DB, JSON.stringify(light));
+  },
+
   async saveCache(data: CachePayload): Promise<void> {
     await AsyncStorage.setItem(KEYS.CACHE, JSON.stringify(normalizeCachePayload(data)));
+  },
+
+  async saveCacheLight(data: CachePayload): Promise<void> {
+    const lightData = {
+      ...data,
+      restaurants: data.restaurants.map(stripLargeFields),
+    };
+    // We don't normalize here to save CPU, just stringify the already-vetted fields
+    await AsyncStorage.setItem(KEYS.CACHE, JSON.stringify(lightData));
   },
 
   async loadCache(): Promise<CachePayload | null> {
     try {
       const raw = await AsyncStorage.getItem(KEYS.CACHE);
       if (raw) return normalizeCachePayload(JSON.parse(raw));
-    } catch (_) {}
+    } catch (error: unknown) {
+      logger.warn(`Failed to load cache: ${error instanceof Error ? error.message : String(error)}`);
+    }
     return null;
   },
 };

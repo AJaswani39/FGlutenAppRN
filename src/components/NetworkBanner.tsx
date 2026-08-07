@@ -24,7 +24,10 @@ export function NetworkBanner() {
       }).start();
     });
 
-    return () => unsubscribe();
+    return () => {
+      unsubscribe();
+      animation.stopAnimation();
+    };
   }, [animation]);
 
   const translateY = animation.interpolate({

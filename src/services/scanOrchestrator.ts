@@ -163,6 +163,8 @@ export class ScanOrchestrator {
       logger.error('Worker pool encountered an unexpected error', error);
     } finally {
       this.isProcessing = false;
+      if (this.isDestroyed) return;
+
       // Clear batch tracking when the queue is finally empty and workers are done
       if (this.scanQueue.length === 0) {
         this.currentBatchKeys = [];

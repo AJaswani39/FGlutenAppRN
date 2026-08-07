@@ -35,10 +35,17 @@ export default function RestaurantListScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [searchInputText, setSearchInputText] = useState(filters.searchQuery);
   const searchInputRef = useRef<TextInput>(null);
+  const isMounted = useRef(true);
 
   React.useEffect(() => {
     setSearchInputText(filters.searchQuery);
   }, [filters.searchQuery]);
+
+  React.useEffect(() => {
+    return () => {
+      isMounted.current = false;
+    };
+  }, []);
 
   const debouncedSetFilters = useDebounce((text: string) => {
     setFilters({ searchQuery: text });
@@ -53,7 +60,9 @@ export default function RestaurantListScreen() {
     try {
       await loadNearbyRestaurants();
     } finally {
-      setRefreshing(false);
+      if (isMounted.current) {
+        setRefreshing(false);
+      }
     }
   }, [loadNearbyRestaurants]);
 

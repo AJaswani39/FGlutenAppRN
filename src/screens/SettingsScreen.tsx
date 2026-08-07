@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, StyleSheet, Switch, Alert } from 'react-native';
 import { Colors, Spacing, Radius, FontSize, FontWeight } from '../theme/colors';
 import { useSettings } from '../context/SettingsContext';
@@ -13,11 +13,19 @@ export default function SettingsScreen() {
   } = useSettings();
 
   const [isDark, setIsDark] = useState(Colors.background === '#0D1117');
+  const isMounted = useRef(true);
+
+  useEffect(() => {
+    return () => {
+      isMounted.current = false;
+    };
+  }, []);
 
   const handleThemeToggle = async () => {
     const newIsDark = !isDark;
     setIsDark(newIsDark);
     await AsyncStorage.setItem('@fgluten_theme', newIsDark ? 'dark' : 'light');
+    if (!isMounted.current) return;
     
     Alert.alert(
       'Theme Changed',

@@ -1,20 +1,7 @@
-import { API_ENDPOINTS, API_TIMEOUTS } from '../constants';
+import { API_ENDPOINTS } from '../constants';
 import { Restaurant } from '../types/restaurant';
 import { logger } from '../util/logger';
 import { fetchWithTimeout } from '../util/http';
-
-interface PlacesNearbyResult {
-  places?: PlacesNearbyPlace[];
-}
-
-interface PlacesNearbyPlace {
-  id?: string;
-  displayName?: { text?: string };
-  formattedAddress?: string;
-  rating?: number;
-  currentOpeningHours?: { openNow?: boolean };
-  location?: { latitude?: number; longitude?: number };
-}
 
 const DEFAULT_SEARCH_RADIUS_METERS = 5000;
 const MAX_SEARCH_RADIUS_METERS = 20000;
@@ -161,7 +148,7 @@ export async function fetchNearbyRestaurants(
     throw new Error(`Places API error ${response.status}: ${await response.text()}`);
   }
 
-  const payload: PlacesNearbyResult = await response.json();
+  const payload: unknown = await response.json();
   const places = isRecord(payload) && Array.isArray(payload.places) ? payload.places : [];
 
   const restaurants = places

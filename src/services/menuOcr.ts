@@ -1,20 +1,6 @@
 import { API_ENDPOINTS, API_TIMEOUTS } from '../constants';
 import { fetchWithTimeout } from '../util/http';
 
-interface VisionAnnotateResponse {
-  responses?: Array<{
-    fullTextAnnotation?: {
-      text?: string;
-    };
-    textAnnotations?: Array<{
-      description?: string;
-    }>;
-    error?: {
-      message?: string;
-    };
-  }>;
-}
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
 }
@@ -116,7 +102,7 @@ export async function extractMenuTextFromImage({
     throw new Error(`Vision API error ${response.status}: ${await response.text()}`);
   }
 
-  const payload = (await response.json()) as VisionAnnotateResponse;
+  const payload: unknown = await response.json();
   const text = extractVisionText(payload);
   const normalized = text.replace(/\r/g, '').replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
   if (!normalized) {

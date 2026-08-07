@@ -2,8 +2,12 @@ import 'dotenv/config';
 
 const appVariant = process.env.APP_VARIANT ?? "production";
 const isStaging = appVariant === "staging";
-const mapsApiKey =
+const fallbackMapsApiKey =
   process.env.EXPO_PUBLIC_MAPS_API_KEY ?? process.env.GCP_API_KEY ?? "";
+const androidMapsApiKey =
+  process.env.ANDROID_MAPS_API_KEY ?? process.env.GCP_ANDROID_API_KEY ?? fallbackMapsApiKey;
+const iosMapsApiKey =
+  process.env.IOS_MAPS_API_KEY ?? process.env.GCP_IOS_API_KEY ?? fallbackMapsApiKey;
 
 export default {
   expo: {
@@ -29,7 +33,7 @@ export default {
       supportsTablet: true,
       bundleIdentifier: "io.fgluten.app",
       config: {
-        googleMapsApiKey: process.env.GCP_API_KEY ?? "",
+        googleMapsApiKey: iosMapsApiKey,
       },
       infoPlist: {
         ITSAppUsesNonExemptEncryption: false,
@@ -49,7 +53,7 @@ export default {
       package: isStaging ? "io.fgluten.app.staging" : "io.fgluten.app",
       config: {
         googleMaps: {
-          apiKey: process.env.GCP_API_KEY ?? "",
+          apiKey: androidMapsApiKey,
         },
       },
       permissions: [
@@ -80,7 +84,9 @@ export default {
     ],
     extra: {
       appVariant,
-      MAPS_API_KEY: mapsApiKey,
+      MAPS_API_KEY: fallbackMapsApiKey,
+      ANDROID_MAPS_API_KEY: androidMapsApiKey,
+      IOS_MAPS_API_KEY: iosMapsApiKey,
       eas: {
         projectId: "a445e80b-b3b6-4d3d-9b44-e0949b962c4d",
       },

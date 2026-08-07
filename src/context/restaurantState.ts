@@ -1,4 +1,5 @@
 import Constants from 'expo-constants';
+import { Platform } from 'react-native';
 import { FavoriteStatus, MenuScanProgress, Restaurant } from '../types/restaurant';
 import { getRestaurantIdentityKey } from '../util/restaurantUtils';
 
@@ -10,10 +11,20 @@ export type EmptyResultsReason = 'filters' | 'nearby';
 
 interface ExpoConfigExtra {
   MAPS_API_KEY?: string;
+  ANDROID_MAPS_API_KEY?: string;
+  IOS_MAPS_API_KEY?: string;
 }
 
 export function getMapsApiKey(): string {
-  return (Constants.expoConfig?.extra as ExpoConfigExtra)?.MAPS_API_KEY ?? '';
+  const extra = Constants.expoConfig?.extra as ExpoConfigExtra | undefined;
+  if (Platform.OS === 'android') {
+    return extra?.ANDROID_MAPS_API_KEY ?? extra?.MAPS_API_KEY ?? '';
+  }
+  if (Platform.OS === 'ios') {
+    return extra?.IOS_MAPS_API_KEY ?? extra?.MAPS_API_KEY ?? '';
+  }
+
+  return extra?.MAPS_API_KEY ?? extra?.ANDROID_MAPS_API_KEY ?? extra?.IOS_MAPS_API_KEY ?? '';
 }
 
 export function getEmptyResultsMessage(reason: EmptyResultsReason): string {

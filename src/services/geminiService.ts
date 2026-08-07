@@ -24,7 +24,8 @@ export class GeminiService {
    */
   static async analyzeMenu(
     menuText: string,
-    options: { strictCeliac?: boolean; dairyFree?: boolean; nutFree?: boolean; soyFree?: boolean } = {}
+    options: { strictCeliac?: boolean; dairyFree?: boolean; nutFree?: boolean; soyFree?: boolean } = {},
+    requestOptions: { signal?: AbortSignal } = {}
   ): Promise<string> {
     if (!this.apiKey) {
       throw new Error('Puter Auth Token is missing. Please add it to your .env file.');
@@ -67,9 +68,15 @@ export class GeminiService {
 
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), AI_REQUEST_TIMEOUT_MS);
+      const abortRequest = () => controller.abort();
+      requestOptions.signal?.addEventListener('abort', abortRequest, { once: true });
 
       let response: Response;
       try {
+        if (requestOptions.signal?.aborted) {
+          controller.abort();
+        }
+
         response = await fetch(this.baseUrl, {
           method: 'POST',
           headers: {
@@ -84,6 +91,7 @@ export class GeminiService {
         });
       } finally {
         clearTimeout(timeoutId);
+        requestOptions.signal?.removeEventListener('abort', abortRequest);
       }
 
       if (!response.ok) {
@@ -95,6 +103,16 @@ export class GeminiService {
       const text = data.choices?.[0]?.message?.content || '';
       return text.replace(/```json|```/gi, '').trim();
     } catch (error: unknown) {
+      if (
+        error instanceof Error &&
+        error.name === 'AbortError' &&
+        requestOptions.signal?.aborted
+      ) {
+        const abortError = new Error('AI Analysis cancelled.');
+        abortError.name = 'AbortError';
+        throw abortError;
+      }
+
       const isTimeout = error instanceof Error && error.name === 'AbortError';
       const message = error instanceof Error ? error.message : String(error);
       logger.error(`Puter analysis failed${isTimeout ? ' (timeout)' : ''}: ${message}`);
@@ -105,7 +123,12 @@ export class GeminiService {
   /**
    * Asks a specific question. Can optionally stream the response.
    */
-  static async askQuestion(menuText: string, question: string, onUpdate?: (text: string) => void): Promise<string> {
+  static async askQuestion(
+    menuText: string,
+    question: string,
+    onUpdate?: (text: string) => void,
+    options: { signal?: AbortSignal } = {}
+  ): Promise<string> {
     if (!this.apiKey) {
       throw new Error('Puter Auth Token is missing.');
     }
@@ -164,7 +187,41 @@ export class GeminiService {
 
           // Abort the XHR if it exceeds the timeout threshold
           xhr.timeout = AI_REQUEST_TIMEOUT_MS;
-          xhr.ontimeout = () => reject(new Error('AI Chat timed out. Please try again.'));
+          let settled = false;
+          let removeAbortListener = () => {};
+
+          const settleResolve = (value: string) => {
+            if (settled) return;
+            settled = true;
+            removeAbortListener();
+            resolve(value);
+          };
+
+          const settleReject = (error: Error) => {
+            if (settled) return;
+            settled = true;
+            removeAbortListener();
+            reject(error);
+          };
+
+          const abortRequest = () => {
+            xhr.abort();
+            const abortError = new Error('AI Chat cancelled.');
+            abortError.name = 'AbortError';
+            settleReject(abortError);
+          };
+
+          if (options.signal?.aborted) {
+            abortRequest();
+            return;
+          }
+
+          removeAbortListener = () => {
+            options.signal?.removeEventListener('abort', abortRequest);
+          };
+          options.signal?.addEventListener('abort', abortRequest, { once: true });
+
+          xhr.ontimeout = () => settleReject(new Error('AI Chat timed out. Please try again.'));
 
           let seenBytes = 0;
           let fullText = '';
@@ -193,14 +250,14 @@ export class GeminiService {
             }
             if (xhr.readyState === 4) {
               if (xhr.status >= 400) {
-                reject(new Error(`Puter API error: ${xhr.status}`));
+                settleReject(new Error(`Puter API error: ${xhr.status}`));
               } else {
-                resolve(fullText);
+                settleResolve(fullText);
               }
             }
           };
 
-          xhr.onerror = () => reject(new Error('Network request failed'));
+          xhr.onerror = () => settleReject(new Error('Network request failed'));
           xhr.send(JSON.stringify({
             model: this.modelName,
             messages: [{ role: 'user', content: prompt }],
@@ -212,9 +269,14 @@ export class GeminiService {
       // Non-streaming fallback path
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), AI_REQUEST_TIMEOUT_MS);
+      const abortRequest = () => controller.abort();
+      options.signal?.addEventListener('abort', abortRequest, { once: true });
 
       let response: Response;
       try {
+        if (options.signal?.aborted) {
+          controller.abort();
+        }
         response = await fetch(this.baseUrl, {
           method: 'POST',
           headers: {
@@ -230,12 +292,21 @@ export class GeminiService {
         });
       } finally {
         clearTimeout(timeoutId);
+        options.signal?.removeEventListener('abort', abortRequest);
       }
 
       if (!response.ok) throw new Error(`Puter API error: ${response.status}`);
       const data = await response.json();
       return data.choices?.[0]?.message?.content || '';
     } catch (error: unknown) {
+      if (
+        error instanceof Error &&
+        error.name === 'AbortError' &&
+        error.message.includes('cancelled')
+      ) {
+        throw error;
+      }
+
       const isTimeout =
         error instanceof Error &&
         (error.name === 'AbortError' || error.message.includes('timed out'));

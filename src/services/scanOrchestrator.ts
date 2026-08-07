@@ -199,6 +199,8 @@ export class ScanOrchestrator {
         scanStartedAt,
       });
 
+      if (this.isDestroyed) return;
+
       // 3. Apply the results
       if (result) {
         const applied = this.config.onRestaurantUpdate(restaurant, (current) => {
@@ -217,6 +219,8 @@ export class ScanOrchestrator {
         }
       }
     } catch (error) {
+      if (this.isDestroyed) return;
+
       // CRITICAL FIX: Ensure restaurant doesn't stay in 'FETCHING' state if scan crashes
       logger.error(`Scan failed for ${restaurant.name}`, error);
       this.config.onRestaurantUpdate(restaurant, (current) => ({

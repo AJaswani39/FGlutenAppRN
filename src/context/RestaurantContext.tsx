@@ -87,6 +87,8 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
   const userLng = useRef<number | null>(null);
   const cacheAttempted = useRef(false);
   const filtersRef = useRef(filters);
+  const isMounted = useRef(true);
+  const loadRequestId = useRef(0);
   const {
     savedRestaurants,
     favoriteKey,
@@ -101,10 +103,21 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
     filtersRef.current = filters;
   }, [filters]);
 
+  useEffect(() => {
+    return () => {
+      isMounted.current = false;
+      loadRequestId.current += 1;
+    };
+  }, []);
+
+  const isActiveLoadRequest = useCallback((requestId: number) => {
+    return isMounted.current && loadRequestId.current === requestId;
+  }, []);
+
   // ── Persistence ──────────────────────────────────────────────
   // persistCache must be declared before updateRestaurant, which depends on it.
 
-  const persistTimeout = useRef<NodeJS.Timeout | null>(null);
+  const persistTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const flushPersistence = useCallback(async () => {
     if (persistTimeout.current) {
@@ -132,6 +145,15 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
 
     persistTimeout.current = setTimeout(flushPersistence, 2000);
   }, [flushPersistence]);
+
+  useEffect(() => {
+    return () => {
+      if (persistTimeout.current) {
+        clearTimeout(persistTimeout.current);
+        persistTimeout.current = null;
+      }
+    };
+  }, []);
 
   // ── Restaurant mutation ───────────────────────────────────────
 
@@ -267,12 +289,15 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
     []
   );
 
-  const loadCachedIfAvailable = useCallback(async () => {
+  const loadCachedIfAvailable = useCallback(async (shouldContinue: () => boolean = () => isMounted.current) => {
     if (cacheAttempted.current) return;
 
     cacheAttempted.current = true;
     await loadFavorites();
+    if (!shouldContinue()) return;
+
     const cached = await PersistenceService.loadCache();
+    if (!shouldContinue()) return;
 
     if (!cached?.restaurants?.length) return;
 
@@ -285,6 +310,7 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
     userLat.current = cached.lat;
     userLng.current = cached.lng;
 
+    if (!shouldContinue()) return;
     emitFilteredState({
       emptyReason: 'filters',
       message: getCachedResultsMessage(cached.timestamp),
@@ -300,7 +326,12 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
     // Prevent redundant fetches if one is already in progress
     if (uiStateRef.current.status === 'loading') return;
 
+    const requestId = loadRequestId.current + 1;
+    loadRequestId.current = requestId;
+
     const netInfo = await NetInfo.fetch();
+    if (!isActiveLoadRequest(requestId)) return;
+
     if (!netInfo.isConnected) {
       if (rawRestaurants.current.length > 0) {
         emitFilteredState({
@@ -323,7 +354,8 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
     orchestrator.current?.flushQueue();
 
     const mapsApiKey = getMapsApiKey();
-    await loadCachedIfAvailable();
+    await loadCachedIfAvailable(() => isActiveLoadRequest(requestId));
+    if (!isActiveLoadRequest(requestId)) return;
 
     if (!mapsApiKey) {
       if (rawRestaurants.current.length > 0) {
@@ -372,6 +404,8 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
         longitude = overrideCoords.longitude;
       } else {
         const { status } = await Location.requestForegroundPermissionsAsync();
+        if (!isActiveLoadRequest(requestId)) return;
+
         if (status !== 'granted') {
           if (rawRestaurants.current.length > 0) {
             emitFilteredState({
@@ -394,6 +428,8 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
 
         // Optimization: Try to get the last known position first (fast) before powering up the GPS
         const lastKnown = await Location.getLastKnownPositionAsync();
+        if (!isActiveLoadRequest(requestId)) return;
+
         const lastTimestamp = lastKnown?.timestamp ?? 0;
         const isRecent = lastKnown && (Date.now() - lastTimestamp) < 60000;
 
@@ -401,14 +437,21 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
           latitude = lastKnown.coords.latitude;
           longitude = lastKnown.coords.longitude;
         } else {
+          let locationTimeout: ReturnType<typeof setTimeout> | null = null;
           const location = await Promise.race([
             Location.getCurrentPositionAsync({
               accuracy: Location.Accuracy.Balanced,
             }),
-            new Promise<Location.LocationObject>((_, reject) =>
-              setTimeout(() => reject(new Error('Location request timed out')), 10000)
-            ),
-          ]);
+            new Promise<Location.LocationObject>((_, reject) => {
+              locationTimeout = setTimeout(() => reject(new Error('Location request timed out')), 10000);
+            }),
+          ]).finally(() => {
+            if (locationTimeout) {
+              clearTimeout(locationTimeout);
+            }
+          });
+          if (!isActiveLoadRequest(requestId)) return;
+
           latitude = location.coords.latitude;
           longitude = location.coords.longitude;
         }
@@ -423,6 +466,8 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
         mapsApiKey,
         searchRadiusMeters
       );
+      if (!isActiveLoadRequest(requestId)) return;
+
       const restaurantsWithDistance = applyFavorites(restaurants).map((restaurant) => ({
         ...restaurant,
         distanceMeters: distanceBetween(latitude, longitude, restaurant.latitude, restaurant.longitude),
@@ -443,6 +488,8 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
       const isPermissionError = /permission|denied|allowed/i.test(errorMessage);
       
       const message = `Could not load restaurants: ${errorMessage}`;
+
+      if (!isActiveLoadRequest(requestId)) return;
 
       if (isPermissionError) {
         setUiState({
@@ -469,7 +516,7 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
         });
       }
     }
-  }, [applyFavorites, emitFilteredState, getScanProgress, kickOffMenuScans, loadCachedIfAvailable, persistCache]);
+  }, [applyFavorites, emitFilteredState, getScanProgress, isActiveLoadRequest, kickOffMenuScans, loadCachedIfAvailable, persistCache]);
 
   const setFavoriteStatus = useCallback(
     (restaurant: Restaurant, status: FavoriteStatus) => {

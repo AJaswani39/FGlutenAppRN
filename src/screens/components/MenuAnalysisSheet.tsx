@@ -73,6 +73,9 @@ export default function MenuAnalysisSheet({ restaurant, onClose }: Props) {
   
   const scorecardRef = useRef(null);
   const chatScrollRef = useRef<ScrollView>(null);
+  const chatScrollTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const askAbortController = useRef<AbortController | null>(null);
+  const analysisAbortController = useRef<AbortController | null>(null);
 
   useEffect(() => {
     // Initialize Gemini with key from config
@@ -81,6 +84,10 @@ export default function MenuAnalysisSheet({ restaurant, onClose }: Props) {
 
     return () => {
       isMounted.current = false;
+      analysisAbortController.current?.abort();
+      analysisAbortController.current = null;
+      askAbortController.current?.abort();
+      askAbortController.current = null;
     };
   }, []);
 
@@ -109,18 +116,35 @@ export default function MenuAnalysisSheet({ restaurant, onClose }: Props) {
 
   // Auto-scroll to the bottom of the chat history whenever a new message arrives
   useEffect(() => {
+    if (chatScrollTimeout.current) {
+      clearTimeout(chatScrollTimeout.current);
+      chatScrollTimeout.current = null;
+    }
+
     if (chatHistory.length > 0) {
-      setTimeout(() => {
+      chatScrollTimeout.current = setTimeout(() => {
         chatScrollRef.current?.scrollToEnd({ animated: true });
+        chatScrollTimeout.current = null;
       }, 80);
     }
-  }, [chatHistory]);
+
+    return () => {
+      if (chatScrollTimeout.current) {
+        clearTimeout(chatScrollTimeout.current);
+        chatScrollTimeout.current = null;
+      }
+    };
+  }, [chatHistory.length]);
 
   const runAnalysis = useCallback(async (text: string) => {
     if (!text.trim()) {
       setError('Please enter or paste menu text to analyse.');
       return;
     }
+    analysisAbortController.current?.abort();
+    const controller = new AbortController();
+    analysisAbortController.current = controller;
+
     setIsAnalyzing(true);
     setError(null);
     
@@ -138,6 +162,8 @@ export default function MenuAnalysisSheet({ restaurant, onClose }: Props) {
         dairyFree,
         nutFree,
         soyFree,
+      }, {
+        signal: controller.signal,
       });
 
       if (isMounted.current) {
@@ -167,11 +193,17 @@ export default function MenuAnalysisSheet({ restaurant, onClose }: Props) {
         }
       }
     } catch (err: any) {
+      const isCancelled = err instanceof Error && err.name === 'AbortError';
+      if (isCancelled) return;
       if (!isMounted.current) return;
       const message = err instanceof Error ? err.message : String(err);
       setError(`Analysis failed: ${message}`);
     } finally {
-      if (isMounted.current) {
+      const isCurrentRequest = analysisAbortController.current === controller;
+      if (isCurrentRequest) {
+        analysisAbortController.current = null;
+      }
+      if (isMounted.current && isCurrentRequest) {
         setIsAnalyzing(false);
       }
     }
@@ -197,6 +229,10 @@ export default function MenuAnalysisSheet({ restaurant, onClose }: Props) {
 
   const askAi = async () => {
     if (!userQuestion.trim()) return;
+    askAbortController.current?.abort();
+    const controller = new AbortController();
+    askAbortController.current = controller;
+
     setIsAsking(true);
     setError(null);
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -221,15 +257,22 @@ export default function MenuAnalysisSheet({ restaurant, onClose }: Props) {
         setChatHistory((prev) => 
           prev.map(msg => msg.timestamp === modelTimestamp ? { ...msg, text: chunk || '...' } : msg)
         );
+      }, {
+        signal: controller.signal,
       });
     } catch (err: any) {
-      if (isMounted.current) {
+      const isCancelled = err instanceof Error && err.name === 'AbortError';
+      if (isMounted.current && !isCancelled) {
         setError(err.message || 'Failed to get AI answer.');
         // Remove the empty placeholder if it failed
         setChatHistory((prev) => prev.filter(msg => msg.timestamp !== modelTimestamp));
       }
     } finally {
-      if (isMounted.current) {
+      const isCurrentRequest = askAbortController.current === controller;
+      if (isCurrentRequest) {
+        askAbortController.current = null;
+      }
+      if (isMounted.current && isCurrentRequest) {
         setIsAsking(false);
       }
     }
@@ -241,6 +284,8 @@ export default function MenuAnalysisSheet({ restaurant, onClose }: Props) {
 
     try {
       const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!isMounted.current) return;
+
       if (!permission.granted) {
         setError('Photo access is needed to scan a menu image.');
         return;
@@ -251,6 +296,7 @@ export default function MenuAnalysisSheet({ restaurant, onClose }: Props) {
         allowsEditing: false,
         quality: 0.8,
       });
+      if (!isMounted.current) return;
 
       if (result.canceled || !result.assets[0]) return;
 
@@ -261,6 +307,7 @@ export default function MenuAnalysisSheet({ restaurant, onClose }: Props) {
         [{ resize: { width: 1024 } }],
         { base64: true, format: ImageManipulator.SaveFormat.JPEG, compress: 0.5 }
       );
+      if (!isMounted.current) return;
 
       const base64 = manipulated.base64;
       if (!base64) {
@@ -269,11 +316,11 @@ export default function MenuAnalysisSheet({ restaurant, onClose }: Props) {
 
       const visionKey = (Constants.expoConfig?.extra as any)?.GCP_API_KEY ?? '';
       const text = await extractMenuTextFromImage({ base64, apiKey: visionKey });
-      if (isMounted.current) {
-        const combinedText = editableText ? `${editableText}\n\n${text}` : text;
-        setEditableText(combinedText);
-        void runAnalysis(combinedText);
-      }
+      if (!isMounted.current) return;
+
+      const combinedText = editableText ? `${editableText}\n\n${text}` : text;
+      setEditableText(combinedText);
+      void runAnalysis(combinedText);
     } catch (err: any) {
       if (isMounted.current) {
         setError(err.message || 'Failed to extract text from photo.');
@@ -294,6 +341,8 @@ export default function MenuAnalysisSheet({ restaurant, onClose }: Props) {
         format: 'jpg',
         quality: 0.9,
       });
+
+      if (!isMounted.current) return;
       
       await Sharing.shareAsync(uri, {
         mimeType: 'image/jpeg',
@@ -301,9 +350,13 @@ export default function MenuAnalysisSheet({ restaurant, onClose }: Props) {
         UTI: 'public.jpeg',
       });
     } catch (err: any) {
-      setError('Could not generate sharing card.');
+      if (isMounted.current) {
+        setError('Could not generate sharing card.');
+      }
     } finally {
-      setIsSharing(false);
+      if (isMounted.current) {
+        setIsSharing(false);
+      }
     }
   };
 

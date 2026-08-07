@@ -11,12 +11,15 @@ jest.mock('@react-native-async-storage/async-storage');
 jest.mock('expo-location', () => ({
   Accuracy: { Balanced: 3 },
   requestForegroundPermissionsAsync: jest.fn(),
+  getLastKnownPositionAsync: jest.fn(),
   getCurrentPositionAsync: jest.fn(),
 }));
 jest.mock('expo-constants', () => ({
   expoConfig: {
     extra: {
       MAPS_API_KEY: 'test-key',
+      ANDROID_MAPS_API_KEY: 'android-test-key',
+      IOS_MAPS_API_KEY: 'ios-test-key',
     },
   },
 }));
@@ -30,7 +33,7 @@ type HarnessApi = {
 const storage = AsyncStorage as typeof AsyncStorage & { __reset: () => void };
 const locationMock = Location as jest.Mocked<typeof Location>;
 const constantsMock = Constants as typeof Constants & {
-  expoConfig?: { extra?: { MAPS_API_KEY?: string } };
+  expoConfig?: { extra?: { MAPS_API_KEY?: string; ANDROID_MAPS_API_KEY?: string; IOS_MAPS_API_KEY?: string } };
 };
 
 function Probe({ capture }: { capture: (api: HarnessApi) => void }) {
@@ -86,8 +89,15 @@ describe('RestaurantContext', () => {
   beforeEach(() => {
     storage.__reset();
     jest.clearAllMocks();
-    constantsMock.expoConfig = { extra: { MAPS_API_KEY: 'test-key' } } as any;
+    constantsMock.expoConfig = {
+      extra: {
+        MAPS_API_KEY: 'test-key',
+        ANDROID_MAPS_API_KEY: 'android-test-key',
+        IOS_MAPS_API_KEY: 'ios-test-key',
+      },
+    } as any;
     locationMock.requestForegroundPermissionsAsync.mockResolvedValue({ status: 'granted' } as any);
+    locationMock.getLastKnownPositionAsync.mockResolvedValue(null as any);
     locationMock.getCurrentPositionAsync.mockResolvedValue({
       coords: { latitude: 40.7128, longitude: -74.006 },
     } as any);
@@ -95,7 +105,13 @@ describe('RestaurantContext', () => {
   });
 
   it('returns an error when the maps api key is missing', async () => {
-    constantsMock.expoConfig = { extra: { MAPS_API_KEY: '' } } as any;
+    constantsMock.expoConfig = {
+      extra: {
+        MAPS_API_KEY: '',
+        ANDROID_MAPS_API_KEY: '',
+        IOS_MAPS_API_KEY: '',
+      },
+    } as any;
     const { getApi } = await renderHarness();
 
     await act(async () => {

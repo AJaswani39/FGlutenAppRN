@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import Animated, {
   useSharedValue,
@@ -15,6 +15,7 @@ interface Props {
 
 export function CustomSplashScreen({ onFinish }: Props) {
   const progress = useSharedValue(0);
+  const finishTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     // Animate progress bar from 0 to 100% over 1.2 seconds
@@ -24,12 +25,20 @@ export function CustomSplashScreen({ onFinish }: Props) {
       (finished) => {
         if (finished) {
           // Add a tiny pause at 100% before firing onFinish
-          setTimeout(() => {
+          finishTimeout.current = setTimeout(() => {
             runOnJS(onFinish)();
+            finishTimeout.current = null;
           }, 150);
         }
       }
     );
+
+    return () => {
+      if (finishTimeout.current) {
+        clearTimeout(finishTimeout.current);
+        finishTimeout.current = null;
+      }
+    };
   }, []);
 
   const progressStyle = useAnimatedStyle(() => {

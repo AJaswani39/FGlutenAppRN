@@ -1,9 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { View, TextInput, StyleSheet, FlatList, Text, Pressable, ActivityIndicator, Keyboard } from 'react-native';
-import Constants from 'expo-constants';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors, Radius, Spacing, FontSize, FontWeight } from '../theme/colors';
 import { Ionicons } from './ui';
+import { getMapsApiKey } from '../context/restaurantState';
 
 export interface LocationSearchResult {
   placeId: string;
@@ -22,22 +22,34 @@ export function LocationSearchBar({ onLocationSelected }: Props) {
   const [results, setResults] = useState<LocationSearchResult[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isFocused, setIsFocused] = useState(false);
+  const blurTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const autocompleteController = useRef<AbortController | null>(null);
+  const detailsController = useRef<AbortController | null>(null);
 
-  const API_KEY = (Constants.expoConfig?.extra as any)?.MAPS_API_KEY || '';
+  const API_KEY = getMapsApiKey();
 
   useEffect(() => {
     if (query.trim().length < 3) {
+      autocompleteController.current?.abort();
+      autocompleteController.current = null;
       setResults([]);
+      setIsLoading(false);
       return;
     }
 
     const fetchPlaces = async () => {
+      autocompleteController.current?.abort();
+      const controller = new AbortController();
+      autocompleteController.current = controller;
+
       setIsLoading(true);
       try {
         const res = await fetch(
-          `https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${encodeURIComponent(query)}&types=(cities)&key=${API_KEY}`
+          `https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${encodeURIComponent(query)}&types=(cities)&key=${API_KEY}`,
+          { signal: controller.signal }
         );
         const json = await res.json();
+        if (autocompleteController.current !== controller) return;
         
         if (json.status === 'OK') {
           const formatted = json.predictions.map((p: any) => ({
@@ -51,9 +63,13 @@ export function LocationSearchBar({ onLocationSelected }: Props) {
           setResults([]);
         }
       } catch (error) {
+        if (error instanceof Error && error.name === 'AbortError') return;
         console.error('Failed to fetch autocomplete:', error);
       } finally {
-        setIsLoading(false);
+        if (autocompleteController.current === controller) {
+          autocompleteController.current = null;
+          setIsLoading(false);
+        }
       }
     };
 
@@ -61,7 +77,24 @@ export function LocationSearchBar({ onLocationSelected }: Props) {
     return () => clearTimeout(timeoutId);
   }, [query, API_KEY]);
 
+  useEffect(() => {
+    return () => {
+      if (blurTimeout.current) {
+        clearTimeout(blurTimeout.current);
+        blurTimeout.current = null;
+      }
+      autocompleteController.current?.abort();
+      autocompleteController.current = null;
+      detailsController.current?.abort();
+      detailsController.current = null;
+    };
+  }, []);
+
   const handleSelect = async (placeId: string) => {
+    detailsController.current?.abort();
+    const controller = new AbortController();
+    detailsController.current = controller;
+
     Keyboard.dismiss();
     setIsFocused(false);
     setQuery('');
@@ -70,17 +103,24 @@ export function LocationSearchBar({ onLocationSelected }: Props) {
     
     try {
       const res = await fetch(
-        `https://maps.googleapis.com/maps/api/place/details/json?place_id=${placeId}&fields=geometry&key=${API_KEY}`
+        `https://maps.googleapis.com/maps/api/place/details/json?place_id=${placeId}&fields=geometry&key=${API_KEY}`,
+        { signal: controller.signal }
       );
       const json = await res.json();
+      if (detailsController.current !== controller) return;
+
       if (json.status === 'OK') {
         const { lat, lng } = json.result.geometry.location;
         onLocationSelected(lat, lng);
       }
     } catch (error) {
+      if (error instanceof Error && error.name === 'AbortError') return;
       console.error('Failed to fetch place details:', error);
     } finally {
-      setIsLoading(false);
+      if (detailsController.current === controller) {
+        detailsController.current = null;
+        setIsLoading(false);
+      }
     }
   };
 
@@ -98,8 +138,13 @@ export function LocationSearchBar({ onLocationSelected }: Props) {
           onBlur={() => {
             // Delay closing slightly so any active suggestion tap has time to process,
             // but successfully hide the autocomplete box if they click away.
-            setTimeout(() => {
+            if (blurTimeout.current) {
+              clearTimeout(blurTimeout.current);
+            }
+
+            blurTimeout.current = setTimeout(() => {
               setIsFocused(false);
+              blurTimeout.current = null;
             }, 180);
           }}
           returnKeyType="search"

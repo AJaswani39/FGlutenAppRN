@@ -53,11 +53,13 @@ FGlutenAppRN/
 
 ### 1. Add your Google Maps API Key
 
-Set `GCP_API_KEY` in your local environment. `app.config.js` publishes it to
-`extra.MAPS_API_KEY` for the app bundle:
+Set platform-specific Google Maps API keys in your local environment.
+`app.config.js` publishes the matching key to each native platform and exposes
+both keys to the JS bundle for direct Places requests:
 
 ```bash
-GCP_API_KEY=YOUR_GOOGLE_MAPS_API_KEY
+ANDROID_MAPS_API_KEY=YOUR_ANDROID_GOOGLE_MAPS_API_KEY
+IOS_MAPS_API_KEY=YOUR_IOS_GOOGLE_MAPS_API_KEY
 ```
 
 > **Required APIs** (same as the Android app):
@@ -65,7 +67,8 @@ GCP_API_KEY=YOUR_GOOGLE_MAPS_API_KEY
 > - Maps SDK for Android / iOS — for map view (native build)
 >
 > Treat this as a public mobile client key. Restrict it in Google Cloud by
-> package/bundle/signing identity and only allow the APIs above.
+> package/bundle/signing identity and only allow the APIs above. `GCP_API_KEY`
+> is still accepted as a fallback for local development.
 
 ### 2. Install dependencies
 

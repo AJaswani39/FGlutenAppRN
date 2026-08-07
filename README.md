@@ -60,6 +60,8 @@ both keys to the JS bundle for direct Places requests:
 ```bash
 ANDROID_MAPS_API_KEY=YOUR_ANDROID_GOOGLE_MAPS_API_KEY
 IOS_MAPS_API_KEY=YOUR_IOS_GOOGLE_MAPS_API_KEY
+VISION_API_KEY=YOUR_CLOUD_VISION_API_KEY
+PUTER_API_KEY=YOUR_PUTER_AUTH_TOKEN
 ```
 
 > **Required APIs** (same as the Android app):
@@ -138,5 +140,5 @@ npx eas submit --profile production --platform android
 
 - **No sign-in required** — guest mode only, all data stored locally.
 - **Menu scanning** uses the same Google Places API (`websiteUri` field) + HTML scraping as the original app.
-- **AI analysis** uses a local keyword-based heuristic (same logic as `AIRepository.kt`). Replace with a Gemini/Vertex AI call for production.
+- **AI analysis** uses local keyword heuristics plus Puter AI (`openai/gpt-4o-mini`) for deep menu analysis and chat.
 - The **Maps API key** is read from `app.json extra` → `Constants.expoConfig.extra.MAPS_API_KEY` at runtime.

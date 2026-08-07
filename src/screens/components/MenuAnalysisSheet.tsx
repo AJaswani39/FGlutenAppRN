@@ -19,7 +19,7 @@ import {
 import { Colors, Spacing, Radius, FontSize, FontWeight } from '../../theme/colors';
 import { analyseMenuText, MenuAnalysisResult } from '../../services/menuSafety';
 import { extractMenuTextFromImage } from '../../services/menuOcr';
-import { GeminiService } from '../../services/geminiService';
+import { PuterAiService } from '../../services/puterAiService';
 import { Ionicons } from '@expo/vector-icons';
 import { useRestaurants } from '../../context/RestaurantContext';
 import { useSettings } from '../../context/SettingsContext';
@@ -78,9 +78,10 @@ export default function MenuAnalysisSheet({ restaurant, onClose }: Props) {
   const analysisAbortController = useRef<AbortController | null>(null);
 
   useEffect(() => {
-    // Initialize Gemini with key from config
-    const geminiKey = (Constants.expoConfig?.extra as any)?.GEMINI_API_KEY ?? '';
-    GeminiService.init(geminiKey);
+    // Initialize Puter AI with key from config.
+    const extra = Constants.expoConfig?.extra as any;
+    const puterKey = extra?.PUTER_API_KEY ?? '';
+    PuterAiService.init(puterKey);
 
     return () => {
       isMounted.current = false;
@@ -157,7 +158,7 @@ export default function MenuAnalysisSheet({ restaurant, onClose }: Props) {
       }
 
       // 2. Run Deep AI Analysis (always if possible, or if allergens active)
-      const deepResultRaw = await GeminiService.analyzeMenu(text, {
+      const deepResultRaw = await PuterAiService.analyzeMenu(text, {
         strictCeliac,
         dairyFree,
         nutFree,
@@ -188,7 +189,7 @@ export default function MenuAnalysisSheet({ restaurant, onClose }: Props) {
           });
           setDeepAnalysisMarkdown(null); // No longer needed as markdown if we have JSON
         } catch (parseErr) {
-          logger.warn('Failed to parse Gemini JSON, falling back to markdown display');
+          logger.warn('Failed to parse Puter AI JSON, falling back to markdown display');
           setDeepAnalysisMarkdown(deepResultRaw);
         }
       }
@@ -252,7 +253,7 @@ export default function MenuAnalysisSheet({ restaurant, onClose }: Props) {
     }
 
     try {
-      await GeminiService.askQuestion(editableText, questionText, (chunk) => {
+      await PuterAiService.askQuestion(editableText, questionText, (chunk) => {
         if (!isMounted.current) return;
         setChatHistory((prev) => 
           prev.map(msg => msg.timestamp === modelTimestamp ? { ...msg, text: chunk || '...' } : msg)
@@ -314,7 +315,7 @@ export default function MenuAnalysisSheet({ restaurant, onClose }: Props) {
         throw new Error('Failed to process image data.');
       }
 
-      const visionKey = (Constants.expoConfig?.extra as any)?.GCP_API_KEY ?? '';
+      const visionKey = (Constants.expoConfig?.extra as any)?.VISION_API_KEY ?? '';
       const text = await extractMenuTextFromImage({ base64, apiKey: visionKey });
       if (!isMounted.current) return;
 

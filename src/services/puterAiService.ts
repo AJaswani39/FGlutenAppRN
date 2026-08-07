@@ -8,7 +8,7 @@ import { logger } from '../util/logger';
 /** Maximum time in ms to wait for any Puter AI response before aborting. */
 const AI_REQUEST_TIMEOUT_MS = 30_000;
 
-export class GeminiService {
+export class PuterAiService {
   private static apiKey: string | null = null;
   // Puter's OpenAI-compatible endpoint
   private static baseUrl = 'https://api.puter.com/puterai/openai/v1/chat/completions';

@@ -12,11 +12,11 @@ export interface MenuAnalysisResult {
   crossContamRisk: string;
   summary: string;
   riskFactors?: { factor: string; severity: number; description: string }[];
-  /** Populated by Gemini deep-scan (safe items) */
+  /** Populated by AI deep-scan (safe items) */
   safeItems?: string[];
-  /** Populated by Gemini deep-scan (caution items) */
+  /** Populated by AI deep-scan (caution items) */
   cautionItems?: string[];
-  /** Populated by Gemini deep-scan (items to avoid) */
+  /** Populated by AI deep-scan (items to avoid) */
   unsafeItems?: string[];
 }
 

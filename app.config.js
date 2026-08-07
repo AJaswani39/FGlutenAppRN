@@ -8,6 +8,10 @@ const androidMapsApiKey =
   process.env.ANDROID_MAPS_API_KEY ?? process.env.GCP_ANDROID_API_KEY ?? fallbackMapsApiKey;
 const iosMapsApiKey =
   process.env.IOS_MAPS_API_KEY ?? process.env.GCP_IOS_API_KEY ?? fallbackMapsApiKey;
+const puterApiKey =
+  process.env.PUTER_API_KEY ?? process.env.GEMINI_API_KEY ?? "";
+const visionApiKey =
+  process.env.VISION_API_KEY ?? process.env.GCP_VISION_API_KEY ?? process.env.GCP_API_KEY ?? "";
 
 export default {
   expo: {
@@ -87,6 +91,8 @@ export default {
       MAPS_API_KEY: fallbackMapsApiKey,
       ANDROID_MAPS_API_KEY: androidMapsApiKey,
       IOS_MAPS_API_KEY: iosMapsApiKey,
+      PUTER_API_KEY: puterApiKey,
+      VISION_API_KEY: visionApiKey,
       eas: {
         projectId: "a445e80b-b3b6-4d3d-9b44-e0949b962c4d",
       },

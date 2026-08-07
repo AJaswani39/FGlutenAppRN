@@ -4,6 +4,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors, Radius, Spacing, FontSize, FontWeight } from '../theme/colors';
 import { Ionicons } from './ui';
 import { getMapsApiKey } from '../context/restaurantState';
+import { API_TIMEOUTS } from '../constants';
+import { fetchWithTimeout } from '../util/http';
 
 export interface LocationSearchResult {
   placeId: string;
@@ -44,9 +46,10 @@ export function LocationSearchBar({ onLocationSelected }: Props) {
 
       setIsLoading(true);
       try {
-        const res = await fetch(
+        const res = await fetchWithTimeout(
           `https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${encodeURIComponent(query)}&types=(cities)&key=${API_KEY}`,
-          { signal: controller.signal }
+          { signal: controller.signal },
+          API_TIMEOUTS.DEFAULT
         );
         const json = await res.json();
         if (autocompleteController.current !== controller) return;
@@ -102,9 +105,10 @@ export function LocationSearchBar({ onLocationSelected }: Props) {
     setIsLoading(true);
     
     try {
-      const res = await fetch(
+      const res = await fetchWithTimeout(
         `https://maps.googleapis.com/maps/api/place/details/json?place_id=${placeId}&fields=geometry&key=${API_KEY}`,
-        { signal: controller.signal }
+        { signal: controller.signal },
+        API_TIMEOUTS.DEFAULT
       );
       const json = await res.json();
       if (detailsController.current !== controller) return;

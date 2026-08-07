@@ -16,6 +16,11 @@ interface Props {
 export function CustomSplashScreen({ onFinish }: Props) {
   const progress = useSharedValue(0);
   const finishTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const onFinishRef = useRef(onFinish);
+
+  useEffect(() => {
+    onFinishRef.current = onFinish;
+  }, [onFinish]);
 
   useEffect(() => {
     // Animate progress bar from 0 to 100% over 1.2 seconds
@@ -26,7 +31,7 @@ export function CustomSplashScreen({ onFinish }: Props) {
         if (finished) {
           // Add a tiny pause at 100% before firing onFinish
           finishTimeout.current = setTimeout(() => {
-            runOnJS(onFinish)();
+            runOnJS(onFinishRef.current)();
             finishTimeout.current = null;
           }, 150);
         }

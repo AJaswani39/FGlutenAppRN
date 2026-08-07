@@ -8,7 +8,11 @@ import { getMapsApiKey } from './src/context/restaurantState';
 import { CustomSplashScreen } from './src/components/CustomSplashScreen';
 
 // Keep splash screen visible while we load theme from storage
-SplashScreen.preventAutoHideAsync();
+void SplashScreen.preventAutoHideAsync().catch((error: unknown) => {
+  if (__DEV__) {
+    console.warn('[FGluten] Failed to keep native splash visible:', error);
+  }
+});
 
 if (__DEV__ && !getMapsApiKey()) {
   console.warn('[FGluten] MAPS_API_KEY is missing. Add GCP_API_KEY to your .env file.');
@@ -34,7 +38,11 @@ export default function App() {
         setBootStage('animating');
         // We can now safely hide the native splash screen, transitioning instantly 
         // to our custom JS splash screen which matches the newly loaded theme!
-        SplashScreen.hideAsync();
+        void SplashScreen.hideAsync().catch((error: unknown) => {
+          if (__DEV__) {
+            console.warn('[FGluten] Failed to hide native splash:', error);
+          }
+        });
       }
     }
     initTheme();

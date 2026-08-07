@@ -16,8 +16,27 @@ interface PlacesNearbyPlace {
   location?: { latitude?: number; longitude?: number };
 }
 
+const DEFAULT_SEARCH_RADIUS_METERS = 5000;
+const MAX_SEARCH_RADIUS_METERS = 20000;
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
+}
+
+function isValidLatitude(value: number): boolean {
+  return Number.isFinite(value) && value >= -90 && value <= 90;
+}
+
+function isValidLongitude(value: number): boolean {
+  return Number.isFinite(value) && value >= -180 && value <= 180;
+}
+
+function normalizeSearchRadiusMeters(value: number): number {
+  if (!Number.isFinite(value) || value <= 0) {
+    return DEFAULT_SEARCH_RADIUS_METERS;
+  }
+
+  return Math.min(value, MAX_SEARCH_RADIUS_METERS);
 }
 
 function normalizeNearbyRestaurant(place: unknown): Restaurant | null {
@@ -81,15 +100,21 @@ export async function fetchNearbyRestaurants(
   lat: number,
   lng: number,
   apiKey: string,
-  radiusMeters = 5000
+  radiusMeters = DEFAULT_SEARCH_RADIUS_METERS
 ): Promise<Restaurant[]> {
+  if (!isValidLatitude(lat) || !isValidLongitude(lng)) {
+    throw new Error('Invalid search coordinates.');
+  }
+
+  const searchRadiusMeters = normalizeSearchRadiusMeters(radiusMeters);
+
   const body = {
     includedTypes: ['restaurant'],
     maxResultCount: 20,
     locationRestriction: {
       circle: {
         center: { latitude: lat, longitude: lng },
-        radius: radiusMeters,
+        radius: searchRadiusMeters,
       },
     },
   };

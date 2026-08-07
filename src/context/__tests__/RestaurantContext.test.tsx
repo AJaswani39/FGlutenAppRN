@@ -8,6 +8,7 @@ import Constants from 'expo-constants';
 import { FiltersProvider, useFilters } from '../FiltersContext';
 import { RestaurantProvider, useRestaurants } from '../RestaurantContext';
 import { SettingsProvider, useSettings } from '../SettingsContext';
+import { clearNearbySessionCache } from '../../data/placesRepository';
 
 jest.mock('@react-native-async-storage/async-storage');
 jest.mock('expo-location', () => ({
@@ -103,6 +104,7 @@ async function renderHarness() {
 describe('RestaurantContext', () => {
   beforeEach(() => {
     storage.__reset();
+    clearNearbySessionCache();
     jest.clearAllMocks();
     constantsMock.expoConfig = {
       extra: {

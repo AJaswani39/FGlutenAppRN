@@ -18,6 +18,12 @@ interface PlacesNearbyPlace {
 
 const DEFAULT_SEARCH_RADIUS_METERS = 5000;
 const MAX_SEARCH_RADIUS_METERS = 20000;
+const NEARBY_CACHE_COORD_DECIMALS = 4;
+const nearbySessionCache = new Map<string, Restaurant[]>();
+
+export function clearNearbySessionCache(): void {
+  nearbySessionCache.clear();
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
@@ -37,6 +43,22 @@ function normalizeSearchRadiusMeters(value: number): number {
   }
 
   return Math.min(value, MAX_SEARCH_RADIUS_METERS);
+}
+
+function cloneRestaurants(restaurants: Restaurant[]): Restaurant[] {
+  return restaurants.map((restaurant) => ({
+    ...restaurant,
+    gfMenu: [...restaurant.gfMenu],
+    aiChatHistory: restaurant.aiChatHistory ? [...restaurant.aiChatHistory] : undefined,
+  }));
+}
+
+function getNearbySessionCacheKey(lat: number, lng: number, radiusMeters: number): string {
+  return [
+    lat.toFixed(NEARBY_CACHE_COORD_DECIMALS),
+    lng.toFixed(NEARBY_CACHE_COORD_DECIMALS),
+    Math.round(radiusMeters),
+  ].join(':');
 }
 
 function normalizeNearbyRestaurant(place: unknown): Restaurant | null {
@@ -107,6 +129,11 @@ export async function fetchNearbyRestaurants(
   }
 
   const searchRadiusMeters = normalizeSearchRadiusMeters(radiusMeters);
+  const cacheKey = getNearbySessionCacheKey(lat, lng, searchRadiusMeters);
+  const cached = nearbySessionCache.get(cacheKey);
+  if (cached) {
+    return cloneRestaurants(cached);
+  }
 
   const body = {
     includedTypes: ['restaurant'],
@@ -137,9 +164,12 @@ export async function fetchNearbyRestaurants(
   const payload: PlacesNearbyResult = await response.json();
   const places = isRecord(payload) && Array.isArray(payload.places) ? payload.places : [];
 
-  return places
+  const restaurants = places
     .map((place) => normalizeNearbyRestaurant(place))
     .filter((restaurant): restaurant is Restaurant => restaurant !== null);
+
+  nearbySessionCache.set(cacheKey, cloneRestaurants(restaurants));
+  return cloneRestaurants(restaurants);
 }
 
 export async function fetchWebsiteForPlace(placeId: string, apiKey: string): Promise<string | null> {

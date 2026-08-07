@@ -24,6 +24,7 @@ import { getRestaurantSafetyScore, MenuSafetyLevel } from '../../services/menuSa
 import { getDiningChecklist } from '../../services/diningChecklist';
 import { getCuisineRiskHints } from '../../services/cuisineRiskHints';
 import MenuAnalysisSheet from './MenuAnalysisSheet';
+import { impactAsync } from '../../util/haptics';
 
 interface Props {
   restaurant: Restaurant;
@@ -83,7 +84,7 @@ export default function RestaurantDetailModal({ restaurant: initial, useMiles, o
   };
 
   const handleFav = (status: FavoriteStatus) => {
-    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    impactAsync(Haptics.ImpactFeedbackStyle.Light);
     if (restaurant.favoriteStatus === status) {
       setFavoriteStatus(restaurant, null);
     } else {
@@ -92,7 +93,7 @@ export default function RestaurantDetailModal({ restaurant: initial, useMiles, o
   };
 
   const handleRescan = () => {
-    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     requestMenuRescan(restaurant);
   };
 
@@ -310,7 +311,7 @@ export default function RestaurantDetailModal({ restaurant: initial, useMiles, o
                 icon="sparkles"
                 label="AI Analysis"
                 onPress={() => {
-                  void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+                  impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
                   setShowAI(true);
                 }}
                 disabled={!buildAiText()}

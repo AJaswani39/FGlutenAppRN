@@ -25,6 +25,7 @@ import { useRestaurants } from '../../context/RestaurantContext';
 import { useSettings } from '../../context/SettingsContext';
 import { Restaurant, AiChatMessage } from '../../types/restaurant';
 import { logger } from '../../util/logger';
+import { impactAsync } from '../../util/haptics';
 import ViewShot, { captureRef } from 'react-native-view-shot';
 import * as Sharing from 'expo-sharing';
 import SafetyScorecard from './SafetyScorecard';
@@ -243,7 +244,7 @@ export default function MenuAnalysisSheet({ restaurant, onClose }: Props) {
 
     setIsAsking(true);
     setError(null);
-    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    impactAsync(Haptics.ImpactFeedbackStyle.Light);
     
     const questionText = userQuestion;
     setUserQuestion('');

@@ -19,6 +19,7 @@ import { Ionicons, StateMessage } from '../components/ui';
 import { ScanProgressBanner } from '../components/ScanProgressBanner';
 import { LocationSearchBar } from '../components/LocationSearchBar';
 import * as Haptics from 'expo-haptics';
+import { impactAsync } from '../util/haptics';
 import { distanceBetween } from '../util/geoUtils';
 
 export default function MapScreen() {
@@ -126,7 +127,7 @@ export default function MapScreen() {
     <View style={styles.container}>
       <LocationSearchBar 
         onLocationSelected={(lat, lng) => {
-          void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+          impactAsync(Haptics.ImpactFeedbackStyle.Medium);
           if (mapRef.current) {
             mapRef.current.animateToRegion({
               latitude: lat,

@@ -190,30 +190,42 @@ export async function fetchHtml(url: string): Promise<string | null> {
     return null;
   }
 
-  try {
-    const response = await fetchWithTimeout(url, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.5 Mobile/15E148 Safari/604.1',
-        Accept: 'text/html',
-      },
-    });
+  const candidates = getHtmlFetchCandidates(url);
+  for (const candidate of candidates) {
+    try {
+      const response = await fetchWithTimeout(candidate, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.5 Mobile/15E148 Safari/604.1',
+          Accept: 'text/html',
+        },
+      });
 
-    if (!response.ok) {
-      logger.warn(`fetchHtml: HTTP ${response.status} for ${url}`);
-      return null;
+      if (!response.ok) {
+        logger.warn(`fetchHtml: HTTP ${response.status} for ${candidate}`);
+        continue;
+      }
+
+      const contentType = response.headers.get('content-type') || '';
+      if (contentType.toLowerCase().includes('application/pdf')) {
+        logger.warn(`fetchHtml: Skipping resolved PDF content-type: ${candidate}`);
+        return null;
+      }
+
+      return await response.text();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      logger.warn(`fetchHtml failed for ${candidate}: ${message}`);
     }
-
-    const contentType = response.headers.get('content-type') || '';
-    if (contentType.toLowerCase().includes('application/pdf')) {
-      logger.warn(`fetchHtml: Skipping resolved PDF content-type: ${url}`);
-      return null;
-    }
-
-    return await response.text();
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    logger.warn(`fetchHtml failed for ${url}: ${message}`);
-    return null;
   }
+
+  return null;
+}
+
+function getHtmlFetchCandidates(url: string): string[] {
+  const trimmed = url.trim();
+  if (!/^http:\/\//i.test(trimmed)) return [trimmed];
+
+  const secureCandidate = trimmed.replace(/^http:\/\//i, 'https://');
+  return secureCandidate === trimmed ? [trimmed] : [secureCandidate, trimmed];
 }
 

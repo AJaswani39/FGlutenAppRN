@@ -80,4 +80,30 @@ describe('menuScanner', () => {
       menuScanTimestamp: 456,
     });
   });
+
+  it('tries https before falling back to http restaurant websites', async () => {
+    (global.fetch as jest.Mock)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ websiteUri: 'http://example.com' }),
+      })
+      .mockRejectedValueOnce(new Error('https unavailable'))
+      .mockResolvedValueOnce({
+        ok: true,
+        headers: { get: () => 'text/html' },
+        text: async () => '<h1>Menu</h1><p>Gluten-free noodles</p>',
+      });
+
+    await expect(
+      scanRestaurantMenu({ restaurant: restaurant(), mapsApiKey: 'key', scanStartedAt: 789 })
+    ).resolves.toMatchObject({
+      menuUrl: 'http://example.com',
+      gfMenu: ['Gluten-free noodles'],
+      menuScanStatus: 'SUCCESS',
+      menuScanTimestamp: 789,
+    });
+
+    expect((global.fetch as jest.Mock).mock.calls[1][0]).toBe('https://example.com');
+    expect((global.fetch as jest.Mock).mock.calls[2][0]).toBe('http://example.com');
+  });
 });

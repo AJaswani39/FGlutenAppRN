@@ -3,7 +3,8 @@ import { Platform } from 'react-native';
 import { FavoriteStatus, MenuScanProgress, Restaurant } from '../types/restaurant';
 import { getRestaurantIdentityKey } from '../util/restaurantUtils';
 
-export const MENU_SCAN_TTL_MS = 3 * 24 * 60 * 60 * 1000;
+const MENU_SCAN_TTL_DAYS = 14;
+export const MENU_SCAN_TTL_MS = MENU_SCAN_TTL_DAYS * 24 * 60 * 60 * 1000;
 export const MAX_SCANS_PER_BATCH = 5;
 export const CONCURRENT_SCAN_LIMIT = 2;
 

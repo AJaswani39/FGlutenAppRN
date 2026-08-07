@@ -10,6 +10,17 @@ export interface CachePayload {
   timestamp: number;
 }
 
+export interface MenuScanCacheEntry {
+  placeId: string;
+  gfMenu: string[];
+  rawMenuText: string | null;
+  menuScanStatus: Restaurant['menuScanStatus'];
+  menuScanTimestamp: number;
+  aiAnalysisResult?: MenuAnalysisResult | null;
+  aiChatHistory?: AiChatMessage[];
+  aiDeepAnalysis?: string | null;
+}
+
 export const DEFAULT_FILTERS: RestaurantFilters = {
   gfOnly: false,
   openNowOnly: false,
@@ -24,6 +35,7 @@ const KEYS = {
   FAVORITES: 'restaurant_favorites',
   SAVED_RESTAURANTS_DB: 'restaurant_saved_db',
   CACHE: 'restaurant_cache',
+  MENU_SCAN_CACHE: 'restaurant_menu_scan_cache',
   SETTINGS: 'fg_settings',
 };
 
@@ -50,6 +62,13 @@ function normalizeBoolean(value: unknown, fallback = false): boolean {
 
 function normalizeString(value: unknown, fallback = ''): string {
   return typeof value === 'string' ? value : fallback;
+}
+
+function normalizeNullableString(value: unknown, maxLength?: number): string | null {
+  if (typeof value !== 'string') return null;
+  const normalized = value.trim();
+  if (!normalized) return null;
+  return typeof maxLength === 'number' ? normalized.slice(0, maxLength) : normalized;
 }
 
 function normalizeFiniteNumber(value: unknown, fallback: number): number {
@@ -127,6 +146,7 @@ export function normalizeRestaurant(value: unknown): Restaurant | null {
   const aiAnalysisResult = isRecord(value.aiAnalysisResult)
     ? (value.aiAnalysisResult as unknown as MenuAnalysisResult)
     : null;
+  const aiDeepAnalysis = normalizeNullableString(value.aiDeepAnalysis, 20000);
 
   const aiChatHistory: AiChatMessage[] | undefined = Array.isArray(value.aiChatHistory)
     ? (value.aiChatHistory as any[]).map((msg): AiChatMessage => ({
@@ -158,6 +178,7 @@ export function normalizeRestaurant(value: unknown): Restaurant | null {
     favoriteStatus: normalizeFavoriteStatus(value.favoriteStatus),
     aiAnalysisResult,
     aiChatHistory,
+    aiDeepAnalysis,
   };
 }
 
@@ -184,6 +205,71 @@ export function normalizeCachePayload(value: unknown): CachePayload | null {
     lat: normalizeNullableFiniteNumber(value.lat),
     lng: normalizeNullableFiniteNumber(value.lng),
     timestamp: Math.max(0, normalizeFiniteNumber(value.timestamp, 0)),
+  };
+}
+
+export function normalizeMenuScanCache(
+  value: unknown,
+  maxAgeMs: number,
+  now = Date.now()
+): Record<string, MenuScanCacheEntry> {
+  if (!isRecord(value) || !Number.isFinite(maxAgeMs) || maxAgeMs <= 0) return {};
+
+  const normalized: Record<string, MenuScanCacheEntry> = {};
+
+  for (const [key, entry] of Object.entries(value)) {
+    if (!isRecord(entry)) continue;
+
+    const placeId = normalizeString(entry.placeId || key).trim();
+    if (!placeId) continue;
+
+    const menuScanStatus = MENU_SCAN_STATUSES.has(entry.menuScanStatus as Restaurant['menuScanStatus'])
+      ? (entry.menuScanStatus as Restaurant['menuScanStatus'])
+      : 'NOT_STARTED';
+
+    if (menuScanStatus === 'NOT_STARTED' || menuScanStatus === 'FETCHING') continue;
+
+    const menuScanTimestamp = Math.max(0, normalizeFiniteNumber(entry.menuScanTimestamp, 0));
+    if (menuScanTimestamp <= 0 || now - menuScanTimestamp > maxAgeMs) continue;
+
+    const aiAnalysisResult = isRecord(entry.aiAnalysisResult)
+      ? (entry.aiAnalysisResult as unknown as MenuAnalysisResult)
+      : null;
+
+    normalized[placeId] = {
+      placeId,
+      gfMenu: normalizeStringArray(entry.gfMenu, 15),
+      rawMenuText: normalizeNullableString(entry.rawMenuText, 20000),
+      menuScanStatus,
+      menuScanTimestamp,
+      aiAnalysisResult,
+      aiChatHistory: Array.isArray(entry.aiChatHistory)
+        ? (entry.aiChatHistory as any[]).map((msg): AiChatMessage => ({
+            role: msg.role === 'user' ? 'user' : 'model',
+            text: normalizeString(msg.text),
+            timestamp: normalizeFiniteNumber(msg.timestamp, now),
+          }))
+        : undefined,
+      aiDeepAnalysis: normalizeNullableString(entry.aiDeepAnalysis, 20000),
+    };
+  }
+
+  return normalized;
+}
+
+export function getMenuScanCacheEntry(restaurant: Restaurant): MenuScanCacheEntry | null {
+  if (!restaurant.placeId || restaurant.menuScanTimestamp <= 0) return null;
+  if (restaurant.menuScanStatus === 'NOT_STARTED' || restaurant.menuScanStatus === 'FETCHING') return null;
+
+  return {
+    placeId: restaurant.placeId,
+    gfMenu: restaurant.gfMenu,
+    rawMenuText: normalizeNullableString(restaurant.rawMenuText, 20000),
+    menuScanStatus: restaurant.menuScanStatus,
+    menuScanTimestamp: restaurant.menuScanTimestamp,
+    aiAnalysisResult: restaurant.aiAnalysisResult ?? null,
+    aiChatHistory: restaurant.aiChatHistory,
+    aiDeepAnalysis: normalizeNullableString(restaurant.aiDeepAnalysis, 20000),
   };
 }
 
@@ -267,5 +353,29 @@ export const PersistenceService = {
       logger.warn(`Failed to load cache: ${error instanceof Error ? error.message : String(error)}`);
     }
     return null;
+  },
+
+  async loadMenuScanCache(maxAgeMs: number): Promise<Record<string, MenuScanCacheEntry>> {
+    try {
+      const raw = await AsyncStorage.getItem(KEYS.MENU_SCAN_CACHE);
+      if (raw) return normalizeMenuScanCache(JSON.parse(raw), maxAgeMs);
+    } catch (error: unknown) {
+      logger.warn(`Failed to load menu scan cache: ${error instanceof Error ? error.message : String(error)}`);
+    }
+    return {};
+  },
+
+  async saveMenuScanCache(cache: Record<string, MenuScanCacheEntry>, maxAgeMs: number): Promise<void> {
+    const normalized = normalizeMenuScanCache(cache, maxAgeMs);
+    await AsyncStorage.setItem(KEYS.MENU_SCAN_CACHE, JSON.stringify(normalized));
+  },
+
+  async saveMenuScanCacheEntry(restaurant: Restaurant, maxAgeMs: number): Promise<void> {
+    const entry = getMenuScanCacheEntry(restaurant);
+    if (!entry) return;
+
+    const cache = await this.loadMenuScanCache(maxAgeMs);
+    cache[entry.placeId] = entry;
+    await this.saveMenuScanCache(cache, maxAgeMs);
   },
 };

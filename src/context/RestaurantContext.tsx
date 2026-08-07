@@ -13,7 +13,7 @@ import NetInfo from '@react-native-community/netinfo';
 import { FavoriteStatus, MenuScanProgress, Restaurant, RestaurantUiState, AiChatMessage } from '../types/restaurant';
 import { fetchNearbyRestaurants } from '../data/placesRepository';
 import { distanceBetween } from '../util/geoUtils';
-import { PersistenceService } from '../services/persistenceService';
+import { MenuScanCacheEntry, PersistenceService, getMenuScanCacheEntry } from '../services/persistenceService';
 
 import { MenuAnalysisResult } from '../services/menuSafety';
 import {
@@ -26,6 +26,7 @@ import { logger } from '../util/logger';
 import { ScanOrchestrator, ScanOrchestratorConfig } from '../services/scanOrchestrator';
 import {
   EmptyResultsReason,
+  MENU_SCAN_TTL_MS,
   getCachedResultsMessage,
   getEmptyResultsMessage,
   getMapsApiKey,
@@ -86,6 +87,7 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
   const userLat = useRef<number | null>(null);
   const userLng = useRef<number | null>(null);
   const cacheAttempted = useRef(false);
+  const menuScanCache = useRef<Record<string, MenuScanCacheEntry>>({});
   const filtersRef = useRef(filters);
   const isMounted = useRef(true);
   const loadRequestId = useRef(0);
@@ -161,6 +163,8 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
     (target: Restaurant, updater: (restaurant: Restaurant) => Restaurant) => {
       let updated = false;
       let worthPersisting = false;
+      let shouldPersistScanCache = false;
+      let scanCacheRestaurant: Restaurant | null = null;
 
       rawRestaurants.current = rawRestaurants.current.map((restaurant) => {
         if (!isSameRestaurantIdentity(restaurant, target)) {
@@ -179,10 +183,16 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
           const favoriteChanged = nextRestaurant.favoriteStatus !== restaurant.favoriteStatus;
           const aiChanged =
             nextRestaurant.aiAnalysisResult !== restaurant.aiAnalysisResult ||
-            nextRestaurant.aiChatHistory !== restaurant.aiChatHistory;
+            nextRestaurant.aiChatHistory !== restaurant.aiChatHistory ||
+            nextRestaurant.aiDeepAnalysis !== restaurant.aiDeepAnalysis;
 
           if (statusChangedToTerminal || favoriteChanged || aiChanged) {
             worthPersisting = true;
+          }
+
+          if (statusChangedToTerminal || aiChanged) {
+            shouldPersistScanCache = true;
+            scanCacheRestaurant = nextRestaurant;
           }
         }
 
@@ -194,6 +204,18 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
 
       if (worthPersisting) {
         persistCache();
+      }
+
+      if (shouldPersistScanCache && scanCacheRestaurant) {
+        const entry = getMenuScanCacheEntry(scanCacheRestaurant);
+        if (entry) {
+          menuScanCache.current[entry.placeId] = entry;
+        }
+
+        void PersistenceService.saveMenuScanCacheEntry(scanCacheRestaurant, MENU_SCAN_TTL_MS).catch((error: unknown) => {
+          const message = error instanceof Error ? error.message : String(error);
+          logger.warn(`Failed to save menu scan cache entry: ${message}`);
+        });
       }
 
       return updated;
@@ -258,24 +280,28 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
     return freshRestaurants.map((freshRestaurant) => {
       const key = favoriteKey(freshRestaurant);
       const cachedRestaurant = key ? cachedByKey.get(key) : null;
-      if (!cachedRestaurant) return freshRestaurant;
+      const cachedScan = freshRestaurant.placeId ? menuScanCache.current[freshRestaurant.placeId] : null;
+      if (!cachedRestaurant && !cachedScan) return freshRestaurant;
+
+      const scanSource = cachedRestaurant ?? cachedScan;
+      if (!scanSource) return freshRestaurant;
 
       return {
         ...freshRestaurant,
-        menuUrl: cachedRestaurant.menuUrl,
-        rawMenuText: cachedRestaurant.rawMenuText,
-        gfMenu: cachedRestaurant.gfMenu,
+        menuUrl: cachedRestaurant?.menuUrl ?? freshRestaurant.menuUrl,
+        rawMenuText: scanSource.rawMenuText,
+        gfMenu: [...scanSource.gfMenu],
         menuScanStatus:
-          cachedRestaurant.menuScanStatus === 'FETCHING'
+          scanSource.menuScanStatus === 'FETCHING'
             ? 'NOT_STARTED'
-            : cachedRestaurant.menuScanStatus,
+            : scanSource.menuScanStatus,
         menuScanTimestamp:
-          cachedRestaurant.menuScanStatus === 'FETCHING'
+          scanSource.menuScanStatus === 'FETCHING'
             ? 0
-            : cachedRestaurant.menuScanTimestamp,
-        aiAnalysisResult: cachedRestaurant.aiAnalysisResult,
-        aiChatHistory: cachedRestaurant.aiChatHistory,
-        aiDeepAnalysis: cachedRestaurant.aiDeepAnalysis,
+            : scanSource.menuScanTimestamp,
+        aiAnalysisResult: scanSource.aiAnalysisResult,
+        aiChatHistory: scanSource.aiChatHistory,
+        aiDeepAnalysis: scanSource.aiDeepAnalysis,
       };
     });
   }, [favoriteKey]);
@@ -332,6 +358,9 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
     if (!shouldContinue()) return;
 
     const cached = await PersistenceService.loadCache();
+    if (!shouldContinue()) return;
+
+    menuScanCache.current = await PersistenceService.loadMenuScanCache(MENU_SCAN_TTL_MS);
     if (!shouldContinue()) return;
 
     if (!cached?.restaurants?.length) return;

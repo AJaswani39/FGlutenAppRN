@@ -62,10 +62,12 @@ describe('menuScanner', () => {
       })
       .mockResolvedValueOnce({
         ok: true,
+        headers: { get: () => 'text/html' },
         text: async () => '<a href="/menu">Menu</a><p>Welcome</p>',
       })
       .mockResolvedValueOnce({
         ok: true,
+        headers: { get: () => 'text/html' },
         text: async () => '<h1>Menu</h1><p>Gluten-free pasta</p><p>Celiac friendly tacos</p>',
       });
 

@@ -12,10 +12,11 @@ import {
   ScrollView,
   Keyboard,
 } from 'react-native';
-import { Colors, Spacing, Radius, FontSize, FontWeight } from '../theme/colors';
+import { Spacing, Radius, FontSize, FontWeight } from '../theme/colors';
 import { useRestaurants } from '../context/RestaurantContext';
 import { useFilters } from '../context/FiltersContext';
 import { useSettings } from '../context/SettingsContext';
+import { ThemeColors, useTheme } from '../context/ThemeContext';
 import { MenuScanProgress, Restaurant, RestaurantFilters } from '../types/restaurant';
 import { ScanProgressBanner } from '../components/ScanProgressBanner';
 import RestaurantDetailModal from './components/RestaurantDetailModal';
@@ -29,6 +30,8 @@ export default function RestaurantListScreen() {
   const { uiState, loadNearbyRestaurants, requestMenuRescan } = useRestaurants();
   const { filters, setFilters } = useFilters();
   const { useMiles } = useSettings();
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
 
   const [selectedRestaurant, setSelectedRestaurant] = useState<Restaurant | null>(null);
   const [showFilters, setShowFilters] = useState(false);
@@ -88,12 +91,12 @@ export default function RestaurantListScreen() {
       <View style={styles.headerPanel}>
         <View style={styles.searchRow}>
           <View style={styles.searchBox}>
-            <Ionicons name="search" size={17} color={Colors.textMuted} />
+            <Ionicons name="search" size={17} color={colors.textMuted} />
             <TextInput
               ref={searchInputRef}
               style={styles.searchInput}
               placeholder="Search restaurants or menu evidence"
-              placeholderTextColor={Colors.textMuted}
+              placeholderTextColor={colors.textMuted}
               value={searchInputText}
               onChangeText={(text) => {
                 setSearchInputText(text);
@@ -113,7 +116,7 @@ export default function RestaurantListScreen() {
                 accessibilityRole="button"
                 accessibilityLabel="Clear search"
               >
-                <Ionicons name="close-circle" size={18} color={Colors.textMuted} />
+                <Ionicons name="close-circle" size={18} color={colors.textMuted} />
               </Pressable>
             ) : null}
           </View>
@@ -183,7 +186,7 @@ export default function RestaurantListScreen() {
           renderItem={renderItem}
           contentContainerStyle={styles.listContent}
           refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} />
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
           }
           showsVerticalScrollIndicator={false}
           onScrollBeginDrag={Keyboard.dismiss}
@@ -215,6 +218,8 @@ const FilterPanel = React.memo(function FilterPanel({
   setFilters: (partial: Partial<RestaurantFilters>) => void;
   useMiles: boolean;
 }) {
+  const { colors } = useTheme();
+  const filterStyles = useMemo(() => createFilterStyles(colors), [colors]);
   const maxKm = useMiles ? 12 : 20;
 
   return (
@@ -268,6 +273,9 @@ const FilterPanel = React.memo(function FilterPanel({
 });
 
 function FilterChip({ label, active, onToggle }: { label: string; active: boolean; onToggle: () => void }) {
+  const { colors } = useTheme();
+  const filterStyles = useMemo(() => createFilterStyles(colors), [colors]);
+
   return (
     <Pressable style={[filterStyles.chip, active && filterStyles.chipActive]} onPress={onToggle}>
       <Text style={[filterStyles.chipText, active && filterStyles.chipTextActive]}>{label}</Text>
@@ -286,6 +294,9 @@ function StepperRow({
   onIncrease: () => void;
   onReset?: () => void;
 }) {
+  const { colors } = useTheme();
+  const filterStyles = useMemo(() => createFilterStyles(colors), [colors]);
+
   return (
     <View style={filterStyles.sliderRow}>
       <Text style={filterStyles.label}>{label}</Text>
@@ -309,9 +320,12 @@ function StepButton({
   label: string;
   danger?: boolean;
 }) {
+  const { colors } = useTheme();
+  const filterStyles = useMemo(() => createFilterStyles(colors), [colors]);
+
   return (
     <Pressable style={filterStyles.stepBtn} onPress={onPress} accessibilityRole="button" accessibilityLabel={label}>
-      <Ionicons name={icon} size={16} color={danger ? Colors.error : Colors.textPrimary} />
+      <Ionicons name={icon} size={16} color={danger ? colors.error : colors.textPrimary} />
     </Pressable>
   );
 }
@@ -329,102 +343,105 @@ function stateFallbackMessage(status: string): string {
   return 'Something went wrong.';
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.background },
-  headerPanel: {
-    backgroundColor: Colors.background,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
-  },
-  searchRow: {
-    flexDirection: 'row',
-    padding: Spacing.md,
-    paddingBottom: Spacing.sm,
-    gap: Spacing.sm,
-  },
-  searchBox: {
-    flex: 1,
-    minHeight: 42,
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Colors.surface,
-    borderRadius: Radius.full,
-    paddingHorizontal: Spacing.md,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    gap: Spacing.sm,
-  },
-  searchInput: {
-    flex: 1,
-    color: Colors.textPrimary,
-    fontSize: FontSize.sm,
-    paddingVertical: Platform.OS === 'ios' ? 11 : 8,
-  },
-  resultSummary: {
-    paddingHorizontal: Spacing.md,
-    paddingBottom: Spacing.md,
-  },
-  resultTitle: {
-    color: Colors.textPrimary,
-    fontSize: FontSize.lg,
-    fontWeight: FontWeight.bold,
-  },
-  resultMeta: {
-    color: Colors.textSecondary,
-    fontSize: FontSize.sm,
-    marginTop: 3,
-  },
-  listContent: { padding: Spacing.md, paddingBottom: Spacing.xl },
-  loadingContainer: { padding: Spacing.md },
+function createStyles(colors: ThemeColors) {
+  return StyleSheet.create({
+    container: { flex: 1, backgroundColor: colors.background },
+    headerPanel: {
+      backgroundColor: colors.background,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border,
+    },
+    searchRow: {
+      flexDirection: 'row',
+      padding: Spacing.md,
+      paddingBottom: Spacing.sm,
+      gap: Spacing.sm,
+    },
+    searchBox: {
+      flex: 1,
+      minHeight: 42,
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: colors.surface,
+      borderRadius: Radius.full,
+      paddingHorizontal: Spacing.md,
+      borderWidth: 1,
+      borderColor: colors.border,
+      gap: Spacing.sm,
+    },
+    searchInput: {
+      flex: 1,
+      color: colors.textPrimary,
+      fontSize: FontSize.sm,
+      paddingVertical: Platform.OS === 'ios' ? 11 : 8,
+    },
+    resultSummary: {
+      paddingHorizontal: Spacing.md,
+      paddingBottom: Spacing.md,
+    },
+    resultTitle: {
+      color: colors.textPrimary,
+      fontSize: FontSize.lg,
+      fontWeight: FontWeight.bold,
+    },
+    resultMeta: {
+      color: colors.textSecondary,
+      fontSize: FontSize.sm,
+      marginTop: 3,
+    },
+    listContent: { padding: Spacing.md, paddingBottom: Spacing.xl },
+    loadingContainer: { padding: Spacing.md },
+  });
+}
 
-});
-
-const filterStyles = StyleSheet.create({
-  panel: {
-    maxHeight: 210,
-    paddingHorizontal: Spacing.md,
-    paddingBottom: Spacing.md,
-  },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flexWrap: 'wrap',
-    gap: Spacing.sm,
-    marginBottom: Spacing.sm,
-  },
-  label: {
-    flex: 1,
-    color: Colors.textSecondary,
-    fontSize: FontSize.xs,
-    fontWeight: FontWeight.medium,
-    marginRight: Spacing.sm,
-  },
-  chip: {
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: Radius.full,
-    backgroundColor: Colors.surface,
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  chipActive: { backgroundColor: Colors.primaryLight, borderColor: Colors.primary },
-  chipText: { color: Colors.textSecondary, fontSize: FontSize.xs, fontWeight: FontWeight.medium },
-  chipTextActive: { color: Colors.primary },
-  sliderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginTop: Spacing.sm,
-  },
-  stepRow: { flexDirection: 'row', gap: 6 },
-  stepBtn: {
-    width: 32,
-    height: 32,
-    backgroundColor: Colors.surface,
-    borderRadius: Radius.full,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-});
+function createFilterStyles(colors: ThemeColors) {
+  return StyleSheet.create({
+    panel: {
+      maxHeight: 210,
+      paddingHorizontal: Spacing.md,
+      paddingBottom: Spacing.md,
+    },
+    row: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      flexWrap: 'wrap',
+      gap: Spacing.sm,
+      marginBottom: Spacing.sm,
+    },
+    label: {
+      flex: 1,
+      color: colors.textSecondary,
+      fontSize: FontSize.xs,
+      fontWeight: FontWeight.medium,
+      marginRight: Spacing.sm,
+    },
+    chip: {
+      paddingHorizontal: 12,
+      paddingVertical: 7,
+      borderRadius: Radius.full,
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    chipActive: { backgroundColor: colors.primaryLight, borderColor: colors.primary },
+    chipText: { color: colors.textSecondary, fontSize: FontSize.xs, fontWeight: FontWeight.medium },
+    chipTextActive: { color: colors.primary },
+    sliderRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      marginTop: Spacing.sm,
+    },
+    stepRow: { flexDirection: 'row', gap: 6 },
+    stepBtn: {
+      width: 32,
+      height: 32,
+      backgroundColor: colors.surface,
+      borderRadius: Radius.full,
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+  });
+}

@@ -1,11 +1,11 @@
 import 'react-native-gesture-handler';
 import React, { useState, useEffect } from 'react';
-import { Appearance, StyleSheet } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SplashScreen from 'expo-splash-screen';
-import { Colors, applyTheme } from './src/theme/colors';
+import { applyTheme } from './src/theme/colors';
 import { getMapsApiKey } from './src/context/restaurantState';
 import { CustomSplashScreen } from './src/components/CustomSplashScreen';
+import { ThemeProvider, getInitialThemePreference, useTheme } from './src/context/ThemeContext';
 
 // Keep splash screen visible while we load theme from storage
 void SplashScreen.preventAutoHideAsync().catch((error: unknown) => {
@@ -22,17 +22,19 @@ type BootStage = 'init' | 'animating' | 'ready';
 
 export default function App() {
   const [bootStage, setBootStage] = useState<BootStage>('init');
+  const [initialIsDark, setInitialIsDark] = useState(true);
 
   useEffect(() => {
     async function initTheme() {
       try {
         const savedTheme = await AsyncStorage.getItem('@fgluten_theme');
-        const systemDark = Appearance.getColorScheme() === 'dark';
-        const isDark = savedTheme ? savedTheme === 'dark' : systemDark;
+        const isDark = getInitialThemePreference(savedTheme);
+        setInitialIsDark(isDark);
         applyTheme(isDark);
       } catch (err) {
         // Fallback to dark
         applyTheme(true);
+        setInitialIsDark(true);
       } finally {
         // Theme is loaded, proceed to custom JS splash animation
         setBootStage('animating');
@@ -56,9 +58,6 @@ export default function App() {
     return <CustomSplashScreen onFinish={() => setBootStage('ready')} />;
   }
 
-  // ─── DYNAMIC IMPORTS ──────────────────────────────────────────────────────────
-  // By requiring these *after* applyTheme() is called, all static StyleSheet.create
-  // calls inside these files will capture the correct Light/Dark Colors values.
   const { SafeAreaProvider } = require('react-native-safe-area-context');
   const { GestureHandlerRootView } = require('react-native-gesture-handler');
   const { StatusBar } = require('expo-status-bar');
@@ -68,16 +67,47 @@ export default function App() {
   const AppNavigator = require('./src/navigation/AppNavigator').default;
 
   return (
-    <SafeAreaProvider>
-      <GestureHandlerRootView style={{ flex: 1, backgroundColor: Colors.background }}>
-        <StatusBar style={Colors.background === '#0D1117' ? 'light' : 'dark'} backgroundColor={Colors.background} />
-        <NetworkBanner />
-        <AppErrorBoundary>
-          <AppProviders>
-            <AppNavigator />
-          </AppProviders>
-        </AppErrorBoundary>
-      </GestureHandlerRootView>
-    </SafeAreaProvider>
+    <ThemeProvider initialIsDark={initialIsDark}>
+      <SafeAreaProvider>
+        <ThemedAppShell
+          GestureHandlerRootView={GestureHandlerRootView}
+          StatusBar={StatusBar}
+          NetworkBanner={NetworkBanner}
+          AppErrorBoundary={AppErrorBoundary}
+          AppProviders={AppProviders}
+          AppNavigator={AppNavigator}
+        />
+      </SafeAreaProvider>
+    </ThemeProvider>
+  );
+}
+
+function ThemedAppShell({
+  GestureHandlerRootView,
+  StatusBar,
+  NetworkBanner,
+  AppErrorBoundary,
+  AppProviders,
+  AppNavigator,
+}: {
+  GestureHandlerRootView: React.ComponentType<{ style: object; children: React.ReactNode }>;
+  StatusBar: React.ComponentType<{ style: 'light' | 'dark'; backgroundColor: string }>;
+  NetworkBanner: React.ComponentType;
+  AppErrorBoundary: React.ComponentType<{ children: React.ReactNode }>;
+  AppProviders: React.ComponentType<{ children: React.ReactNode }>;
+  AppNavigator: React.ComponentType;
+}) {
+  const { colors, isDark } = useTheme();
+
+  return (
+    <GestureHandlerRootView style={{ flex: 1, backgroundColor: colors.background }}>
+      <StatusBar style={isDark ? 'light' : 'dark'} backgroundColor={colors.background} />
+      <NetworkBanner />
+      <AppErrorBoundary>
+        <AppProviders>
+          <AppNavigator />
+        </AppProviders>
+      </AppErrorBoundary>
+    </GestureHandlerRootView>
   );
 }

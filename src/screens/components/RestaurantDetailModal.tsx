@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -11,7 +11,8 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
-import { Colors, Spacing, Radius, FontSize, FontWeight } from '../../theme/colors';
+import { Spacing, Radius, FontSize, FontWeight } from '../../theme/colors';
+import { ThemeColors, useTheme } from '../../context/ThemeContext';
 import { Restaurant, FavoriteStatus } from '../../types/restaurant';
 import { formatDistance } from '../../util/formatters';
 
@@ -35,6 +36,8 @@ interface Props {
 export default function RestaurantDetailModal({ restaurant: initial, useMiles, onClose }: Props) {
   const { uiState, savedRestaurants, setFavoriteStatus, requestMenuRescan } = useRestaurants();
   const { strictCeliac } = useSettings();
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const [showAI, setShowAI] = useState(false);
 
   if (!initial) return null;
@@ -48,9 +51,9 @@ export default function RestaurantDetailModal({ restaurant: initial, useMiles, o
   const dist = formatDistance(restaurant.distanceMeters, useMiles);
 
   const safeMenuUrl = getSafeExternalUrl(restaurant.menuUrl);
-  const confidence = confidenceMeta(restaurant);
+  const confidence = confidenceMeta(restaurant, colors);
   const safetyScore = getRestaurantSafetyScore(restaurant, { strictCeliac });
-  const safety = safetyMeta(safetyScore.level);
+  const safety = safetyMeta(safetyScore.level, colors);
   const diningChecklist = getDiningChecklist(restaurant, {
     strictCeliac,
     safetyLevel: safetyScore.level,
@@ -122,20 +125,20 @@ export default function RestaurantDetailModal({ restaurant: initial, useMiles, o
           {/* Meta row */}
           <View style={styles.metaRow}>
             {restaurant.rating != null && (
-              <MetaPill bg={Colors.surfaceElevated}>
+              <MetaPill bg={colors.surfaceElevated}>
                 ⭐ {restaurant.rating.toFixed(1)}
               </MetaPill>
             )}
             {restaurant.openNow != null && (
               <MetaPill
-                bg={restaurant.openNow ? Colors.successBg : Colors.errorBg}
-                color={restaurant.openNow ? Colors.success : Colors.error}
+                bg={restaurant.openNow ? colors.successBg : colors.errorBg}
+                color={restaurant.openNow ? colors.success : colors.error}
               >
                 {restaurant.openNow ? '🟢 Open' : '🔴 Closed'}
               </MetaPill>
             )}
             {dist !== '' && (
-              <MetaPill bg={Colors.surfaceElevated}>📍 {dist}</MetaPill>
+              <MetaPill bg={colors.surfaceElevated}>📍 {dist}</MetaPill>
             )}
           </View>
 
@@ -195,15 +198,15 @@ export default function RestaurantDetailModal({ restaurant: initial, useMiles, o
                     style={[
                       styles.checklistPriority,
                       {
-                        backgroundColor: item.priority === 'high' ? Colors.warningBg : Colors.infoBg,
-                        borderColor: item.priority === 'high' ? Colors.warning : Colors.info,
+                        backgroundColor: item.priority === 'high' ? colors.warningBg : colors.infoBg,
+                        borderColor: item.priority === 'high' ? colors.warning : colors.info,
                       },
                     ]}
                   >
                     <Ionicons
                       name={item.priority === 'high' ? 'alert-circle' : 'chatbubble-ellipses'}
                       size={15}
-                      color={item.priority === 'high' ? Colors.warning : Colors.info}
+                      color={item.priority === 'high' ? colors.warning : colors.info}
                     />
                   </View>
                   <View style={styles.checklistTextGroup}>
@@ -218,8 +221,8 @@ export default function RestaurantDetailModal({ restaurant: initial, useMiles, o
           <Section title="Cuisine Risk Hints">
             <View style={styles.riskHintsGrid}>
               {cuisineRiskHints.map((hint) => {
-                const color = hint.tone === 'warning' ? Colors.warning : Colors.info;
-                const bg = hint.tone === 'warning' ? Colors.warningBg : Colors.infoBg;
+                const color = hint.tone === 'warning' ? colors.warning : colors.info;
+                const bg = hint.tone === 'warning' ? colors.warningBg : colors.infoBg;
                 return (
                   <View key={hint.id} style={styles.riskHintCard}>
                     <View style={styles.riskHintHeader}>
@@ -245,7 +248,7 @@ export default function RestaurantDetailModal({ restaurant: initial, useMiles, o
             <View style={styles.scanRow}>
               <Text style={styles.scanStatus}>{menuStatusText(restaurant)}</Text>
               {restaurant.menuScanStatus === 'FETCHING' && (
-                <ActivityIndicator size="small" color={Colors.primary} />
+                <ActivityIndicator size="small" color={colors.primary} />
               )}
             </View>
 
@@ -340,7 +343,7 @@ function getSafeExternalUrl(url: string | null): string | null {
   return `http://${trimmed}`;
 }
 
-function confidenceMeta(restaurant: Restaurant) {
+function confidenceMeta(restaurant: Restaurant, colors: ThemeColors) {
   const level = getGfConfidenceLevel(restaurant);
   switch (level) {
     case 'confirmed':
@@ -351,56 +354,56 @@ function confidenceMeta(restaurant: Restaurant) {
           restaurant.gfMenu.length >= 3
             ? 'Multiple gluten-free menu references were found during the latest scan.'
             : 'Gluten-free menu evidence was found during the latest scan.',
-        color: Colors.success,
-        bg: Colors.successBg,
+        color: colors.success,
+        bg: colors.successBg,
       };
     case 'name_match':
       return {
         icon: '🌾',
         title: 'Name suggests GF',
         description: 'The restaurant name suggests gluten-free options, but menu evidence is not confirmed yet.',
-        color: Colors.warning,
-        bg: Colors.warningBg,
+        color: colors.warning,
+        bg: colors.warningBg,
       };
     case 'no_evidence':
       return {
         icon: '🔎',
         title: 'No GF evidence found',
         description: 'The menu scan completed, but no specific gluten-free items or claims were found.',
-        color: Colors.textSecondary,
-        bg: Colors.surfaceElevated,
+        color: colors.textSecondary,
+        bg: colors.surfaceElevated,
       };
     case 'unavailable':
       return {
         icon: '⚠️',
         title: 'Menu evidence unavailable',
         description: 'The app could not inspect a menu for this restaurant. Ask staff before relying on it.',
-        color: Colors.warning,
-        bg: Colors.warningBg,
+        color: colors.warning,
+        bg: colors.warningBg,
       };
     default:
       return {
         icon: '⏳',
         title: 'Awaiting menu scan',
         description: 'The app has not finished checking this restaurant for gluten-free menu evidence.',
-        color: Colors.info,
-        bg: Colors.infoBg,
+        color: colors.info,
+        bg: colors.infoBg,
       };
   }
 }
 
-function safetyMeta(level: MenuSafetyLevel) {
+function safetyMeta(level: MenuSafetyLevel, colors: ThemeColors) {
   if (level === 'safe') {
-    return { icon: '✅', color: Colors.success, bg: Colors.successBg };
+    return { icon: '✅', color: colors.success, bg: colors.successBg };
   }
   if (level === 'caution') {
-    return { icon: '⚠️', color: Colors.warning, bg: Colors.warningBg };
+    return { icon: '⚠️', color: colors.warning, bg: colors.warningBg };
   }
   if (level === 'unsafe') {
-    return { icon: '❌', color: Colors.error, bg: Colors.errorBg };
+    return { icon: '❌', color: colors.error, bg: colors.errorBg };
   }
 
-  return { icon: '❓', color: Colors.textSecondary, bg: Colors.surfaceElevated };
+  return { icon: '❓', color: colors.textSecondary, bg: colors.surfaceElevated };
 }
 
 function menuStatusText(r: Restaurant): string {
@@ -417,6 +420,9 @@ function menuStatusText(r: Restaurant): string {
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  const { colors } = useTheme();
+  const sectionStyles = useMemo(() => createSectionStyles(colors), [colors]);
+
   return (
     <View style={sectionStyles.container}>
       <Text style={sectionStyles.title}>{title}</Text>
@@ -434,6 +440,9 @@ function MetaPill({
   bg: string;
   color?: string;
 }) {
+  const { colors } = useTheme();
+  const pillStyles = useMemo(() => createPillStyles(colors), [colors]);
+
   return (
     <View style={[pillStyles.pill, { backgroundColor: bg }]}>
       <Text style={[pillStyles.text, color ? { color } : {}]}>{children}</Text>
@@ -452,6 +461,8 @@ function FavButton({
   current: FavoriteStatus;
   onPress: () => void;
 }) {
+  const { colors } = useTheme();
+  const favStyles = useMemo(() => createFavStyles(colors), [colors]);
   const active = current === status;
   return (
     <Pressable
@@ -460,16 +471,16 @@ function FavButton({
         active && {
           backgroundColor:
             status === 'safe'
-              ? Colors.successBg
+              ? colors.successBg
               : status === 'try'
-              ? Colors.warningBg
-              : Colors.errorBg,
+              ? colors.warningBg
+              : colors.errorBg,
           borderColor:
             status === 'safe'
-              ? Colors.success
+              ? colors.success
               : status === 'try'
-              ? Colors.warning
-              : Colors.error,
+              ? colors.warning
+              : colors.error,
         },
       ]}
       onPress={onPress}
@@ -483,10 +494,10 @@ function FavButton({
           active && {
             color:
               status === 'safe'
-                ? Colors.success
+                ? colors.success
                 : status === 'try'
-                ? Colors.warning
-                : Colors.error,
+                ? colors.warning
+                : colors.error,
           },
         ]}
       >
@@ -509,6 +520,9 @@ function ActionButton({
   disabled?: boolean;
   primary?: boolean;
 }) {
+  const { colors } = useTheme();
+  const actionStyles = useMemo(() => createActionStyles(colors), [colors]);
+
   return (
     <Pressable
       style={({ pressed }) => [
@@ -526,7 +540,7 @@ function ActionButton({
       <Ionicons
         name={icon}
         size={17}
-        color={disabled ? Colors.textMuted : primary ? Colors.primary : Colors.textSecondary}
+        color={disabled ? colors.textMuted : primary ? colors.primary : colors.textSecondary}
       />
       <Text style={[actionStyles.label, primary && actionStyles.primaryLabel, disabled && actionStyles.disabledLabel]}>
         {label}
@@ -535,8 +549,9 @@ function ActionButton({
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.background },
+function createStyles(colors: ThemeColors) {
+  return StyleSheet.create({
+  container: { flex: 1, backgroundColor: colors.background },
   handleRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -548,7 +563,7 @@ const styles = StyleSheet.create({
   handle: {
     width: 40,
     height: 4,
-    backgroundColor: Colors.border,
+    backgroundColor: colors.border,
     borderRadius: Radius.full,
   },
   closeBtn: {
@@ -556,22 +571,22 @@ const styles = StyleSheet.create({
     right: Spacing.md,
     width: 32,
     height: 32,
-    backgroundColor: Colors.surface,
+    backgroundColor: colors.surface,
     borderRadius: Radius.full,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: colors.border,
   },
-  closeBtnText: { color: Colors.textSecondary, fontSize: 13 },
+  closeBtnText: { color: colors.textSecondary, fontSize: 13 },
   content: { padding: Spacing.md, paddingBottom: 60 },
   name: {
-    color: Colors.textPrimary,
+    color: colors.textPrimary,
     fontSize: FontSize.xxl,
     fontWeight: FontWeight.bold,
     marginBottom: Spacing.xs,
   },
-  address: { color: Colors.textSecondary, fontSize: FontSize.sm, marginBottom: Spacing.md },
+  address: { color: colors.textSecondary, fontSize: FontSize.sm, marginBottom: Spacing.md },
   metaRow: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm, marginBottom: Spacing.md },
   gfCard: {
     borderRadius: Radius.md,
@@ -579,7 +594,7 @@ const styles = StyleSheet.create({
   },
   gfCardTitle: { fontSize: FontSize.md, fontWeight: FontWeight.semiBold },
   gfCardBody: {
-    color: Colors.textSecondary,
+    color: colors.textSecondary,
     fontSize: FontSize.sm,
     lineHeight: 20,
     marginTop: Spacing.xs,
@@ -599,7 +614,7 @@ const styles = StyleSheet.create({
     fontWeight: FontWeight.extraBold,
   },
   safetyScoreMax: {
-    color: Colors.textSecondary,
+    color: colors.textSecondary,
     fontSize: FontSize.md,
     fontWeight: FontWeight.semiBold,
   },
@@ -614,14 +629,14 @@ const styles = StyleSheet.create({
     borderRadius: Radius.full,
     borderWidth: 1,
     overflow: 'hidden',
-    backgroundColor: Colors.surface,
+    backgroundColor: colors.surface,
   },
   safetyMeterFill: {
     height: '100%',
     borderRadius: Radius.full,
   },
   safetyScoreSummary: {
-    color: Colors.textSecondary,
+    color: colors.textSecondary,
     fontSize: FontSize.sm,
     lineHeight: 20,
     marginTop: Spacing.sm,
@@ -640,15 +655,15 @@ const styles = StyleSheet.create({
   },
   safetyReasonText: {
     flex: 1,
-    color: Colors.textSecondary,
+    color: colors.textSecondary,
     fontSize: FontSize.sm,
     lineHeight: 20,
   },
   checklistCard: {
-    backgroundColor: Colors.surface,
+    backgroundColor: colors.surface,
     borderRadius: Radius.md,
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: colors.border,
     padding: Spacing.md,
     gap: Spacing.md,
   },
@@ -670,13 +685,13 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   checklistQuestion: {
-    color: Colors.textPrimary,
+    color: colors.textPrimary,
     fontSize: FontSize.sm,
     fontWeight: FontWeight.semiBold,
     lineHeight: 19,
   },
   checklistNote: {
-    color: Colors.textSecondary,
+    color: colors.textSecondary,
     fontSize: FontSize.xs,
     lineHeight: 17,
     marginTop: 3,
@@ -685,10 +700,10 @@ const styles = StyleSheet.create({
     gap: Spacing.sm,
   },
   riskHintCard: {
-    backgroundColor: Colors.surface,
+    backgroundColor: colors.surface,
     borderRadius: Radius.md,
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: colors.border,
     padding: Spacing.md,
   },
   riskHintHeader: {
@@ -706,12 +721,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   riskHintLabel: {
-    color: Colors.textPrimary,
+    color: colors.textPrimary,
     fontSize: FontSize.sm,
     fontWeight: FontWeight.bold,
   },
   riskHintText: {
-    color: Colors.textSecondary,
+    color: colors.textSecondary,
     fontSize: FontSize.sm,
     lineHeight: 19,
   },
@@ -727,55 +742,63 @@ const styles = StyleSheet.create({
     gap: Spacing.sm,
     marginBottom: Spacing.sm,
   },
-  scanStatus: { color: Colors.textSecondary, fontSize: FontSize.sm, flex: 1 },
+  scanStatus: { color: colors.textSecondary, fontSize: FontSize.sm, flex: 1 },
   menuItems: {
-    backgroundColor: Colors.surfaceElevated,
+    backgroundColor: colors.surfaceElevated,
     borderRadius: Radius.md,
     padding: Spacing.md,
     gap: Spacing.xs,
   },
   menuItem: { flexDirection: 'row', gap: Spacing.sm },
-  bulletDot: { color: Colors.primary, fontSize: FontSize.md, lineHeight: 20 },
-  menuItemText: { flex: 1, color: Colors.textSecondary, fontSize: FontSize.sm, lineHeight: 20 },
+  bulletDot: { color: colors.primary, fontSize: FontSize.md, lineHeight: 20 },
+  menuItemText: { flex: 1, color: colors.textSecondary, fontSize: FontSize.sm, lineHeight: 20 },
   favRow: { flexDirection: 'row', gap: Spacing.sm },
   actionsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm },
-});
+  });
+}
 
-const sectionStyles = StyleSheet.create({
+function createSectionStyles(colors: ThemeColors) {
+  return StyleSheet.create({
   container: { marginBottom: Spacing.lg },
   title: {
-    color: Colors.textMuted,
+    color: colors.textMuted,
     fontSize: FontSize.xs,
     fontWeight: FontWeight.semiBold,
     textTransform: 'uppercase',
     letterSpacing: 0.8,
     marginBottom: Spacing.sm,
   },
-});
+  });
+}
 
-const pillStyles = StyleSheet.create({
+function createPillStyles(colors: ThemeColors) {
+  return StyleSheet.create({
   pill: {
     borderRadius: Radius.full,
     paddingHorizontal: 12,
     paddingVertical: 5,
   },
-  text: { color: Colors.textSecondary, fontSize: FontSize.sm, fontWeight: FontWeight.medium },
-});
+  text: { color: colors.textSecondary, fontSize: FontSize.sm, fontWeight: FontWeight.medium },
+  });
+}
 
-const favStyles = StyleSheet.create({
+function createFavStyles(colors: ThemeColors) {
+  return StyleSheet.create({
   btn: {
     flex: 1,
     paddingVertical: 10,
     borderRadius: Radius.md,
-    backgroundColor: Colors.surface,
+    backgroundColor: colors.surface,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: colors.border,
   },
-  label: { color: Colors.textSecondary, fontSize: FontSize.sm, fontWeight: FontWeight.medium },
-});
+  label: { color: colors.textSecondary, fontSize: FontSize.sm, fontWeight: FontWeight.medium },
+  });
+}
 
-const actionStyles = StyleSheet.create({
+function createActionStyles(colors: ThemeColors) {
+  return StyleSheet.create({
   btn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -783,18 +806,19 @@ const actionStyles = StyleSheet.create({
     paddingVertical: 10,
     paddingHorizontal: Spacing.md,
     borderRadius: Radius.md,
-    backgroundColor: Colors.surface,
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: colors.border,
     minWidth: '47%',
   },
   primaryBtn: {
-    backgroundColor: Colors.primaryLight,
-    borderColor: Colors.primary,
+    backgroundColor: colors.primaryLight,
+    borderColor: colors.primary,
   },
   disabledBtn: { opacity: 0.4 },
-  label: { color: Colors.textSecondary, fontSize: FontSize.sm, fontWeight: FontWeight.medium },
-  primaryLabel: { color: Colors.primary },
-  disabledLabel: { color: Colors.textMuted },
+  label: { color: colors.textSecondary, fontSize: FontSize.sm, fontWeight: FontWeight.medium },
+  primaryLabel: { color: colors.primary },
+  disabledLabel: { color: colors.textMuted },
   pressedBtn: { opacity: 0.75 },
-});
+  });
+}

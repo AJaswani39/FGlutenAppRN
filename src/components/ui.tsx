@@ -1,7 +1,8 @@
 import React from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Colors, FontSize, FontWeight, Radius, Spacing } from '../theme/colors';
+import { FontSize, FontWeight, Radius, Spacing } from '../theme/colors';
+import { ThemeColors, useTheme } from '../context/ThemeContext';
 
 type IconName = keyof typeof Ionicons.glyphMap;
 
@@ -14,13 +15,17 @@ interface IconCircleProps {
 
 export function IconCircle({
   name,
-  color = Colors.primary,
-  backgroundColor = Colors.primaryLight,
+  color,
+  backgroundColor,
   size = 22,
 }: IconCircleProps) {
+  const { colors } = useTheme();
+  const iconColor = color ?? colors.primary;
+  const iconBackgroundColor = backgroundColor ?? colors.primaryLight;
+
   return (
-    <View style={[styles.iconCircle, { backgroundColor }]}>
-      <Ionicons name={name} size={size} color={color} />
+    <View style={[styles.iconCircle, { backgroundColor: iconBackgroundColor }]}>
+      <Ionicons name={name} size={size} color={iconColor} />
     </View>
   );
 }
@@ -29,19 +34,21 @@ export function MetaPill({
   icon,
   text,
   color,
-  backgroundColor = Colors.surfaceElevated,
+  backgroundColor,
 }: {
   icon?: IconName;
   text: string;
   color?: string;
   backgroundColor?: string;
 }) {
+  const { colors } = useTheme();
+
   if (!text) return null;
 
   return (
-    <View style={[styles.pill, { backgroundColor }]}>
-      {icon ? <Ionicons name={icon} size={12} color={color ?? Colors.textSecondary} /> : null}
-      <Text style={[styles.pillText, color ? { color } : null]}>{text}</Text>
+    <View style={[styles.pill, { backgroundColor: backgroundColor ?? colors.surfaceElevated }]}>
+      {icon ? <Ionicons name={icon} size={12} color={color ?? colors.textSecondary} /> : null}
+      <Text style={[styles.pillText, { color: color ?? colors.textSecondary }]}>{text}</Text>
     </View>
   );
 }
@@ -53,12 +60,13 @@ export function StatusBadge({
   label: string;
   tone?: 'success' | 'warning' | 'error' | 'info' | 'neutral';
 }) {
+  const { colors } = useTheme();
   const meta = {
-    success: { color: Colors.success, bg: Colors.successBg },
-    warning: { color: Colors.warning, bg: Colors.warningBg },
-    error: { color: Colors.error, bg: Colors.errorBg },
-    info: { color: Colors.info, bg: Colors.infoBg },
-    neutral: { color: Colors.textSecondary, bg: Colors.surfaceElevated },
+    success: { color: colors.success, bg: colors.successBg },
+    warning: { color: colors.warning, bg: colors.warningBg },
+    error: { color: colors.error, bg: colors.errorBg },
+    info: { color: colors.info, bg: colors.infoBg },
+    neutral: { color: colors.textSecondary, bg: colors.surfaceElevated },
   }[tone];
 
   return (
@@ -85,6 +93,9 @@ export function StateMessage({
   onAction?: () => void;
   loading?: boolean;
 }) {
+  const { colors } = useTheme();
+  const stateStyles = React.useMemo(() => createStateStyles(colors), [colors]);
+
   return (
     <View style={stateStyles.container}>
       <IconCircle name={icon} size={30} />
@@ -93,10 +104,10 @@ export function StateMessage({
       {actionLabel && onAction ? (
         <Pressable style={stateStyles.button} onPress={onAction} accessibilityRole="button">
           {loading ? (
-            <ActivityIndicator color={Colors.textInverse} size="small" />
+            <ActivityIndicator color={colors.textInverse} size="small" />
           ) : (
             <>
-              {actionIcon && <Ionicons name={actionIcon} size={16} color={Colors.textInverse} />}
+              {actionIcon && <Ionicons name={actionIcon} size={16} color={colors.textInverse} />}
               <Text style={stateStyles.buttonText}>{actionLabel}</Text>
             </>
           )}
@@ -119,15 +130,18 @@ export function IconButton({
   active?: boolean;
   disabled?: boolean;
 }) {
+  const { colors } = useTheme();
+  const themedStyles = React.useMemo(() => createStyles(colors), [colors]);
+
   return (
     <Pressable
-      style={[styles.iconButton, active && styles.iconButtonActive, disabled && styles.disabled]}
+      style={[themedStyles.iconButton, active && themedStyles.iconButtonActive, disabled && styles.disabled]}
       onPress={onPress}
       disabled={disabled}
       accessibilityRole="button"
       accessibilityLabel={label}
     >
-      <Ionicons name={icon} size={20} color={active ? Colors.primary : Colors.textSecondary} />
+      <Ionicons name={icon} size={20} color={active ? colors.primary : colors.textSecondary} />
     </Pressable>
   );
 }
@@ -152,7 +166,6 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   pillText: {
-    color: Colors.textSecondary,
     fontSize: FontSize.xs,
     fontWeight: FontWeight.medium,
   },
@@ -165,60 +178,67 @@ const styles = StyleSheet.create({
     fontSize: FontSize.xs,
     fontWeight: FontWeight.bold,
   },
-  iconButton: {
-    width: 42,
-    height: 42,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: Radius.full,
-    backgroundColor: Colors.surface,
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  iconButtonActive: {
-    backgroundColor: Colors.primaryLight,
-    borderColor: Colors.primary,
-  },
   disabled: {
     opacity: 0.45,
   },
 });
 
-const stateStyles = StyleSheet.create({
-  container: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: Spacing.xl,
-  },
-  title: {
-    color: Colors.textPrimary,
-    fontSize: FontSize.xl,
-    fontWeight: FontWeight.bold,
-    marginTop: Spacing.md,
-    marginBottom: Spacing.sm,
-    textAlign: 'center',
-  },
-  message: {
-    color: Colors.textSecondary,
-    fontSize: FontSize.md,
-    lineHeight: 22,
-    textAlign: 'center',
-    marginBottom: Spacing.lg,
-  },
-  button: {
-    minHeight: 44,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: Spacing.sm,
-    backgroundColor: Colors.primary,
-    borderRadius: Radius.full,
-    paddingHorizontal: Spacing.lg,
-    paddingVertical: 12,
-  },
-  buttonText: {
-    color: Colors.textInverse,
-    fontSize: FontSize.md,
-    fontWeight: FontWeight.bold,
-  },
-});
+function createStyles(colors: ThemeColors) {
+  return StyleSheet.create({
+    iconButton: {
+      width: 42,
+      height: 42,
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderRadius: Radius.full,
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    iconButtonActive: {
+      backgroundColor: colors.primaryLight,
+      borderColor: colors.primary,
+    },
+  });
+}
+
+function createStateStyles(colors: ThemeColors) {
+  return StyleSheet.create({
+    container: {
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: Spacing.xl,
+    },
+    title: {
+      color: colors.textPrimary,
+      fontSize: FontSize.xl,
+      fontWeight: FontWeight.bold,
+      marginTop: Spacing.md,
+      marginBottom: Spacing.sm,
+      textAlign: 'center',
+    },
+    message: {
+      color: colors.textSecondary,
+      fontSize: FontSize.md,
+      lineHeight: 22,
+      textAlign: 'center',
+      marginBottom: Spacing.lg,
+    },
+    button: {
+      minHeight: 44,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: Spacing.sm,
+      backgroundColor: colors.primary,
+      borderRadius: Radius.full,
+      paddingHorizontal: Spacing.lg,
+      paddingVertical: 12,
+    },
+    buttonText: {
+      color: colors.textInverse,
+      fontSize: FontSize.md,
+      fontWeight: FontWeight.bold,
+    },
+  });
+}

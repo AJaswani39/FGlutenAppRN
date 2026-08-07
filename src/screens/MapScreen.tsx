@@ -7,9 +7,10 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import MapView, { Marker, Region, PROVIDER_GOOGLE } from 'react-native-maps';
-import { Colors, FontSize, FontWeight, Radius, Spacing } from '../theme/colors';
+import { FontSize, FontWeight, Radius, Spacing } from '../theme/colors';
 import { useRestaurants } from '../context/RestaurantContext';
 import { useSettings } from '../context/SettingsContext';
+import { ThemeColors, useTheme } from '../context/ThemeContext';
 import { Restaurant } from '../types/restaurant';
 import { formatDistance } from '../util/formatters';
 
@@ -25,6 +26,9 @@ import { distanceBetween } from '../util/geoUtils';
 export default function MapScreen() {
   const { uiState, loadNearbyRestaurants, savedRestaurants } = useRestaurants();
   const { useMiles } = useSettings();
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
+  const stateStyles = useMemo(() => createStateStyles(colors), [colors]);
   const [previewRestaurant, setPreviewRestaurant] = useState<Restaurant | null>(null);
   const [detailRestaurant, setDetailRestaurant] = useState<Restaurant | null>(null);
   const [mapRegion, setMapRegion] = useState<Region | null>(null);
@@ -88,7 +92,7 @@ export default function MapScreen() {
   if (uiState.status === 'loading' && restaurants.length === 0) {
     return (
       <View style={stateStyles.container}>
-        <ActivityIndicator color={Colors.primary} />
+        <ActivityIndicator color={colors.primary} />
         <Text style={stateStyles.message}>Finding restaurants near you...</Text>
       </View>
     );
@@ -168,7 +172,7 @@ export default function MapScreen() {
               }}
               title={activeRestaurant.name}
               description={activeRestaurant.address}
-              pinColor={markerColor(activeRestaurant)}
+              pinColor={markerColor(activeRestaurant, colors)}
               onPress={() => setPreviewRestaurant(activeRestaurant)}
             />
           );
@@ -177,7 +181,7 @@ export default function MapScreen() {
 
       {hasNoResults && (
         <View style={styles.noResultsOverlay}>
-          <Ionicons name="alert-circle" size={16} color={Colors.textSecondary} />
+          <Ionicons name="alert-circle" size={16} color={colors.textSecondary} />
           <Text style={styles.noResultsText}>No restaurants found in this area</Text>
         </View>
       )}
@@ -187,14 +191,14 @@ export default function MapScreen() {
           style={styles.searchAreaBtn} 
           onPress={() => loadNearbyRestaurants({ latitude: mapRegion!.latitude, longitude: mapRegion!.longitude })}
         >
-          <Ionicons name="search" size={16} color={Colors.textInverse} />
+          <Ionicons name="search" size={16} color={colors.textInverse} />
           <Text style={styles.searchAreaBtnText}>Search this area</Text>
         </Pressable>
       )}
 
       <View style={styles.summaryBar}>
         <View style={styles.summaryTitleRow}>
-          <Ionicons name="map" size={18} color={Colors.primary} />
+          <Ionicons name="map" size={18} color={colors.primary} />
           <Text style={styles.summaryTitle}>{restaurants.length} mapped</Text>
         </View>
         <Text style={styles.summaryText} numberOfLines={1}>
@@ -222,12 +226,12 @@ export default function MapScreen() {
   );
 }
 
-function markerColor(restaurant: Restaurant): string {
-  if (restaurant.favoriteStatus === 'safe') return Colors.success;
-  if (restaurant.favoriteStatus === 'try') return Colors.warning;
-  if (restaurant.favoriteStatus === 'avoid') return Colors.error;
-  if (restaurant.gfMenu.length > 0 || restaurant.hasGFMenu) return Colors.primary;
-  return Colors.info;
+function markerColor(restaurant: Restaurant, colors: ThemeColors): string {
+  if (restaurant.favoriteStatus === 'safe') return colors.success;
+  if (restaurant.favoriteStatus === 'try') return colors.warning;
+  if (restaurant.favoriteStatus === 'avoid') return colors.error;
+  if (restaurant.gfMenu.length > 0 || restaurant.hasGFMenu) return colors.primary;
+  return colors.info;
 }
 
 function previewMeta(restaurant: Restaurant, useMiles: boolean): string {
@@ -241,119 +245,123 @@ function previewMeta(restaurant: Restaurant, useMiles: boolean): string {
   return parts.join(' · ');
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.background },
-  map: { flex: 1 },
-  summaryBar: {
-    position: 'absolute',
-    top: Spacing.md,
-    left: Spacing.md,
-    right: Spacing.md,
-    backgroundColor: Colors.surface,
-    borderRadius: Radius.lg,
-    padding: Spacing.md,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    opacity: 0.95,
-  },
-  searchAreaBtn: {
-    position: 'absolute',
-    top: Spacing.xl * 2, // Push below summary bar
-    alignSelf: 'center',
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Colors.primary,
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.sm,
-    borderRadius: Radius.full,
-    gap: Spacing.xs,
-    elevation: 4,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 3.84,
-  },
-  searchAreaBtnText: {
-    color: Colors.textInverse,
-    fontSize: FontSize.sm,
-    fontWeight: FontWeight.bold,
-  },
-  noResultsOverlay: {
-    position: 'absolute',
-    top: Spacing.xl * 2,
-    alignSelf: 'center',
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Colors.surface,
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.sm,
-    borderRadius: Radius.full,
-    gap: Spacing.xs,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    elevation: 2,
-  },
-  noResultsText: {
-    color: Colors.textSecondary,
-    fontSize: FontSize.sm,
-    fontWeight: FontWeight.medium,
-  },
-  summaryTitle: {
-    color: Colors.textPrimary,
-    fontSize: FontSize.md,
-    fontWeight: FontWeight.bold,
-  },
-  summaryTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
-  },
-  summaryText: {
-    color: Colors.textSecondary,
-    fontSize: FontSize.xs,
-    marginTop: 2,
-  },
-  previewCard: {
-    position: 'absolute',
-    left: Spacing.md,
-    right: Spacing.md,
-    bottom: Spacing.md,
-    backgroundColor: Colors.surface,
-    borderRadius: Radius.lg,
-    padding: Spacing.md,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    elevation: 5,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4.65,
-  },
-  previewName: {
-    color: Colors.textPrimary,
-    fontSize: FontSize.md,
-    fontWeight: FontWeight.semiBold,
-  },
-  previewMeta: {
-    color: Colors.textSecondary,
-    fontSize: FontSize.sm,
-    marginTop: 4,
-  },
-});
+function createStyles(colors: ThemeColors) {
+  return StyleSheet.create({
+    container: { flex: 1, backgroundColor: colors.background },
+    map: { flex: 1 },
+    summaryBar: {
+      position: 'absolute',
+      top: Spacing.md,
+      left: Spacing.md,
+      right: Spacing.md,
+      backgroundColor: colors.surface,
+      borderRadius: Radius.lg,
+      padding: Spacing.md,
+      borderWidth: 1,
+      borderColor: colors.border,
+      opacity: 0.95,
+    },
+    searchAreaBtn: {
+      position: 'absolute',
+      top: Spacing.xl * 2, // Push below summary bar
+      alignSelf: 'center',
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: colors.primary,
+      paddingHorizontal: Spacing.md,
+      paddingVertical: Spacing.sm,
+      borderRadius: Radius.full,
+      gap: Spacing.xs,
+      elevation: 4,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.25,
+      shadowRadius: 3.84,
+    },
+    searchAreaBtnText: {
+      color: colors.textInverse,
+      fontSize: FontSize.sm,
+      fontWeight: FontWeight.bold,
+    },
+    noResultsOverlay: {
+      position: 'absolute',
+      top: Spacing.xl * 2,
+      alignSelf: 'center',
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: colors.surface,
+      paddingHorizontal: Spacing.md,
+      paddingVertical: Spacing.sm,
+      borderRadius: Radius.full,
+      gap: Spacing.xs,
+      borderWidth: 1,
+      borderColor: colors.border,
+      elevation: 2,
+    },
+    noResultsText: {
+      color: colors.textSecondary,
+      fontSize: FontSize.sm,
+      fontWeight: FontWeight.medium,
+    },
+    summaryTitle: {
+      color: colors.textPrimary,
+      fontSize: FontSize.md,
+      fontWeight: FontWeight.bold,
+    },
+    summaryTitleRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: Spacing.sm,
+    },
+    summaryText: {
+      color: colors.textSecondary,
+      fontSize: FontSize.xs,
+      marginTop: 2,
+    },
+    previewCard: {
+      position: 'absolute',
+      left: Spacing.md,
+      right: Spacing.md,
+      bottom: Spacing.md,
+      backgroundColor: colors.surface,
+      borderRadius: Radius.lg,
+      padding: Spacing.md,
+      borderWidth: 1,
+      borderColor: colors.border,
+      elevation: 5,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 3 },
+      shadowOpacity: 0.3,
+      shadowRadius: 4.65,
+    },
+    previewName: {
+      color: colors.textPrimary,
+      fontSize: FontSize.md,
+      fontWeight: FontWeight.semiBold,
+    },
+    previewMeta: {
+      color: colors.textSecondary,
+      fontSize: FontSize.sm,
+      marginTop: 4,
+    },
+  });
+}
 
-const stateStyles = StyleSheet.create({
-  container: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: Colors.background,
-    padding: Spacing.xl,
-    gap: Spacing.md,
-  },
-  message: {
-    color: Colors.textSecondary,
-    fontSize: FontSize.md,
-    lineHeight: 22,
-    textAlign: 'center',
-  },
-});
+function createStateStyles(colors: ThemeColors) {
+  return StyleSheet.create({
+    container: {
+      flex: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: colors.background,
+      padding: Spacing.xl,
+      gap: Spacing.md,
+    },
+    message: {
+      color: colors.textSecondary,
+      fontSize: FontSize.md,
+      lineHeight: 22,
+      textAlign: 'center',
+    },
+  });
+}

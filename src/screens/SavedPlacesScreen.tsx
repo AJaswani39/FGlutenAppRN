@@ -3,9 +3,10 @@ import { View, Text, StyleSheet, SectionList, Pressable } from 'react-native';
 import ReanimatedSwipeable from 'react-native-gesture-handler/ReanimatedSwipeable';
 import * as Haptics from 'expo-haptics';
 import { impactAsync } from '../util/haptics';
-import { Colors, FontSize, FontWeight, Radius, Spacing } from '../theme/colors';
+import { FontSize, FontWeight, Radius, Spacing } from '../theme/colors';
 import { useRestaurants } from '../context/RestaurantContext';
 import { useSettings } from '../context/SettingsContext';
+import { ThemeColors, useTheme } from '../context/ThemeContext';
 import { FavoriteStatus, Restaurant } from '../types/restaurant';
 import RestaurantDetailModal from './components/RestaurantDetailModal';
 import { getRestaurantListKey } from '../util/restaurantUtils';
@@ -35,6 +36,8 @@ export default function SavedPlacesScreen() {
   const navigation = useNavigation<NavigationProp<RootTabParamList>>();
   const { savedRestaurants, requestMenuRescan, setFavoriteStatus } = useRestaurants();
   const { useMiles } = useSettings();
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const [selectedRestaurant, setSelectedRestaurant] = useState<Restaurant | null>(null);
 
   const sections = useMemo<SavedSection[]>(
@@ -85,7 +88,7 @@ export default function SavedPlacesScreen() {
                   setFavoriteStatus(item, null);
                 }}
               >
-                <Ionicons name="trash" size={24} color={Colors.textInverse} />
+                <Ionicons name="trash" size={24} color={colors.textInverse} />
               </Pressable>
             )}
             friction={2}
@@ -114,12 +117,14 @@ export default function SavedPlacesScreen() {
 }
 
 function SectionHeader({ section }: { section: SavedSection }) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const meta = SECTION_META.find((item) => item.status === section.status) ?? SECTION_META[0];
 
   return (
     <View style={styles.sectionHeader}>
       <View style={styles.sectionTitleRow}>
-        <Ionicons name={meta.icon} size={18} color={toneColor(meta.tone)} />
+        <Ionicons name={meta.icon} size={18} color={toneColor(meta.tone, colors)} />
         <Text style={styles.sectionTitle}>{section.title}</Text>
       </View>
       <StatusBadge label={`${section.data.length}`} tone={meta.tone} />
@@ -127,55 +132,57 @@ function SectionHeader({ section }: { section: SavedSection }) {
   );
 }
 
-function toneColor(tone: 'success' | 'warning' | 'error') {
-  if (tone === 'success') return Colors.success;
-  if (tone === 'warning') return Colors.warning;
-  return Colors.error;
+function toneColor(tone: 'success' | 'warning' | 'error', colors: ThemeColors) {
+  if (tone === 'success') return colors.success;
+  if (tone === 'warning') return colors.warning;
+  return colors.error;
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.background },
-  emptyContainer: { flex: 1, backgroundColor: Colors.background, justifyContent: 'center' },
-  header: {
-    padding: Spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
-  },
-  headerTitle: {
-    color: Colors.textPrimary,
-    fontSize: FontSize.xl,
-    fontWeight: FontWeight.bold,
-  },
-  headerText: {
-    color: Colors.textSecondary,
-    fontSize: FontSize.sm,
-    marginTop: 4,
-  },
-  content: { padding: Spacing.md, paddingBottom: Spacing.xl },
-  sectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: Spacing.sm,
-    marginTop: Spacing.sm,
-  },
-  sectionTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
-  },
-  sectionTitle: {
-    color: Colors.textPrimary,
-    fontSize: FontSize.lg,
-    fontWeight: FontWeight.bold,
-  },
-  deleteAction: {
-    backgroundColor: Colors.error,
-    justifyContent: 'center',
-    alignItems: 'center',
-    width: 80,
-    marginBottom: Spacing.sm,
-    borderRadius: Radius.lg,
-    marginLeft: Spacing.sm,
-  },
-});
+function createStyles(colors: ThemeColors) {
+  return StyleSheet.create({
+    container: { flex: 1, backgroundColor: colors.background },
+    emptyContainer: { flex: 1, backgroundColor: colors.background, justifyContent: 'center' },
+    header: {
+      padding: Spacing.md,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border,
+    },
+    headerTitle: {
+      color: colors.textPrimary,
+      fontSize: FontSize.xl,
+      fontWeight: FontWeight.bold,
+    },
+    headerText: {
+      color: colors.textSecondary,
+      fontSize: FontSize.sm,
+      marginTop: 4,
+    },
+    content: { padding: Spacing.md, paddingBottom: Spacing.xl },
+    sectionHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      marginBottom: Spacing.sm,
+      marginTop: Spacing.sm,
+    },
+    sectionTitleRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: Spacing.sm,
+    },
+    sectionTitle: {
+      color: colors.textPrimary,
+      fontSize: FontSize.lg,
+      fontWeight: FontWeight.bold,
+    },
+    deleteAction: {
+      backgroundColor: colors.error,
+      justifyContent: 'center',
+      alignItems: 'center',
+      width: 80,
+      marginBottom: Spacing.sm,
+      borderRadius: Radius.lg,
+      marginLeft: Spacing.sm,
+    },
+  });
+}

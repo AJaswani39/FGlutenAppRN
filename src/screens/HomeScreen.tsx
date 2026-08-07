@@ -9,9 +9,10 @@ import {
   Linking,
 } from 'react-native';
 import { NavigationProp, TabActions, useNavigation } from '@react-navigation/native';
-import { Colors, Spacing, Radius, FontSize, FontWeight } from '../theme/colors';
+import { Spacing, Radius, FontSize, FontWeight } from '../theme/colors';
 import { useRestaurants } from '../context/RestaurantContext';
 import { useSettings } from '../context/SettingsContext';
+import { ThemeColors, useTheme } from '../context/ThemeContext';
 import { RootTabParamList } from '../types/navigation';
 import { Restaurant } from '../types/restaurant';
 import { getRestaurantListKey } from '../util/restaurantUtils';
@@ -27,6 +28,8 @@ export default function HomeScreen() {
   const navigation = useNavigation<NavigationProp<RootTabParamList>>();
   const { uiState, loadNearbyRestaurants, savedRestaurants } = useRestaurants();
   const { useMiles, strictCeliac } = useSettings();
+  const { colors } = useTheme();
+  const styles = React.useMemo(() => createStyles(colors), [colors]);
   const [selectedRestaurant, setSelectedRestaurant] = React.useState<Restaurant | null>(null);
 
   const cached = uiState.restaurants;
@@ -87,10 +90,10 @@ export default function HomeScreen() {
           accessibilityRole="button"
         >
           {isLoading ? (
-            <ActivityIndicator color={Colors.textInverse} size="small" />
+            <ActivityIndicator color={colors.textInverse} size="small" />
           ) : (
             <>
-              <Ionicons name="navigate" size={17} color={Colors.textInverse} />
+              <Ionicons name="navigate" size={17} color={colors.textInverse} />
               <Text style={styles.ctaText}>Find Restaurants Near Me</Text>
             </>
           )}
@@ -160,7 +163,7 @@ export default function HomeScreen() {
           ))
         ) : (
           <View style={styles.emptyPanel}>
-            <Ionicons name="restaurant-outline" size={24} color={Colors.textSecondary} />
+            <Ionicons name="restaurant-outline" size={24} color={colors.textSecondary} />
             <Text style={styles.emptyTitle}>No search results yet</Text>
             <Text style={styles.emptyText}>Start a nearby search to fill your dashboard.</Text>
           </View>
@@ -189,9 +192,11 @@ function SafePickCard({
   useMiles: boolean;
   onPress: () => void;
 }) {
+  const { colors } = useTheme();
+  const styles = React.useMemo(() => createStyles(colors), [colors]);
   const dist = formatDistance(pick.restaurant.distanceMeters, useMiles);
 
-  const scoreTone = pick.safetyScore.level === 'safe' ? Colors.success : Colors.warning;
+  const scoreTone = pick.safetyScore.level === 'safe' ? colors.success : colors.warning;
 
   return (
     <Pressable style={styles.safePickCard} onPress={onPress} accessibilityRole="button">
@@ -218,7 +223,7 @@ function SafePickCard({
         <View style={styles.safePickHighlights}>
           {pick.highlights.map((highlight) => (
             <View key={highlight} style={styles.safePickHighlight}>
-              <Ionicons name="checkmark-circle" size={12} color={Colors.success} />
+              <Ionicons name="checkmark-circle" size={12} color={colors.success} />
               <Text style={styles.safePickHighlightText}>{highlight}</Text>
             </View>
           ))}
@@ -229,9 +234,12 @@ function SafePickCard({
 }
 
 function StatCard({ icon, label, value }: { icon: 'location' | 'heart' | 'scan'; label: string; value: string }) {
+  const { colors } = useTheme();
+  const styles = React.useMemo(() => createStyles(colors), [colors]);
+
   return (
     <View style={styles.statCard}>
-      <Ionicons name={icon} size={16} color={Colors.primary} />
+      <Ionicons name={icon} size={16} color={colors.primary} />
       <Text style={styles.statValue}>{value}</Text>
       <Text style={styles.statLabel}>{label}</Text>
     </View>
@@ -247,212 +255,214 @@ function timeAgo(ts: number): string {
   return `${Math.floor(hrs / 24)}d ago`;
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.background },
-  content: { padding: Spacing.md, paddingTop: Spacing.lg },
-  hero: {
-    backgroundColor: Colors.surface,
-    borderRadius: Radius.lg,
-    padding: Spacing.lg,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    marginBottom: Spacing.md,
-  },
-  heroTop: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.md,
-    marginBottom: Spacing.md,
-  },
-  heroCopy: { flex: 1 },
-  kicker: {
-    color: Colors.primary,
-    fontSize: FontSize.xs,
-    fontWeight: FontWeight.bold,
-    textTransform: 'uppercase',
-    letterSpacing: 0.8,
-    marginBottom: 4,
-  },
-  heroTitle: {
-    color: Colors.textPrimary,
-    fontSize: FontSize.xxl,
-    fontWeight: FontWeight.extraBold,
-    lineHeight: 32,
-  },
-  heroSubtitle: {
-    color: Colors.textSecondary,
-    fontSize: FontSize.md,
-    lineHeight: 22,
-    marginBottom: Spacing.lg,
-  },
-  ctaButton: {
-    minHeight: 48,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: Spacing.sm,
-    backgroundColor: Colors.primary,
-    borderRadius: Radius.full,
-  },
-  ctaButtonDisabled: { opacity: 0.65 },
-  ctaText: {
-    color: Colors.textInverse,
-    fontWeight: FontWeight.bold,
-    fontSize: FontSize.md,
-  },
-  statusContainer: {
-    marginTop: Spacing.sm,
-    alignItems: 'center',
-  },
-  statusMessage: {
-    color: Colors.warning,
-    fontSize: FontSize.sm,
-    textAlign: 'center',
-  },
-  settingsBtn: {
-    marginTop: Spacing.sm,
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    backgroundColor: Colors.surfaceElevated,
-    borderRadius: Radius.full,
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  settingsBtnText: {
-    color: Colors.textPrimary,
-    fontSize: FontSize.sm,
-    fontWeight: FontWeight.bold,
-  },
-  statsGrid: {
-    flexDirection: 'row',
-    gap: Spacing.sm,
-    marginBottom: Spacing.sm,
-  },
-  statCard: {
-    flex: 1,
-    backgroundColor: Colors.surface,
-    borderRadius: Radius.md,
-    padding: Spacing.md,
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  statValue: {
-    color: Colors.textPrimary,
-    fontSize: FontSize.xl,
-    fontWeight: FontWeight.extraBold,
-    marginTop: Spacing.sm,
-  },
-  statLabel: {
-    color: Colors.textMuted,
-    fontSize: FontSize.xs,
-    marginTop: 2,
-  },
-  timestampRow: { marginBottom: Spacing.md, alignItems: 'flex-start' },
-  section: { marginTop: Spacing.sm },
-  sectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: Spacing.sm,
-  },
-  sectionTitle: {
-    color: Colors.textPrimary,
-    fontSize: FontSize.lg,
-    fontWeight: FontWeight.bold,
-  },
-  linkText: {
-    color: Colors.primary,
-    fontSize: FontSize.sm,
-    fontWeight: FontWeight.semiBold,
-  },
-  safePickCard: {
-    backgroundColor: Colors.surface,
-    borderRadius: Radius.md,
-    padding: Spacing.md,
-    marginBottom: Spacing.sm,
-    borderWidth: 1,
-    borderColor: Colors.primaryDark,
-  },
-  safePickHeader: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: Spacing.md,
-  },
-  safePickTitleGroup: {
-    flex: 1,
-  },
-  safePickName: {
-    color: Colors.textPrimary,
-    fontSize: FontSize.md,
-    fontWeight: FontWeight.bold,
-  },
-  safePickMeta: {
-    color: Colors.textMuted,
-    fontSize: FontSize.xs,
-    marginTop: 3,
-  },
-  safePickScore: {
-    width: 58,
-    minHeight: 46,
-    borderRadius: Radius.md,
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: Colors.surfaceElevated,
-  },
-  safePickScoreValue: {
-    fontSize: FontSize.lg,
-    fontWeight: FontWeight.extraBold,
-  },
-  safePickScoreLabel: {
-    color: Colors.textMuted,
-    fontSize: FontSize.xs,
-    marginTop: -2,
-  },
-  safePickSummary: {
-    color: Colors.textSecondary,
-    fontSize: FontSize.sm,
-    lineHeight: 19,
-    marginTop: Spacing.sm,
-  },
-  safePickHighlights: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-    marginTop: Spacing.sm,
-  },
-  safePickHighlight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    borderRadius: Radius.full,
-    backgroundColor: Colors.successBg,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-  },
-  safePickHighlightText: {
-    color: Colors.success,
-    fontSize: FontSize.xs,
-    fontWeight: FontWeight.medium,
-  },
-  emptyPanel: {
-    alignItems: 'center',
-    backgroundColor: Colors.surface,
-    borderRadius: Radius.lg,
-    padding: Spacing.xl,
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  emptyTitle: {
-    color: Colors.textPrimary,
-    fontSize: FontSize.md,
-    fontWeight: FontWeight.bold,
-    marginTop: Spacing.sm,
-  },
-  emptyText: {
-    color: Colors.textSecondary,
-    fontSize: FontSize.sm,
-    marginTop: 4,
-    textAlign: 'center',
-  },
-});
+function createStyles(colors: ThemeColors) {
+  return StyleSheet.create({
+    container: { flex: 1, backgroundColor: colors.background },
+    content: { padding: Spacing.md, paddingTop: Spacing.lg },
+    hero: {
+      backgroundColor: colors.surface,
+      borderRadius: Radius.lg,
+      padding: Spacing.lg,
+      borderWidth: 1,
+      borderColor: colors.border,
+      marginBottom: Spacing.md,
+    },
+    heroTop: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: Spacing.md,
+      marginBottom: Spacing.md,
+    },
+    heroCopy: { flex: 1 },
+    kicker: {
+      color: colors.primary,
+      fontSize: FontSize.xs,
+      fontWeight: FontWeight.bold,
+      textTransform: 'uppercase',
+      letterSpacing: 0.8,
+      marginBottom: 4,
+    },
+    heroTitle: {
+      color: colors.textPrimary,
+      fontSize: FontSize.xxl,
+      fontWeight: FontWeight.extraBold,
+      lineHeight: 32,
+    },
+    heroSubtitle: {
+      color: colors.textSecondary,
+      fontSize: FontSize.md,
+      lineHeight: 22,
+      marginBottom: Spacing.lg,
+    },
+    ctaButton: {
+      minHeight: 48,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: Spacing.sm,
+      backgroundColor: colors.primary,
+      borderRadius: Radius.full,
+    },
+    ctaButtonDisabled: { opacity: 0.65 },
+    ctaText: {
+      color: colors.textInverse,
+      fontWeight: FontWeight.bold,
+      fontSize: FontSize.md,
+    },
+    statusContainer: {
+      marginTop: Spacing.sm,
+      alignItems: 'center',
+    },
+    statusMessage: {
+      color: colors.warning,
+      fontSize: FontSize.sm,
+      textAlign: 'center',
+    },
+    settingsBtn: {
+      marginTop: Spacing.sm,
+      paddingVertical: 8,
+      paddingHorizontal: 16,
+      backgroundColor: colors.surfaceElevated,
+      borderRadius: Radius.full,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    settingsBtnText: {
+      color: colors.textPrimary,
+      fontSize: FontSize.sm,
+      fontWeight: FontWeight.bold,
+    },
+    statsGrid: {
+      flexDirection: 'row',
+      gap: Spacing.sm,
+      marginBottom: Spacing.sm,
+    },
+    statCard: {
+      flex: 1,
+      backgroundColor: colors.surface,
+      borderRadius: Radius.md,
+      padding: Spacing.md,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    statValue: {
+      color: colors.textPrimary,
+      fontSize: FontSize.xl,
+      fontWeight: FontWeight.extraBold,
+      marginTop: Spacing.sm,
+    },
+    statLabel: {
+      color: colors.textMuted,
+      fontSize: FontSize.xs,
+      marginTop: 2,
+    },
+    timestampRow: { marginBottom: Spacing.md, alignItems: 'flex-start' },
+    section: { marginTop: Spacing.sm },
+    sectionHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      marginBottom: Spacing.sm,
+    },
+    sectionTitle: {
+      color: colors.textPrimary,
+      fontSize: FontSize.lg,
+      fontWeight: FontWeight.bold,
+    },
+    linkText: {
+      color: colors.primary,
+      fontSize: FontSize.sm,
+      fontWeight: FontWeight.semiBold,
+    },
+    safePickCard: {
+      backgroundColor: colors.surface,
+      borderRadius: Radius.md,
+      padding: Spacing.md,
+      marginBottom: Spacing.sm,
+      borderWidth: 1,
+      borderColor: colors.primaryDark,
+    },
+    safePickHeader: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      gap: Spacing.md,
+    },
+    safePickTitleGroup: {
+      flex: 1,
+    },
+    safePickName: {
+      color: colors.textPrimary,
+      fontSize: FontSize.md,
+      fontWeight: FontWeight.bold,
+    },
+    safePickMeta: {
+      color: colors.textMuted,
+      fontSize: FontSize.xs,
+      marginTop: 3,
+    },
+    safePickScore: {
+      width: 58,
+      minHeight: 46,
+      borderRadius: Radius.md,
+      borderWidth: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: colors.surfaceElevated,
+    },
+    safePickScoreValue: {
+      fontSize: FontSize.lg,
+      fontWeight: FontWeight.extraBold,
+    },
+    safePickScoreLabel: {
+      color: colors.textMuted,
+      fontSize: FontSize.xs,
+      marginTop: -2,
+    },
+    safePickSummary: {
+      color: colors.textSecondary,
+      fontSize: FontSize.sm,
+      lineHeight: 19,
+      marginTop: Spacing.sm,
+    },
+    safePickHighlights: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 6,
+      marginTop: Spacing.sm,
+    },
+    safePickHighlight: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      borderRadius: Radius.full,
+      backgroundColor: colors.successBg,
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+    },
+    safePickHighlightText: {
+      color: colors.success,
+      fontSize: FontSize.xs,
+      fontWeight: FontWeight.medium,
+    },
+    emptyPanel: {
+      alignItems: 'center',
+      backgroundColor: colors.surface,
+      borderRadius: Radius.lg,
+      padding: Spacing.xl,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    emptyTitle: {
+      color: colors.textPrimary,
+      fontSize: FontSize.md,
+      fontWeight: FontWeight.bold,
+      marginTop: Spacing.sm,
+    },
+    emptyText: {
+      color: colors.textSecondary,
+      fontSize: FontSize.sm,
+      marginTop: 4,
+      textAlign: 'center',
+    },
+  });
+}

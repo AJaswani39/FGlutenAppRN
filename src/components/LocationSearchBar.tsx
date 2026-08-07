@@ -1,7 +1,8 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { View, TextInput, StyleSheet, FlatList, Text, Pressable, ActivityIndicator, Keyboard } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Colors, Radius, Spacing, FontSize, FontWeight } from '../theme/colors';
+import { Radius, Spacing, FontSize, FontWeight } from '../theme/colors';
+import { ThemeColors, useTheme } from '../context/ThemeContext';
 import { Ionicons } from './ui';
 import { getMapsApiKey } from '../context/restaurantState';
 import { API_TIMEOUTS } from '../constants';
@@ -70,6 +71,8 @@ interface Props {
 
 export function LocationSearchBar({ onLocationSelected }: Props) {
   const insets = useSafeAreaInsets();
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<LocationSearchResult[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -181,11 +184,11 @@ export function LocationSearchBar({ onLocationSelected }: Props) {
   return (
     <View style={[styles.container, { top: Math.max(insets.top, 12) + Spacing.xs }]}>
       <View style={[styles.searchBox, isFocused && styles.searchBoxFocused]}>
-        <Ionicons name="search" size={20} color={Colors.textSecondary} />
+        <Ionicons name="search" size={20} color={colors.textSecondary} />
         <TextInput
           style={styles.input}
           placeholder="Search any city..."
-          placeholderTextColor={Colors.textMuted}
+          placeholderTextColor={colors.textMuted}
           value={query}
           onChangeText={setQuery}
           onFocus={() => setIsFocused(true)}
@@ -203,10 +206,10 @@ export function LocationSearchBar({ onLocationSelected }: Props) {
           }}
           returnKeyType="search"
         />
-        {isLoading && <ActivityIndicator size="small" color={Colors.primary} />}
+        {isLoading && <ActivityIndicator size="small" color={colors.primary} />}
         {query.length > 0 && !isLoading && (
           <Pressable onPress={() => { setQuery(''); setResults([]); }}>
-            <Ionicons name="close-circle" size={20} color={Colors.textSecondary} />
+            <Ionicons name="close-circle" size={20} color={colors.textSecondary} />
           </Pressable>
         )}
       </View>
@@ -219,7 +222,7 @@ export function LocationSearchBar({ onLocationSelected }: Props) {
             keyboardShouldPersistTaps="handled"
             renderItem={({ item }) => (
               <Pressable style={styles.resultItem} onPress={() => handleSelect(item.placeId)}>
-                <Ionicons name="location-outline" size={20} color={Colors.textSecondary} style={styles.resultIcon} />
+                <Ionicons name="location-outline" size={20} color={colors.textSecondary} style={styles.resultIcon} />
                 <View style={styles.resultTextGroup}>
                   <Text style={styles.mainText}>{item.mainText}</Text>
                   <Text style={styles.secondaryText}>{item.secondaryText}</Text>
@@ -234,75 +237,77 @@ export function LocationSearchBar({ onLocationSelected }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    position: 'absolute',
-    left: Spacing.md,
-    right: Spacing.md,
-    zIndex: 10,
-    elevation: 10,
-  },
-  searchBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Colors.surface,
-    borderRadius: Radius.full,
-    paddingHorizontal: Spacing.md,
-    height: 52,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
-  },
-  searchBoxFocused: {
-    borderColor: Colors.primary,
-  },
-  input: {
-    flex: 1,
-    marginLeft: Spacing.sm,
-    color: Colors.textPrimary,
-    fontSize: FontSize.md,
-    height: '100%',
-  },
-  resultsContainer: {
-    backgroundColor: Colors.surface,
-    borderRadius: Radius.lg,
-    marginTop: Spacing.sm,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    maxHeight: 250,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 12,
-    elevation: 8,
-  },
-  resultItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: Spacing.md,
-  },
-  resultIcon: {
-    marginRight: Spacing.md,
-  },
-  resultTextGroup: {
-    flex: 1,
-  },
-  mainText: {
-    color: Colors.textPrimary,
-    fontSize: FontSize.md,
-    fontWeight: FontWeight.medium,
-  },
-  secondaryText: {
-    color: Colors.textSecondary,
-    fontSize: FontSize.sm,
-    marginTop: 2,
-  },
-  separator: {
-    height: 1,
-    backgroundColor: Colors.border,
-    marginLeft: 48,
-  },
-});
+function createStyles(colors: ThemeColors) {
+  return StyleSheet.create({
+    container: {
+      position: 'absolute',
+      left: Spacing.md,
+      right: Spacing.md,
+      zIndex: 10,
+      elevation: 10,
+    },
+    searchBox: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: colors.surface,
+      borderRadius: Radius.full,
+      paddingHorizontal: Spacing.md,
+      height: 52,
+      borderWidth: 1,
+      borderColor: colors.border,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.15,
+      shadowRadius: 8,
+    },
+    searchBoxFocused: {
+      borderColor: colors.primary,
+    },
+    input: {
+      flex: 1,
+      marginLeft: Spacing.sm,
+      color: colors.textPrimary,
+      fontSize: FontSize.md,
+      height: '100%',
+    },
+    resultsContainer: {
+      backgroundColor: colors.surface,
+      borderRadius: Radius.lg,
+      marginTop: Spacing.sm,
+      borderWidth: 1,
+      borderColor: colors.border,
+      maxHeight: 250,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.2,
+      shadowRadius: 12,
+      elevation: 8,
+    },
+    resultItem: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      padding: Spacing.md,
+    },
+    resultIcon: {
+      marginRight: Spacing.md,
+    },
+    resultTextGroup: {
+      flex: 1,
+    },
+    mainText: {
+      color: colors.textPrimary,
+      fontSize: FontSize.md,
+      fontWeight: FontWeight.medium,
+    },
+    secondaryText: {
+      color: colors.textSecondary,
+      fontSize: FontSize.sm,
+      marginTop: 2,
+    },
+    separator: {
+      height: 1,
+      backgroundColor: colors.border,
+      marginLeft: 48,
+    },
+  });
+}

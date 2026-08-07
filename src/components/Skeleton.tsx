@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, StyleSheet, Animated, Easing, DimensionValue, StyleProp, ViewStyle } from 'react-native';
-import { Colors } from '../theme/colors';
+import { ThemeColors, useTheme } from '../context/ThemeContext';
 
 interface SkeletonProps {
   width?: DimensionValue;
@@ -10,6 +10,8 @@ interface SkeletonProps {
 
 export function Skeleton({ width, height, style }: SkeletonProps) {
   const opacity = React.useRef(new Animated.Value(0.3)).current;
+  const { colors } = useTheme();
+  const styles = React.useMemo(() => createStyles(colors), [colors]);
 
   React.useEffect(() => {
     const animation = Animated.loop(
@@ -44,6 +46,9 @@ export function Skeleton({ width, height, style }: SkeletonProps) {
 }
 
 export function RestaurantCardSkeleton() {
+  const { colors } = useTheme();
+  const cardStyles = React.useMemo(() => createCardStyles(colors), [colors]);
+
   return (
     <View style={cardStyles.container}>
       <View style={cardStyles.headerRow}>
@@ -62,30 +67,34 @@ export function RestaurantCardSkeleton() {
   );
 }
 
-const styles = StyleSheet.create({
-  skeleton: {
-    backgroundColor: Colors.surfaceElevated,
-    borderRadius: 4,
-  },
-});
+function createStyles(colors: ThemeColors) {
+  return StyleSheet.create({
+    skeleton: {
+      backgroundColor: colors.surfaceElevated,
+      borderRadius: 4,
+    },
+  });
+}
 
-const cardStyles = StyleSheet.create({
-  container: {
-    backgroundColor: Colors.surface,
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 8,
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  headerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  metaRow: {
-    flexDirection: 'row',
-    gap: 6,
-    marginTop: 8,
-  },
-});
+function createCardStyles(colors: ThemeColors) {
+  return StyleSheet.create({
+    container: {
+      backgroundColor: colors.surface,
+      borderRadius: 16,
+      padding: 16,
+      marginBottom: 8,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    headerRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+    },
+    metaRow: {
+      flexDirection: 'row',
+      gap: 6,
+      marginTop: 8,
+    },
+  });
+}

@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { Colors, FontSize, FontWeight, Radius, Spacing } from '../theme/colors';
+import { FontSize, FontWeight, Radius, Spacing } from '../theme/colors';
+import { ThemeColors, useTheme } from '../context/ThemeContext';
 import { Restaurant } from '../types/restaurant';
 import { formatDistance } from '../util/formatters';
 import { getGfConfidenceLevel } from '../util/restaurantUtils';
@@ -44,6 +45,8 @@ export const RestaurantSummaryCard = React.memo(
     compact?: boolean;
     onRescan?: () => void;
   }) {
+    const { colors } = useTheme();
+    const styles = useMemo(() => createStyles(colors), [colors]);
     const dist = formatDistance(restaurant.distanceMeters, useMiles);
 
     const confidence = getConfidenceMeta(restaurant);
@@ -66,25 +69,25 @@ export const RestaurantSummaryCard = React.memo(
 
         <View style={styles.metaRow}>
           {restaurant.rating != null ? (
-            <MetaPill icon="star" text={restaurant.rating.toFixed(1)} color={Colors.warning} />
+            <MetaPill icon="star" text={restaurant.rating.toFixed(1)} color={colors.warning} />
           ) : null}
           {restaurant.openNow != null ? (
             <MetaPill
               icon={restaurant.openNow ? 'time' : 'time-outline'}
               text={restaurant.openNow ? 'Open' : 'Closed'}
-              color={restaurant.openNow ? Colors.success : Colors.error}
+              color={restaurant.openNow ? colors.success : colors.error}
             />
           ) : null}
           {dist ? <MetaPill icon="location" text={dist} /> : null}
-          <MetaPill icon={confidence.icon} text={confidence.label} color={toneColor(confidence.tone)} />
+          <MetaPill icon={confidence.icon} text={confidence.label} color={toneColor(confidence.tone, colors)} />
           {restaurant.menuScanStatus === 'FETCHING' ? (
             <View style={styles.scanPill}>
-              <Ionicons name="sync" size={12} color={Colors.info} />
+              <Ionicons name="sync" size={12} color={colors.info} />
               <Text style={styles.scanText}>Scanning</Text>
             </View>
           ) : null}
           {restaurant.menuScanStatus === 'SUCCESS' && restaurant.gfMenu.length > 0 ? (
-            <MetaPill icon="restaurant" text={`${restaurant.gfMenu.length} GF`} color={Colors.success} />
+            <MetaPill icon="restaurant" text={`${restaurant.gfMenu.length} GF`} color={colors.success} />
           ) : null}
           {restaurant.menuScanStatus === 'SUCCESS' && restaurant.menuScanTimestamp > 0 ? (
             <MetaPill 
@@ -102,7 +105,7 @@ export const RestaurantSummaryCard = React.memo(
               accessibilityRole="button"
               accessibilityLabel="Retry menu scan"
             >
-              <Ionicons name="refresh" size={12} color={Colors.error} />
+              <Ionicons name="refresh" size={12} color={colors.error} />
               <Text style={styles.retryText}>Retry Scan</Text>
             </Pressable>
           ) : null}
@@ -113,77 +116,79 @@ export const RestaurantSummaryCard = React.memo(
 );
 
 
-function toneColor(tone: ReturnType<typeof getConfidenceMeta>['tone']): string {
-  if (tone === 'success') return Colors.success;
-  if (tone === 'warning') return Colors.warning;
-  if (tone === 'info') return Colors.info;
-  return Colors.textSecondary;
+function toneColor(tone: ReturnType<typeof getConfidenceMeta>['tone'], colors: ThemeColors): string {
+  if (tone === 'success') return colors.success;
+  if (tone === 'warning') return colors.warning;
+  if (tone === 'info') return colors.info;
+  return colors.textSecondary;
 }
 
-const styles = StyleSheet.create({
-  card: {
-    backgroundColor: Colors.surface,
-    borderRadius: Radius.lg,
-    padding: Spacing.md,
-    marginBottom: Spacing.sm,
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  compactCard: {
-    padding: 14,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: Spacing.sm,
-  },
-  titleGroup: {
-    flex: 1,
-  },
-  name: {
-    color: Colors.textPrimary,
-    fontSize: FontSize.md,
-    fontWeight: FontWeight.semiBold,
-  },
-  address: {
-    color: Colors.textMuted,
-    fontSize: FontSize.sm,
-    marginTop: 3,
-  },
-  metaRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-    marginTop: Spacing.sm,
-  },
-  scanPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    borderRadius: Radius.full,
-    paddingHorizontal: 9,
-    paddingVertical: 4,
-    backgroundColor: Colors.infoBg,
-  },
-  scanText: {
-    color: Colors.info,
-    fontSize: FontSize.xs,
-    fontWeight: FontWeight.medium,
-  },
-  retryPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    borderRadius: Radius.full,
-    paddingHorizontal: 9,
-    paddingVertical: 4,
-    backgroundColor: Colors.errorBg,
-    borderWidth: 1,
-    borderColor: Colors.error,
-  },
-  retryText: {
-    color: Colors.error,
-    fontSize: FontSize.xs,
-    fontWeight: FontWeight.bold,
-  },
-});
+function createStyles(colors: ThemeColors) {
+  return StyleSheet.create({
+    card: {
+      backgroundColor: colors.surface,
+      borderRadius: Radius.lg,
+      padding: Spacing.md,
+      marginBottom: Spacing.sm,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    compactCard: {
+      padding: 14,
+    },
+    header: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      gap: Spacing.sm,
+    },
+    titleGroup: {
+      flex: 1,
+    },
+    name: {
+      color: colors.textPrimary,
+      fontSize: FontSize.md,
+      fontWeight: FontWeight.semiBold,
+    },
+    address: {
+      color: colors.textMuted,
+      fontSize: FontSize.sm,
+      marginTop: 3,
+    },
+    metaRow: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 6,
+      marginTop: Spacing.sm,
+    },
+    scanPill: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      borderRadius: Radius.full,
+      paddingHorizontal: 9,
+      paddingVertical: 4,
+      backgroundColor: colors.infoBg,
+    },
+    scanText: {
+      color: colors.info,
+      fontSize: FontSize.xs,
+      fontWeight: FontWeight.medium,
+    },
+    retryPill: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      borderRadius: Radius.full,
+      paddingHorizontal: 9,
+      paddingVertical: 4,
+      backgroundColor: colors.errorBg,
+      borderWidth: 1,
+      borderColor: colors.error,
+    },
+    retryText: {
+      color: colors.error,
+      fontSize: FontSize.xs,
+      fontWeight: FontWeight.bold,
+    },
+  });
+}

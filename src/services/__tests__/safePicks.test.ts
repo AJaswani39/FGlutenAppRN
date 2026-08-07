@@ -94,4 +94,26 @@ describe('safePicks', () => {
 
     expect(picks).toHaveLength(2);
   });
+
+  it('applies a max distance penalty to non-finite distances without poisoning rank', () => {
+    const picks = getSafeRestaurantPicks([
+      restaurant({
+        placeId: 'unknown-distance',
+        name: 'Unknown Distance Cafe',
+        gfMenu: ['Gluten-free salad'],
+        rawMenuText: 'Gluten-free salad',
+        distanceMeters: Number.NaN,
+      }),
+      restaurant({
+        placeId: 'known-distance',
+        name: 'Known Distance Cafe',
+        gfMenu: ['Gluten-free salad'],
+        rawMenuText: 'Gluten-free salad',
+        distanceMeters: 100,
+      }),
+    ]);
+
+    expect(picks.map((pick) => pick.restaurant.placeId)).toEqual(['known-distance', 'unknown-distance']);
+    expect(picks.every((pick) => Number.isFinite(pick.rankScore))).toBe(true);
+  });
 });

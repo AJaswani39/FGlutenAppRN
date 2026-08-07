@@ -30,9 +30,17 @@ export function getSafeRestaurantPicks(
     .sort((left, right) => {
       const rankDelta = right.rankScore - left.rankScore;
       if (rankDelta !== 0) return rankDelta;
-      return left.restaurant.distanceMeters - right.restaurant.distanceMeters;
+      return getComparableDistanceMeters(left.restaurant) - getComparableDistanceMeters(right.restaurant);
     })
     .slice(0, limit);
+}
+
+function getComparableDistanceMeters(restaurant: Restaurant): number {
+  if (!Number.isFinite(restaurant.distanceMeters)) {
+    return Number.POSITIVE_INFINITY;
+  }
+
+  return Math.max(0, restaurant.distanceMeters);
 }
 
 function getRankScore(restaurant: Restaurant, safetyScore: number): number {
@@ -44,7 +52,7 @@ function getRankScore(restaurant: Restaurant, safetyScore: number): number {
   if (restaurant.favoriteStatus === 'safe') score += 12;
   if (restaurant.favoriteStatus === 'try') score += 4;
 
-  const distanceKm = Math.max(0, restaurant.distanceMeters) / 1000;
+  const distanceKm = getComparableDistanceMeters(restaurant) / 1000;
   score -= Math.min(16, distanceKm * 2.5);
 
   return Math.round(score);

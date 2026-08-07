@@ -21,6 +21,7 @@ import { IconCircle, Ionicons, MetaPill } from '../components/ui';
 import { RestaurantSummaryCard } from '../components/RestaurantSummaryCard';
 import RestaurantDetailModal from './components/RestaurantDetailModal';
 import { SafeRestaurantPick, getSafeRestaurantPicks } from '../services/safePicks';
+import { logger } from '../util/logger';
 
 export default function HomeScreen() {
   const navigation = useNavigation<NavigationProp<RootTabParamList>>();
@@ -39,6 +40,13 @@ export default function HomeScreen() {
     navigation.dispatch(TabActions.jumpTo('Restaurants'));
     void loadNearbyRestaurants();
   }, [loadNearbyRestaurants, navigation]);
+
+  const handleOpenSettings = React.useCallback(() => {
+    void Linking.openSettings().catch((error: unknown) => {
+      const message = error instanceof Error ? error.message : String(error);
+      logger.error(`Failed to open app settings: ${message}`);
+    });
+  }, []);
 
   const stats = React.useMemo(() => {
     let scans = 0;
@@ -91,7 +99,7 @@ export default function HomeScreen() {
           <View style={styles.statusContainer}>
             <Text style={styles.statusMessage}>{uiState.message}</Text>
             {uiState.status === 'permission_required' && (
-              <Pressable style={styles.settingsBtn} onPress={() => Linking.openSettings()}>
+              <Pressable style={styles.settingsBtn} onPress={handleOpenSettings}>
                 <Text style={styles.settingsBtnText}>Open App Settings</Text>
               </Pressable>
             )}

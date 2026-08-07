@@ -5,6 +5,7 @@ import { useSettings } from '../context/SettingsContext';
 import { IconName, Ionicons } from '../components/ui';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Updates from 'expo-updates';
+import { logger } from '../util/logger';
 
 export default function SettingsScreen() {
   const { 
@@ -33,7 +34,15 @@ export default function SettingsScreen() {
         'The app needs to reload to apply the new theme.',
         [
           { text: 'Later', style: 'cancel' },
-          { text: 'Reload Now', onPress: () => Updates.reloadAsync().catch(() => {}) }
+          {
+            text: 'Reload Now',
+            onPress: () => {
+              void Updates.reloadAsync().catch((error: unknown) => {
+                const message = error instanceof Error ? error.message : String(error);
+                logger.error(`Failed to reload after theme change: ${message}`);
+              });
+            },
+          },
         ]
       );
     } catch (error) {

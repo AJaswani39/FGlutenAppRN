@@ -212,7 +212,13 @@ export default function MenuAnalysisSheet({ restaurant, onClose }: Props) {
   }, [dairyFree, nutFree, soyFree, strictCeliac]);
 
   const copyToClipboard = useCallback((text: string) => {
-    void ExpoClipboard.setStringAsync(text);
+    void ExpoClipboard.setStringAsync(text).catch((error: unknown) => {
+      const message = error instanceof Error ? error.message : String(error);
+      logger.error(`Failed to copy text to clipboard: ${message}`);
+      if (isMounted.current) {
+        setError('Could not copy text to clipboard.');
+      }
+    });
   }, []);
 
   const clearChat = useCallback(() => {

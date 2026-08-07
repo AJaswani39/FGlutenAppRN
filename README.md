@@ -51,7 +51,7 @@ FGlutenAppRN/
 
 ## Setup
 
-### 1. Add your Google Maps API Key
+### 1. Add your API configuration
 
 Set platform-specific Google Maps API keys in your local environment.
 `app.config.js` publishes the matching key to each native platform and exposes
@@ -60,8 +60,6 @@ both keys to the JS bundle for direct Places requests:
 ```bash
 ANDROID_MAPS_API_KEY=YOUR_ANDROID_GOOGLE_MAPS_API_KEY
 IOS_MAPS_API_KEY=YOUR_IOS_GOOGLE_MAPS_API_KEY
-VISION_API_KEY=YOUR_CLOUD_VISION_API_KEY
-PUTER_API_KEY=YOUR_PUTER_AUTH_TOKEN
 ```
 
 > **Required APIs** (same as the Android app):
@@ -71,6 +69,28 @@ PUTER_API_KEY=YOUR_PUTER_AUTH_TOKEN
 > Treat this as a public mobile client key. Restrict it in Google Cloud by
 > package/bundle/signing identity and only allow the APIs above. `GCP_API_KEY`
 > is still accepted as a fallback for local development.
+
+For production AI/OCR, prefer the Cloud Run proxy so Puter and Vision keys do
+not ship in the mobile app:
+
+```bash
+AI_PROXY_BASE_URL=https://YOUR-CLOUD-RUN-URL
+```
+
+The proxy itself needs:
+
+```bash
+PUTER_API_KEY=YOUR_PUTER_AUTH_TOKEN
+VISION_API_KEY=YOUR_CLOUD_VISION_API_KEY
+```
+
+If `AI_PROXY_BASE_URL` is not set, the app can still use direct local fallback
+keys during development:
+
+```bash
+VISION_API_KEY=YOUR_CLOUD_VISION_API_KEY
+PUTER_API_KEY=YOUR_PUTER_AUTH_TOKEN
+```
 
 ### 2. Install dependencies
 
@@ -140,5 +160,30 @@ npx eas submit --profile production --platform android
 
 - **No sign-in required** — guest mode only, all data stored locally.
 - **Menu scanning** uses the same Google Places API (`websiteUri` field) + HTML scraping as the original app.
-- **AI analysis** uses local keyword heuristics plus Puter AI (`openai/gpt-4o-mini`) for deep menu analysis and chat.
+- **AI analysis** uses local keyword heuristics plus Puter AI (`openai/gpt-4o-mini`) for deep menu analysis and chat. In production, route AI/OCR through `cloud-run-proxy`.
 - The **Maps API key** is read from `app.json extra` → `Constants.expoConfig.extra.MAPS_API_KEY` at runtime.
+
+## Cloud Run Proxy
+
+The `cloud-run-proxy/` folder contains a small Node 20 service for server-side
+AI and OCR calls:
+
+- `POST /analyze-menu`
+- `POST /ask-menu-question`
+- `POST /ocr-menu-photo`
+
+Deploy from `cloud-run-proxy/`:
+
+```bash
+gcloud run deploy fgluten-api \
+  --source . \
+  --region us-central1 \
+  --allow-unauthenticated \
+  --set-env-vars PUTER_API_KEY=YOUR_PUTER_TOKEN,VISION_API_KEY=YOUR_VISION_KEY
+```
+
+Then put the deployed URL in the mobile app env:
+
+```bash
+AI_PROXY_BASE_URL=https://YOUR-CLOUD-RUN-URL
+```

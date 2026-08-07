@@ -10,13 +10,47 @@ const AI_REQUEST_TIMEOUT_MS = 30_000;
 
 export class PuterAiService {
   private static apiKey: string | null = null;
+  private static proxyBaseUrl = '';
   // Puter's OpenAI-compatible endpoint
   private static baseUrl = 'https://api.puter.com/puterai/openai/v1/chat/completions';
   // Puter's gpt-4o-mini identifier
   private static modelName = 'openai/gpt-4o-mini';
 
-  static init(apiKey: string) {
+  static init(apiKey: string, proxyBaseUrl = '') {
     this.apiKey = apiKey;
+    this.proxyBaseUrl = proxyBaseUrl.replace(/\/+$/, '');
+  }
+
+  private static getProxyUrl(path: string): string | null {
+    return this.proxyBaseUrl ? `${this.proxyBaseUrl}${path}` : null;
+  }
+
+  private static async postProxy<T>(
+    path: string,
+    body: unknown,
+    requestOptions: { signal?: AbortSignal } = {}
+  ): Promise<T> {
+    const url = this.getProxyUrl(path);
+    if (!url) {
+      throw new Error('AI proxy is not configured.');
+    }
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+      signal: requestOptions.signal,
+    });
+
+    const payload = await response.json().catch(() => null);
+    if (!response.ok) {
+      const message = payload?.error || `AI proxy error (${response.status})`;
+      throw new Error(message);
+    }
+
+    return payload as T;
   }
 
   /**
@@ -27,6 +61,16 @@ export class PuterAiService {
     options: { strictCeliac?: boolean; dairyFree?: boolean; nutFree?: boolean; soyFree?: boolean } = {},
     requestOptions: { signal?: AbortSignal } = {}
   ): Promise<string> {
+    const proxyUrl = this.getProxyUrl('/analyze-menu');
+    if (proxyUrl) {
+      const payload = await this.postProxy<{ analysis?: string }>(
+        '/analyze-menu',
+        { menuText, options },
+        requestOptions
+      );
+      return payload.analysis ?? '';
+    }
+
     if (!this.apiKey) {
       throw new Error('Puter Auth Token is missing. Please add it to your .env file.');
     }
@@ -129,10 +173,6 @@ export class PuterAiService {
     onUpdate?: (text: string) => void,
     options: { signal?: AbortSignal } = {}
   ): Promise<string> {
-    if (!this.apiKey) {
-      throw new Error('Puter Auth Token is missing.');
-    }
-
     const JAILBREAK_KEYWORDS = [
       'ignore previous',
       'ignore all',
@@ -153,6 +193,22 @@ export class PuterAiService {
     const lowerQuestion = question.toLowerCase();
     if (JAILBREAK_KEYWORDS.some(kw => lowerQuestion.includes(kw))) {
       throw new Error('Security Error: Request blocked. I can only assist with menu safety and gluten-free dining.');
+    }
+
+    const proxyUrl = this.getProxyUrl('/ask-menu-question');
+    if (proxyUrl) {
+      const payload = await this.postProxy<{ answer?: string }>(
+        '/ask-menu-question',
+        { menuText, question },
+        options
+      );
+      const answer = payload.answer ?? '';
+      onUpdate?.(answer);
+      return answer;
+    }
+
+    if (!this.apiKey) {
+      throw new Error('Puter Auth Token is missing.');
     }
 
     try {

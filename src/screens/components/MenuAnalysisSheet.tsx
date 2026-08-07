@@ -81,7 +81,8 @@ export default function MenuAnalysisSheet({ restaurant, onClose }: Props) {
     // Initialize Puter AI with key from config.
     const extra = Constants.expoConfig?.extra as any;
     const puterKey = extra?.PUTER_API_KEY ?? '';
-    PuterAiService.init(puterKey);
+    const aiProxyBaseUrl = extra?.AI_PROXY_BASE_URL ?? '';
+    PuterAiService.init(puterKey, aiProxyBaseUrl);
 
     return () => {
       isMounted.current = false;
@@ -315,8 +316,10 @@ export default function MenuAnalysisSheet({ restaurant, onClose }: Props) {
         throw new Error('Failed to process image data.');
       }
 
-      const visionKey = (Constants.expoConfig?.extra as any)?.VISION_API_KEY ?? '';
-      const text = await extractMenuTextFromImage({ base64, apiKey: visionKey });
+      const extra = Constants.expoConfig?.extra as any;
+      const visionKey = extra?.VISION_API_KEY ?? '';
+      const aiProxyBaseUrl = extra?.AI_PROXY_BASE_URL ?? '';
+      const text = await extractMenuTextFromImage({ base64, apiKey: visionKey, proxyBaseUrl: aiProxyBaseUrl });
       if (!isMounted.current) return;
 
       const combinedText = editableText ? `${editableText}\n\n${text}` : text;

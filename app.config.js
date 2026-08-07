@@ -8,10 +8,11 @@ const androidMapsApiKey =
   process.env.ANDROID_MAPS_API_KEY ?? process.env.GCP_ANDROID_API_KEY ?? fallbackMapsApiKey;
 const iosMapsApiKey =
   process.env.IOS_MAPS_API_KEY ?? process.env.GCP_IOS_API_KEY ?? fallbackMapsApiKey;
+const aiProxyBaseUrl = process.env.AI_PROXY_BASE_URL ?? "";
 const puterApiKey =
-  process.env.PUTER_API_KEY ?? process.env.GEMINI_API_KEY ?? "";
+  aiProxyBaseUrl ? "" : process.env.PUTER_API_KEY ?? process.env.GEMINI_API_KEY ?? "";
 const visionApiKey =
-  process.env.VISION_API_KEY ?? process.env.GCP_VISION_API_KEY ?? process.env.GCP_API_KEY ?? "";
+  aiProxyBaseUrl ? "" : process.env.VISION_API_KEY ?? process.env.GCP_VISION_API_KEY ?? process.env.GCP_API_KEY ?? "";
 
 export default {
   expo: {
@@ -91,6 +92,7 @@ export default {
       MAPS_API_KEY: fallbackMapsApiKey,
       ANDROID_MAPS_API_KEY: androidMapsApiKey,
       IOS_MAPS_API_KEY: iosMapsApiKey,
+      AI_PROXY_BASE_URL: aiProxyBaseUrl,
       PUTER_API_KEY: puterApiKey,
       VISION_API_KEY: visionApiKey,
       eas: {

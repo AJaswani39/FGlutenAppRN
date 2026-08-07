@@ -18,17 +18,43 @@ interface VisionAnnotateResponse {
 export async function extractMenuTextFromImage({
   base64,
   apiKey,
+  proxyBaseUrl = '',
 }: {
   base64: string;
   apiKey: string;
+  proxyBaseUrl?: string;
 }): Promise<string> {
   const trimmedKey = apiKey.trim();
   const trimmedBase64 = base64.trim();
-  if (!trimmedKey) {
-    throw new Error('Vision API key is missing.');
-  }
   if (!trimmedBase64) {
     throw new Error('No image data was selected.');
+  }
+
+  const trimmedProxyBaseUrl = proxyBaseUrl.trim().replace(/\/+$/, '');
+  if (trimmedProxyBaseUrl) {
+    const response = await fetchWithTimeout(`${trimmedProxyBaseUrl}/ocr-menu-photo`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ base64: trimmedBase64 }),
+    });
+
+    const payload = await response.json().catch(() => null);
+    if (!response.ok) {
+      throw new Error(payload?.error || `OCR proxy error ${response.status}`);
+    }
+
+    const text = typeof payload?.text === 'string' ? payload.text.trim() : '';
+    if (!text) {
+      throw new Error('No readable menu text was found in that image.');
+    }
+
+    return text;
+  }
+
+  if (!trimmedKey) {
+    throw new Error('Vision API key is missing.');
   }
 
   const response = await fetchWithTimeout(`${API_ENDPOINTS.VISION_ANNOTATE}?key=${encodeURIComponent(trimmedKey)}`, {

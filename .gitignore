@@ -33,6 +33,8 @@ yarn-error.*
 
 # local env files
 .env*.local
+cloud-run-proxy/*KEY*
+cloud-run-proxy/*API_KEY*
 
 # typescript
 *.tsbuildinfo

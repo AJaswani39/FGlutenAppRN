@@ -15,6 +15,39 @@ interface VisionAnnotateResponse {
   }>;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function extractVisionText(payload: unknown): string {
+  if (!isRecord(payload) || !Array.isArray(payload.responses)) {
+    return '';
+  }
+
+  const result = payload.responses[0];
+  if (!isRecord(result)) {
+    return '';
+  }
+
+  const error = result.error;
+  if (isRecord(error) && typeof error.message === 'string' && error.message.trim()) {
+    throw new Error(error.message.trim());
+  }
+
+  const fullTextAnnotation = result.fullTextAnnotation;
+  if (isRecord(fullTextAnnotation) && typeof fullTextAnnotation.text === 'string') {
+    return fullTextAnnotation.text;
+  }
+
+  const textAnnotations = result.textAnnotations;
+  const firstAnnotation = Array.isArray(textAnnotations) ? textAnnotations[0] : null;
+  if (isRecord(firstAnnotation) && typeof firstAnnotation.description === 'string') {
+    return firstAnnotation.description;
+  }
+
+  return '';
+}
+
 export async function extractMenuTextFromImage({
   base64,
   apiKey,
@@ -84,12 +117,7 @@ export async function extractMenuTextFromImage({
   }
 
   const payload = (await response.json()) as VisionAnnotateResponse;
-  const result = payload.responses?.[0];
-  if (result?.error?.message) {
-    throw new Error(result.error.message);
-  }
-
-  const text = result?.fullTextAnnotation?.text ?? result?.textAnnotations?.[0]?.description ?? '';
+  const text = extractVisionText(payload);
   const normalized = text.replace(/\r/g, '').replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
   if (!normalized) {
     throw new Error('No readable menu text was found in that image.');

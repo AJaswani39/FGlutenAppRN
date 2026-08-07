@@ -8,6 +8,50 @@ import { logger } from '../util/logger';
 /** Maximum time in ms to wait for any Puter AI response before aborting. */
 const AI_REQUEST_TIMEOUT_MS = 30_000;
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function getStringField(value: unknown, field: string): string {
+  return isRecord(value) && typeof value[field] === 'string' ? value[field].trim() : '';
+}
+
+function extractChatCompletionText(payload: unknown): string {
+  if (!isRecord(payload) || !Array.isArray(payload.choices)) {
+    return '';
+  }
+
+  const firstChoice = payload.choices[0];
+  if (!isRecord(firstChoice)) {
+    return '';
+  }
+
+  const message = firstChoice.message;
+  if (!isRecord(message)) {
+    return '';
+  }
+
+  return getStringField(message, 'content');
+}
+
+function extractChatCompletionDelta(payload: unknown): string {
+  if (!isRecord(payload) || !Array.isArray(payload.choices)) {
+    return '';
+  }
+
+  const firstChoice = payload.choices[0];
+  if (!isRecord(firstChoice)) {
+    return '';
+  }
+
+  const delta = firstChoice.delta;
+  if (!isRecord(delta)) {
+    return '';
+  }
+
+  return getStringField(delta, 'content');
+}
+
 export class PuterAiService {
   private static apiKey: string | null = null;
   private static proxyBaseUrl = '';
@@ -50,6 +94,10 @@ export class PuterAiService {
       throw new Error(message);
     }
 
+    if (!isRecord(payload)) {
+      throw new Error('AI proxy returned an invalid response.');
+    }
+
     return payload as T;
   }
 
@@ -68,7 +116,7 @@ export class PuterAiService {
         { menuText, options },
         requestOptions
       );
-      return payload.analysis ?? '';
+      return getStringField(payload, 'analysis');
     }
 
     if (!this.apiKey) {
@@ -144,7 +192,10 @@ export class PuterAiService {
       }
 
       const data = await response.json();
-      const text = data.choices?.[0]?.message?.content || '';
+      const text = extractChatCompletionText(data);
+      if (!text) {
+        throw new Error('AI response did not include text.');
+      }
       return text.replace(/```json|```/gi, '').trim();
     } catch (error: unknown) {
       if (
@@ -202,7 +253,7 @@ export class PuterAiService {
         { menuText, question },
         options
       );
-      const answer = payload.answer ?? '';
+      const answer = getStringField(payload, 'answer');
       onUpdate?.(answer);
       return answer;
     }
@@ -293,7 +344,7 @@ export class PuterAiService {
                 if (line.startsWith('data: ') && !line.includes('[DONE]')) {
                   try {
                     const data = JSON.parse(line.substring(6));
-                    const text = data.choices?.[0]?.delta?.content || '';
+                    const text = extractChatCompletionDelta(data);
                     if (text) {
                       fullText += text;
                       onUpdate(fullText);
@@ -353,7 +404,11 @@ export class PuterAiService {
 
       if (!response.ok) throw new Error(`Puter API error: ${response.status}`);
       const data = await response.json();
-      return data.choices?.[0]?.message?.content || '';
+      const text = extractChatCompletionText(data);
+      if (!text) {
+        throw new Error('AI response did not include text.');
+      }
+      return text;
     } catch (error: unknown) {
       if (
         error instanceof Error &&

@@ -66,4 +66,15 @@ describe('menuOcr', () => {
       'No readable menu text was found in that image.'
     );
   });
+
+  it('reports malformed Vision payloads as unreadable text', async () => {
+    (global.fetch as jest.Mock).mockResolvedValue({
+      ok: true,
+      json: async () => ({ responses: 'not-an-array' }),
+    });
+
+    await expect(extractMenuTextFromImage({ base64: 'abc123', apiKey: 'vision-key' })).rejects.toThrow(
+      'No readable menu text was found in that image.'
+    );
+  });
 });

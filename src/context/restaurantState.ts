@@ -14,6 +14,7 @@ interface ExpoConfigExtra {
   MAPS_API_KEY?: string;
   ANDROID_MAPS_API_KEY?: string;
   IOS_MAPS_API_KEY?: string;
+  AI_PROXY_BASE_URL?: string;
 }
 
 export function getMapsApiKey(): string {
@@ -26,6 +27,11 @@ export function getMapsApiKey(): string {
   }
 
   return extra?.MAPS_API_KEY ?? extra?.ANDROID_MAPS_API_KEY ?? extra?.IOS_MAPS_API_KEY ?? '';
+}
+
+export function getAiProxyBaseUrl(): string {
+  const extra = Constants.expoConfig?.extra as ExpoConfigExtra | undefined;
+  return extra?.AI_PROXY_BASE_URL ?? '';
 }
 
 export function getEmptyResultsMessage(reason: EmptyResultsReason): string {

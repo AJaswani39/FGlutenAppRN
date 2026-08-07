@@ -143,20 +143,25 @@ export function LocationSearchBar({ onLocationSelected }: Props) {
     };
   }, []);
 
-  const handleSelect = async (placeId: string) => {
+  const handleSelect = async (result: LocationSearchResult) => {
+    if (blurTimeout.current) {
+      clearTimeout(blurTimeout.current);
+      blurTimeout.current = null;
+    }
+
     detailsController.current?.abort();
     const controller = new AbortController();
     detailsController.current = controller;
 
     Keyboard.dismiss();
     setIsFocused(false);
-    setQuery('');
+    setQuery(result.mainText);
     setResults([]);
     setIsLoading(true);
     
     try {
       const res = await fetchWithTimeout(
-        `https://maps.googleapis.com/maps/api/place/details/json?place_id=${placeId}&fields=geometry&key=${API_KEY}`,
+        `https://maps.googleapis.com/maps/api/place/details/json?place_id=${result.placeId}&fields=geometry&key=${API_KEY}`,
         { signal: controller.signal },
         API_TIMEOUTS.DEFAULT
       );
@@ -165,10 +170,15 @@ export function LocationSearchBar({ onLocationSelected }: Props) {
 
       if (isRecord(json) && json.status === 'OK') {
         const coords = getPlaceDetailsCoords(json);
-        if (!coords) return;
+        if (!coords) {
+          setQuery('');
+          return;
+        }
 
         const { lat, lng } = coords;
         onLocationSelected(lat, lng);
+      } else {
+        setQuery('');
       }
     } catch (error) {
       if (error instanceof Error && error.name === 'AbortError') return;
@@ -221,7 +231,7 @@ export function LocationSearchBar({ onLocationSelected }: Props) {
             keyExtractor={(item) => item.placeId}
             keyboardShouldPersistTaps="handled"
             renderItem={({ item }) => (
-              <Pressable style={styles.resultItem} onPress={() => handleSelect(item.placeId)}>
+              <Pressable style={styles.resultItem} onPress={() => handleSelect(item)}>
                 <Ionicons name="location-outline" size={20} color={colors.textSecondary} style={styles.resultIcon} />
                 <View style={styles.resultTextGroup}>
                   <Text style={styles.mainText}>{item.mainText}</Text>

@@ -55,7 +55,7 @@ export default function App() {
   }
 
   if (bootStage === 'animating') {
-    return <CustomSplashScreen onFinish={() => setBootStage('ready')} />;
+    return <CustomSplashScreen isDark={initialIsDark} onFinish={() => setBootStage('ready')} />;
   }
 
   const { SafeAreaProvider } = require('react-native-safe-area-context');

@@ -71,20 +71,14 @@ export function analyseMenuText(text: string): MenuAnalysisResult {
   const glutenFreeItems: string[] = [];
   const foundGlutenSources = new Set<string>();
 
-  // 1. Efficiently find all gluten sources in one pass across the whole text
-  const sourcesMatch = text.matchAll(GLUTEN_SOURCES_REGEX);
-  for (const match of sourcesMatch) {
-    foundGlutenSources.add(match[0].toLowerCase());
-    if (foundGlutenSources.size >= 10) break; // Cap findings for performance
-  }
-
-  // 2. Optimized line-by-line pass for item extraction
+  // 1. Optimized line-by-line pass for item extraction and gluten source detection
   for (const line of lines) {
     const trimmed = line.trim();
     if (trimmed.length < 5) continue;
+    const hasGfMarker = GF_POSITIVE_REGEX.test(trimmed);
 
     // Fast check for GF marker
-    if (GF_POSITIVE_REGEX.test(trimmed)) {
+    if (hasGfMarker) {
       if (glutenFreeItems.length < 12 && trimmed.length >= 10 && trimmed.length <= 200) {
         const cleaned = extractGfItem(trimmed);
         if (cleaned && !glutenFreeItems.some((item) => item.toLowerCase() === cleaned.toLowerCase())) {
@@ -92,6 +86,17 @@ export function analyseMenuText(text: string): MenuAnalysisResult {
         }
       }
     }
+
+    if (!hasGfMarker) {
+      GLUTEN_SOURCES_REGEX.lastIndex = 0;
+      const sourcesMatch = trimmed.matchAll(GLUTEN_SOURCES_REGEX);
+      for (const match of sourcesMatch) {
+        foundGlutenSources.add(match[0].toLowerCase());
+        if (foundGlutenSources.size >= 10) break; // Cap findings for performance
+      }
+    }
+
+    if (foundGlutenSources.size >= 10) break;
   }
 
   const warnings: string[] = [];

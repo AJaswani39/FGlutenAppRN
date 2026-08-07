@@ -184,11 +184,14 @@ export async function fetchWebsiteForPlace(placeId: string, apiKey: string): Pro
   }
 }
 
-export async function fetchHtml(url: string): Promise<string | null> {
+export async function fetchHtml(url: string, proxyBaseUrl = ''): Promise<string | null> {
   if (url.toLowerCase().trim().endsWith('.pdf')) {
     logger.warn(`fetchHtml: Skipping direct PDF menu link: ${url}`);
     return null;
   }
+
+  const proxyHtml = await fetchHtmlViaProxy(url, proxyBaseUrl);
+  if (proxyHtml) return proxyHtml;
 
   const candidates = getHtmlFetchCandidates(url);
   for (const candidate of candidates) {
@@ -219,6 +222,33 @@ export async function fetchHtml(url: string): Promise<string | null> {
   }
 
   return null;
+}
+
+async function fetchHtmlViaProxy(url: string, proxyBaseUrl: string): Promise<string | null> {
+  const trimmedProxyBaseUrl = proxyBaseUrl.trim().replace(/\/+$/, '');
+  if (!trimmedProxyBaseUrl) return null;
+
+  try {
+    const response = await fetchWithTimeout(`${trimmedProxyBaseUrl}/fetch-menu-html`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url }),
+    });
+
+    const payload = await response.json().catch(() => null);
+    if (!response.ok) {
+      const message = isRecord(payload) && typeof payload.error === 'string' ? payload.error : response.status;
+      logger.warn(`fetchHtml proxy failed for ${url}: ${message}`);
+      return null;
+    }
+
+    const html = isRecord(payload) && typeof payload.html === 'string' ? payload.html.trim() : '';
+    return html || null;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    logger.warn(`fetchHtml proxy request failed for ${url}: ${message}`);
+    return null;
+  }
 }
 
 function getHtmlFetchCandidates(url: string): string[] {

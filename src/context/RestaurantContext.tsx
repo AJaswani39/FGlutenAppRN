@@ -27,6 +27,7 @@ import { ScanOrchestrator, ScanOrchestratorConfig } from '../services/scanOrches
 import {
   EmptyResultsReason,
   MENU_SCAN_TTL_MS,
+  getAiProxyBaseUrl,
   getCachedResultsMessage,
   getEmptyResultsMessage,
   getMapsApiKey,
@@ -325,6 +326,7 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
   useEffect(() => {
     const config: ScanOrchestratorConfig = {
       mapsApiKey: getMapsApiKey(),
+      htmlProxyBaseUrl: getAiProxyBaseUrl(),
       onRestaurantUpdate: updateRestaurant,
       onNotifyUI: () => emitFilteredState(),
       getIdentityKey: favoriteKey,

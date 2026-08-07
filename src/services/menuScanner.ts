@@ -22,10 +22,12 @@ export async function scanRestaurantMenu({
   restaurant,
   mapsApiKey,
   scanStartedAt,
+  htmlProxyBaseUrl = '',
 }: {
   restaurant: Restaurant;
   mapsApiKey: string;
   scanStartedAt: number;
+  htmlProxyBaseUrl?: string;
 }): Promise<MenuScanResult | null> {
   if (!mapsApiKey || !restaurant.placeId) return null;
 
@@ -56,13 +58,13 @@ export async function scanRestaurantMenu({
   }
 
   let menuUrl = initialUrl;
-  let html = await fetchHtml(initialUrl);
+  let html = await fetchHtml(initialUrl, htmlProxyBaseUrl);
 
   // If we found a specific menu link on the home page, try to fetch it for richer data
   if (html) {
     const menuLink = findMenuLink(html, initialUrl);
     if (menuLink && menuLink !== initialUrl) {
-      const menuHtml = await fetchHtml(menuLink);
+      const menuHtml = await fetchHtml(menuLink, htmlProxyBaseUrl);
       if (menuHtml) {
         html = menuHtml;
         menuUrl = menuLink;

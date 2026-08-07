@@ -6,6 +6,7 @@ import { logger } from '../util/logger';
 
 export interface ScanOrchestratorConfig {
   mapsApiKey: string;
+  htmlProxyBaseUrl?: string;
   onRestaurantUpdate: (
     target: Restaurant,
     updater: (current: Restaurant) => Restaurant
@@ -199,6 +200,7 @@ export class ScanOrchestrator {
         restaurant,
         mapsApiKey: this.config.mapsApiKey,
         scanStartedAt,
+        htmlProxyBaseUrl: this.config.htmlProxyBaseUrl,
       });
 
       if (this.isDestroyed) return;

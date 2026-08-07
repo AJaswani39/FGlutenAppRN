@@ -6,6 +6,7 @@ import {
   Pressable,
   ActivityIndicator,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import MapView, { Marker, Region, PROVIDER_GOOGLE } from 'react-native-maps';
 import { FontSize, FontWeight, Radius, Spacing } from '../theme/colors';
 import { useRestaurants } from '../context/RestaurantContext';
@@ -23,10 +24,14 @@ import * as Haptics from 'expo-haptics';
 import { impactAsync } from '../util/haptics';
 import { distanceBetween } from '../util/geoUtils';
 
+const LOCATION_SEARCH_BAR_HEIGHT = 52;
+const MAP_SUMMARY_BAR_HEIGHT = 68;
+
 export default function MapScreen() {
   const { uiState, loadNearbyRestaurants, savedRestaurants } = useRestaurants();
   const { useMiles } = useSettings();
   const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const stateStyles = useMemo(() => createStateStyles(colors), [colors]);
   const [previewRestaurant, setPreviewRestaurant] = useState<Restaurant | null>(null);
@@ -113,6 +118,22 @@ export default function MapScreen() {
   }
 
   const hasNoResults = uiState.status === 'success' && restaurants.length === 0;
+  const searchBarTop = Math.max(insets.top, 12) + Spacing.xs;
+  const summaryTop = searchBarTop + LOCATION_SEARCH_BAR_HEIGHT + Spacing.sm;
+  const mapActionTop = summaryTop + MAP_SUMMARY_BAR_HEIGHT + Spacing.sm;
+  const canRecenterOnUser = uiState.userLatitude != null && uiState.userLongitude != null;
+
+  const recenterOnUser = () => {
+    if (!canRecenterOnUser || !mapRef.current) return;
+
+    impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    mapRef.current.animateToRegion({
+      latitude: uiState.userLatitude!,
+      longitude: uiState.userLongitude!,
+      latitudeDelta: 0.08,
+      longitudeDelta: 0.08,
+    }, 700);
+  };
 
   // Synchronize preview and detail states with the live context to get immediate scans/favorites updates
   const activePreview = previewRestaurant
@@ -153,7 +174,7 @@ export default function MapScreen() {
         provider={PROVIDER_GOOGLE}
         initialRegion={initialRegion}
         showsUserLocation={uiState.userLatitude != null && uiState.userLongitude != null}
-        showsMyLocationButton
+        showsMyLocationButton={false}
         onPress={() => setPreviewRestaurant(null)}
         onRegionChangeComplete={setMapRegion}
       >
@@ -179,8 +200,22 @@ export default function MapScreen() {
         })}
       </MapView>
 
+      <Pressable
+        style={[styles.recenterBtn, !canRecenterOnUser && styles.recenterBtnDisabled]}
+        onPress={recenterOnUser}
+        disabled={!canRecenterOnUser}
+        accessibilityRole="button"
+        accessibilityLabel="Recenter map on your location"
+      >
+        <Ionicons
+          name="locate"
+          size={22}
+          color={canRecenterOnUser ? colors.textPrimary : colors.textMuted}
+        />
+      </Pressable>
+
       {hasNoResults && (
-        <View style={styles.noResultsOverlay}>
+        <View style={[styles.noResultsOverlay, { top: mapActionTop }]}>
           <Ionicons name="alert-circle" size={16} color={colors.textSecondary} />
           <Text style={styles.noResultsText}>No restaurants found in this area</Text>
         </View>
@@ -188,7 +223,7 @@ export default function MapScreen() {
 
       {showSearchButton && (
         <Pressable 
-          style={styles.searchAreaBtn} 
+          style={[styles.searchAreaBtn, { top: mapActionTop }]} 
           onPress={() => loadNearbyRestaurants({ latitude: mapRegion!.latitude, longitude: mapRegion!.longitude })}
         >
           <Ionicons name="search" size={16} color={colors.textInverse} />
@@ -196,7 +231,7 @@ export default function MapScreen() {
         </Pressable>
       )}
 
-      <View style={styles.summaryBar}>
+      <View style={[styles.summaryBar, { top: summaryTop }]}>
         <View style={styles.summaryTitleRow}>
           <Ionicons name="map" size={18} color={colors.primary} />
           <Text style={styles.summaryTitle}>{restaurants.length} mapped</Text>
@@ -251,7 +286,6 @@ function createStyles(colors: ThemeColors) {
     map: { flex: 1 },
     summaryBar: {
       position: 'absolute',
-      top: Spacing.md,
       left: Spacing.md,
       right: Spacing.md,
       backgroundColor: colors.surface,
@@ -263,7 +297,6 @@ function createStyles(colors: ThemeColors) {
     },
     searchAreaBtn: {
       position: 'absolute',
-      top: Spacing.xl * 2, // Push below summary bar
       alignSelf: 'center',
       flexDirection: 'row',
       alignItems: 'center',
@@ -283,9 +316,29 @@ function createStyles(colors: ThemeColors) {
       fontSize: FontSize.sm,
       fontWeight: FontWeight.bold,
     },
+    recenterBtn: {
+      position: 'absolute',
+      left: Spacing.md,
+      bottom: 44,
+      width: 44,
+      height: 44,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: colors.surface,
+      borderRadius: Radius.full,
+      borderWidth: 1,
+      borderColor: colors.border,
+      elevation: 4,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.22,
+      shadowRadius: 4,
+    },
+    recenterBtnDisabled: {
+      opacity: 0.5,
+    },
     noResultsOverlay: {
       position: 'absolute',
-      top: Spacing.xl * 2,
       alignSelf: 'center',
       flexDirection: 'row',
       alignItems: 'center',

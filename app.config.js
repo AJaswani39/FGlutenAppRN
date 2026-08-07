@@ -21,12 +21,17 @@ export default {
     version: "1.0.0",
     orientation: "portrait",
     icon: "./assets/icon.png",
-    userInterfaceStyle: "dark",
+    userInterfaceStyle: "automatic",
     newArchEnabled: true,
     splash: {
       image: "./assets/splash-icon.png",
       resizeMode: "contain",
-      backgroundColor: "#0D1117",
+      backgroundColor: "#F6F8FA",
+      dark: {
+        image: "./assets/splash-icon.png",
+        resizeMode: "contain",
+        backgroundColor: "#0D1117",
+      },
     },
     updates: {
       url: "https://u.expo.dev/a445e80b-b3b6-4d3d-9b44-e0949b962c4d",
@@ -72,6 +77,21 @@ export default {
       favicon: "./assets/favicon.png",
     },
     plugins: [
+      "expo-font",
+      "expo-sharing",
+      [
+        "expo-splash-screen",
+        {
+          image: "./assets/splash-icon.png",
+          resizeMode: "contain",
+          backgroundColor: "#F6F8FA",
+          dark: {
+            image: "./assets/splash-icon.png",
+            backgroundColor: "#0D1117",
+          },
+        },
+      ],
+      "expo-status-bar",
       [
         "expo-location",
         {

@@ -1,4 +1,6 @@
 import http from 'node:http';
+import dns from 'node:dns/promises';
+import net from 'node:net';
 
 const PORT = Number(process.env.PORT || 8080);
 const PUTER_API_KEY = process.env.PUTER_API_KEY || '';
@@ -8,6 +10,9 @@ const MAX_BODY_BYTES = Number(process.env.MAX_BODY_BYTES || 1_500_000);
 const RATE_LIMIT_REQUESTS = Number(process.env.RATE_LIMIT_REQUESTS || 60);
 const RATE_LIMIT_WINDOW_MS = Number(process.env.RATE_LIMIT_WINDOW_MS || 60_000);
 const AI_REQUEST_TIMEOUT_MS = Number(process.env.AI_REQUEST_TIMEOUT_MS || 30_000);
+const HTML_FETCH_TIMEOUT_MS = Number(process.env.HTML_FETCH_TIMEOUT_MS || 8_000);
+const MAX_HTML_BYTES = Number(process.env.MAX_HTML_BYTES || 500_000);
+const MAX_HTML_REDIRECTS = Number(process.env.MAX_HTML_REDIRECTS || 3);
 
 const PUTER_URL = 'https://api.puter.com/puterai/openai/v1/chat/completions';
 const PUTER_MODEL = process.env.PUTER_MODEL || 'openai/gpt-4o-mini';
@@ -87,6 +92,93 @@ function trimText(value, maxChars, fieldName) {
   return value.trim().slice(0, maxChars);
 }
 
+function parsePublicHttpUrl(value) {
+  let url;
+  try {
+    url = new URL(value);
+  } catch {
+    throw Object.assign(new Error('url must be a valid absolute URL.'), { status: 400 });
+  }
+
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+    throw Object.assign(new Error('url must use http or https.'), { status: 400 });
+  }
+
+  if (!url.hostname) {
+    throw Object.assign(new Error('url must include a hostname.'), { status: 400 });
+  }
+
+  url.username = '';
+  url.password = '';
+  url.hash = '';
+  return url;
+}
+
+function getSecureCandidateUrl(url) {
+  if (url.protocol !== 'http:') return url;
+  const secureUrl = new URL(url.toString());
+  secureUrl.protocol = 'https:';
+  return secureUrl;
+}
+
+function isExpiredCertificateError(error) {
+  return error?.cause?.code === 'CERT_HAS_EXPIRED';
+}
+
+function isPrivateIpv4(address) {
+  const parts = address.split('.').map((part) => Number(part));
+  if (parts.length !== 4 || parts.some((part) => !Number.isInteger(part) || part < 0 || part > 255)) {
+    return true;
+  }
+
+  const [a, b] = parts;
+  return (
+    a === 0 ||
+    a === 10 ||
+    a === 127 ||
+    (a === 100 && b >= 64 && b <= 127) ||
+    (a === 169 && b === 254) ||
+    (a === 172 && b >= 16 && b <= 31) ||
+    (a === 192 && b === 168) ||
+    (a === 198 && (b === 18 || b === 19)) ||
+    a >= 224
+  );
+}
+
+function isPrivateIpv6(address) {
+  const normalized = address.toLowerCase();
+  return (
+    normalized === '::1' ||
+    normalized === '::' ||
+    normalized.startsWith('fc') ||
+    normalized.startsWith('fd') ||
+    normalized.startsWith('fe8') ||
+    normalized.startsWith('fe9') ||
+    normalized.startsWith('fea') ||
+    normalized.startsWith('feb')
+  );
+}
+
+function isPrivateIp(address) {
+  const version = net.isIP(address);
+  if (version === 4) return isPrivateIpv4(address);
+  if (version === 6) return isPrivateIpv6(address);
+  return true;
+}
+
+async function assertPublicHostname(hostname) {
+  const records = await dns.lookup(hostname, { all: true, verbatim: false });
+  if (!records.length) {
+    throw Object.assign(new Error('url hostname could not be resolved.'), { status: 400 });
+  }
+
+  for (const record of records) {
+    if (isPrivateIp(record.address)) {
+      throw Object.assign(new Error('url resolves to a blocked network address.'), { status: 403 });
+    }
+  }
+}
+
 function buildAnalysisPrompt(menuText, options = {}) {
   return `
 You are "FGluten AI", a strictly cautious dietary safety assistant.
@@ -157,6 +249,137 @@ async function fetchWithTimeout(url, options, timeoutMs = AI_REQUEST_TIMEOUT_MS)
   } finally {
     clearTimeout(timeoutId);
   }
+}
+
+function isRedirectStatus(status) {
+  return status === 301 || status === 302 || status === 303 || status === 307 || status === 308;
+}
+
+function isReadableHtmlContentType(contentType) {
+  const normalized = contentType.toLowerCase();
+  return (
+    !normalized ||
+    normalized.includes('text/html') ||
+    normalized.includes('application/xhtml+xml') ||
+    normalized.includes('text/plain')
+  );
+}
+
+function getFetchFailureMessage(error) {
+  if (error?.name === 'AbortError') {
+    return 'HTML fetch timed out.';
+  }
+
+  const cause = error?.cause;
+  const code = typeof cause?.code === 'string' ? cause.code : '';
+  if (code === 'ENOTFOUND') return 'HTML fetch failed because the hostname could not be resolved.';
+  if (code === 'ECONNREFUSED') return 'HTML fetch failed because the remote server refused the connection.';
+  if (code === 'ECONNRESET') return 'HTML fetch failed because the remote server reset the connection.';
+  if (code === 'ETIMEDOUT') return 'HTML fetch failed because the remote server timed out.';
+  if (code === 'EAI_AGAIN') return 'HTML fetch failed because DNS lookup timed out.';
+  if (code === 'CERT_HAS_EXPIRED') return 'HTML fetch failed because the HTTPS certificate has expired.';
+
+  const message = error instanceof Error ? error.message : String(error);
+  return `HTML fetch network error: ${message}`;
+}
+
+function logHtmlFetchFailure(url, error) {
+  const cause = error?.cause;
+
+  console.error('HTML fetch failed', {
+    url: url.toString(),
+    name: error?.name,
+    message: error instanceof Error ? error.message : String(error),
+    causeName: cause?.name,
+    causeMessage: cause?.message,
+    causeCode: cause?.code,
+    causeErrno: cause?.errno,
+    causeSyscall: cause?.syscall,
+    causeAddress: cause?.address,
+    causePort: cause?.port,
+  });
+}
+
+async function readLimitedText(response) {
+  if (!response.body) {
+    return '';
+  }
+
+  const reader = response.body.getReader();
+  const chunks = [];
+  let totalBytes = 0;
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    totalBytes += value.byteLength;
+    if (totalBytes > MAX_HTML_BYTES) {
+      await reader.cancel();
+      throw Object.assign(new Error('HTML response is too large.'), { status: 413 });
+    }
+
+    chunks.push(value);
+  }
+
+  return Buffer.concat(chunks).toString('utf8');
+}
+
+async function fetchPublicHtml(url, redirectCount = 0) {
+  if (redirectCount > MAX_HTML_REDIRECTS) {
+    throw Object.assign(new Error('Too many redirects while fetching HTML.'), { status: 508 });
+  }
+
+  await assertPublicHostname(url.hostname);
+
+  let response;
+  try {
+    response = await fetchWithTimeout(
+      url.toString(),
+      {
+        redirect: 'manual',
+        headers: {
+          'User-Agent':
+            'Mozilla/5.0 (iPhone; CPU iPhone OS 16_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.5 Mobile/15E148 Safari/604.1',
+          Accept: 'text/html,application/xhtml+xml,text/plain;q=0.8,*/*;q=0.1',
+        },
+      },
+      HTML_FETCH_TIMEOUT_MS
+    );
+  } catch (error) {
+    logHtmlFetchFailure(url, error);
+    if (error?.cause) {
+      throw Object.assign(error, {
+        status: error.name === 'AbortError' ? 504 : 502,
+        exposeMessage: getFetchFailureMessage(error),
+      });
+    }
+
+    const status = error?.name === 'AbortError' ? 504 : 502;
+    throw Object.assign(new Error(getFetchFailureMessage(error)), { status });
+  }
+
+  if (isRedirectStatus(response.status)) {
+    const location = response.headers.get('location');
+    if (!location) {
+      throw Object.assign(new Error('HTML fetch redirect did not include a location.'), { status: 502 });
+    }
+
+    const redirectUrl = parsePublicHttpUrl(new URL(location, url).toString());
+    return fetchPublicHtml(redirectUrl, redirectCount + 1);
+  }
+
+  if (!response.ok) {
+    throw Object.assign(new Error(`HTML fetch failed with status ${response.status}.`), { status: 502 });
+  }
+
+  const contentType = response.headers.get('content-type') || '';
+  if (!isReadableHtmlContentType(contentType)) {
+    return null;
+  }
+
+  const html = await readLimitedText(response);
+  return html.trim() ? html : null;
 }
 
 async function callPuter(prompt) {
@@ -240,6 +463,38 @@ async function handleOcr(req, res) {
   sendJson(res, 200, { text });
 }
 
+async function handleFetchMenuHtml(req, res) {
+  const body = await readJson(req);
+  const requestedUrl = parsePublicHttpUrl(trimText(body.url, 2_000, 'url'));
+  const fetchUrl = getSecureCandidateUrl(requestedUrl);
+
+  let html;
+  try {
+    html = await fetchPublicHtml(fetchUrl);
+  } catch (error) {
+    const canFallbackToHttp =
+      requestedUrl.protocol === 'http:' &&
+      fetchUrl.protocol === 'https:' &&
+      isExpiredCertificateError(error);
+
+    if (!canFallbackToHttp) {
+      throw error;
+    }
+
+    console.warn('HTML fetch falling back to original HTTP URL after expired HTTPS certificate.', {
+      requestedUrl: requestedUrl.toString(),
+      failedUrl: fetchUrl.toString(),
+    });
+    html = await fetchPublicHtml(requestedUrl);
+  }
+
+  if (!html) {
+    throw Object.assign(new Error('No readable HTML was found at that URL.'), { status: 422 });
+  }
+
+  sendJson(res, 200, { html });
+}
+
 const server = http.createServer(async (req, res) => {
   try {
     if (req.method === 'OPTIONS') {
@@ -277,10 +532,20 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    if (req.url === '/fetch-menu-html') {
+      await handleFetchMenuHtml(req, res);
+      return;
+    }
+
     sendJson(res, 404, { error: 'Not found.' });
   } catch (error) {
     const status = Number(error?.status || 500);
-    const message = error instanceof Error ? error.message : 'Unexpected server error.';
+    const message =
+      typeof error?.exposeMessage === 'string'
+        ? error.exposeMessage
+        : error instanceof Error
+          ? error.message
+          : 'Unexpected server error.';
     console.error(message);
     sendJson(res, status, { error: message });
   }

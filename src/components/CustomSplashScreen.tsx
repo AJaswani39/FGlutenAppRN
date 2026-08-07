@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import Animated, {
   useSharedValue,
@@ -7,16 +7,19 @@ import Animated, {
   Easing,
   runOnJS,
 } from 'react-native-reanimated';
-import { Colors, FontSize, FontWeight, Radius } from '../theme/colors';
+import { DarkColors, LightColors, FontSize, FontWeight, Radius } from '../theme/colors';
 
 interface Props {
   onFinish: () => void;
+  isDark: boolean;
 }
 
-export function CustomSplashScreen({ onFinish }: Props) {
+export function CustomSplashScreen({ onFinish, isDark }: Props) {
   const progress = useSharedValue(0);
   const finishTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const onFinishRef = useRef(onFinish);
+  const colors = isDark ? DarkColors : LightColors;
+  const styles = useMemo(() => createStyles(colors), [colors]);
 
   useEffect(() => {
     onFinishRef.current = onFinish;
@@ -66,43 +69,45 @@ export function CustomSplashScreen({ onFinish }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: Colors.background,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  content: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 60,
-  },
-  brandText: {
-    color: Colors.primary,
-    fontSize: FontSize.display,
-    fontWeight: FontWeight.extraBold,
-    letterSpacing: 2,
-    marginBottom: 8,
-  },
-  tagline: {
-    color: Colors.textSecondary,
-    fontSize: FontSize.md,
-    fontWeight: FontWeight.medium,
-    letterSpacing: 0.5,
-  },
-  progressContainer: {
-    position: 'absolute',
-    bottom: 80,
-    width: '60%',
-    height: 6,
-    backgroundColor: Colors.border,
-    borderRadius: Radius.full,
-    overflow: 'hidden',
-  },
-  progressBar: {
-    height: '100%',
-    backgroundColor: Colors.primary,
-    borderRadius: Radius.full,
-  },
-});
+function createStyles(colors: typeof DarkColors) {
+  return StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: colors.background,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    content: {
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginBottom: 60,
+    },
+    brandText: {
+      color: colors.primary,
+      fontSize: FontSize.display,
+      fontWeight: FontWeight.extraBold,
+      letterSpacing: 2,
+      marginBottom: 8,
+    },
+    tagline: {
+      color: colors.textSecondary,
+      fontSize: FontSize.md,
+      fontWeight: FontWeight.medium,
+      letterSpacing: 0.5,
+    },
+    progressContainer: {
+      position: 'absolute',
+      bottom: 80,
+      width: '60%',
+      height: 6,
+      backgroundColor: colors.border,
+      borderRadius: Radius.full,
+      overflow: 'hidden',
+    },
+    progressBar: {
+      height: '100%',
+      backgroundColor: colors.primary,
+      borderRadius: Radius.full,
+    },
+  });
+}

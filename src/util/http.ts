@@ -7,7 +7,7 @@ import { API_TIMEOUTS } from '../constants';
 export async function fetchWithTimeout(
   url: string,
   options: RequestInit = {},
-  timeoutMs = API_TIMEOUTS.DEFAULT
+  timeoutMs: number = API_TIMEOUTS.DEFAULT
 ): Promise<Response> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);

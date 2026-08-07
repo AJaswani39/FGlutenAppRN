@@ -1,4 +1,5 @@
 import { logger } from '../util/logger';
+import { fetchWithTimeout } from '../util/http';
 
 /**
  * Service to interact with Puter.js AI for deep menu analysis.
@@ -79,14 +80,18 @@ export class PuterAiService {
       throw new Error('AI proxy is not configured.');
     }
 
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
+    const response = await fetchWithTimeout(
+      url,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(body),
+        signal: requestOptions.signal,
       },
-      body: JSON.stringify(body),
-      signal: requestOptions.signal,
-    });
+      AI_REQUEST_TIMEOUT_MS
+    );
 
     const payload = await response.json().catch(() => null);
     if (!response.ok) {

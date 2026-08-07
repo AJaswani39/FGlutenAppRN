@@ -55,6 +55,12 @@ export function isSameRestaurantIdentity(
   return leftFallback != null && leftFallback === rightFallback;
 }
 
+function getSortableDistance(restaurant: Restaurant): number {
+  return Number.isFinite(restaurant.distanceMeters)
+    ? restaurant.distanceMeters
+    : Number.POSITIVE_INFINITY;
+}
+
 export function filterAndSortRestaurants(
   restaurants: Restaurant[],
   filters: RestaurantFilters,
@@ -72,7 +78,7 @@ export function filterAndSortRestaurants(
     // 1. Boolean/Numeric filters (Fastest)
     if (openNowOnly && restaurant.openNow !== true) return false;
     if (minRating > 0 && (restaurant.rating ?? 0) < minRating) return false;
-    if (maxDist > 0 && restaurant.distanceMeters > maxDist) return false;
+    if (maxDist > 0 && getSortableDistance(restaurant) > maxDist) return false;
 
     // 2. GF Evidence check
     if (needsGfEvidence) {
@@ -96,7 +102,7 @@ export function filterAndSortRestaurants(
 
   // Sort the filtered array directly to avoid extra shallow copy
   if (filters.sortMode === 'distance') {
-    return filtered.sort((a, b) => a.distanceMeters - b.distanceMeters);
+    return filtered.sort((a, b) => getSortableDistance(a) - getSortableDistance(b));
   } else {
     return filtered.sort((a, b) => {
       const nameA = a.name.toLowerCase();

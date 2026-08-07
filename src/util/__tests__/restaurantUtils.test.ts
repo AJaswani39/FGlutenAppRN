@@ -1,5 +1,6 @@
 import { Restaurant } from '../../types/restaurant';
 import {
+  filterAndSortRestaurants,
   getGfConfidenceLevel,
   getRestaurantIdentityKey,
   getRestaurantListKey,
@@ -52,5 +53,41 @@ describe('restaurantUtils', () => {
 
     expect(isSameRestaurantIdentity(left, right)).toBe(true);
     expect(isSameRestaurantIdentity(left, different)).toBe(false);
+  });
+
+  it('sorts non-finite distances last and filters them out when max distance is active', () => {
+    const nearby = restaurant({ placeId: 'nearby', distanceMeters: 100 });
+    const far = restaurant({ placeId: 'far', distanceMeters: 1000 });
+    const invalidDistance = restaurant({ placeId: 'invalid', distanceMeters: Number.NaN });
+
+    expect(
+      filterAndSortRestaurants(
+        [invalidDistance, far, nearby],
+        {
+          gfOnly: false,
+          openNowOnly: false,
+          sortMode: 'distance',
+          maxDistanceMeters: 0,
+          minRating: 0,
+          searchQuery: '',
+        },
+        false
+      ).map((item) => item.placeId)
+    ).toEqual(['nearby', 'far', 'invalid']);
+
+    expect(
+      filterAndSortRestaurants(
+        [invalidDistance, far, nearby],
+        {
+          gfOnly: false,
+          openNowOnly: false,
+          sortMode: 'distance',
+          maxDistanceMeters: 500,
+          minRating: 0,
+          searchQuery: '',
+        },
+        false
+      ).map((item) => item.placeId)
+    ).toEqual(['nearby']);
   });
 });

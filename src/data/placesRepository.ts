@@ -16,15 +16,26 @@ interface PlacesNearbyPlace {
   location?: { latitude?: number; longitude?: number };
 }
 
-function normalizeNearbyRestaurant(place: PlacesNearbyPlace): Restaurant | null {
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function normalizeNearbyRestaurant(place: unknown): Restaurant | null {
+  if (!isRecord(place)) {
+    return null;
+  }
+
   const placeId = typeof place.id === 'string' ? place.id.trim() : '';
+  const location = isRecord(place.location) ? place.location : null;
+  const displayName = isRecord(place.displayName) ? place.displayName : null;
+  const currentOpeningHours = isRecord(place.currentOpeningHours) ? place.currentOpeningHours : null;
   const latitude =
-    typeof place.location?.latitude === 'number' && Number.isFinite(place.location.latitude)
-      ? place.location.latitude
+    typeof location?.latitude === 'number' && Number.isFinite(location.latitude)
+      ? location.latitude
       : null;
   const longitude =
-    typeof place.location?.longitude === 'number' && Number.isFinite(place.location.longitude)
-      ? place.location.longitude
+    typeof location?.longitude === 'number' && Number.isFinite(location.longitude)
+      ? location.longitude
       : null;
 
   if (!placeId || latitude == null || longitude == null) {
@@ -32,8 +43,8 @@ function normalizeNearbyRestaurant(place: PlacesNearbyPlace): Restaurant | null 
   }
 
   const name =
-    typeof place.displayName?.text === 'string' && place.displayName.text.trim()
-      ? place.displayName.text.trim()
+    typeof displayName?.text === 'string' && displayName.text.trim()
+      ? displayName.text.trim()
       : 'Unknown restaurant';
   const address = typeof place.formattedAddress === 'string' ? place.formattedAddress.trim() : '';
   const rating =
@@ -41,8 +52,8 @@ function normalizeNearbyRestaurant(place: PlacesNearbyPlace): Restaurant | null 
       ? Math.min(5, Math.max(0, place.rating))
       : null;
   const openNow =
-    typeof place.currentOpeningHours?.openNow === 'boolean'
-      ? place.currentOpeningHours.openNow
+    typeof currentOpeningHours?.openNow === 'boolean'
+      ? currentOpeningHours.openNow
       : null;
   const hasGFMenu = /\bgluten[\s-]?free\b|\bgf\b/i.test(name);
 
@@ -99,7 +110,7 @@ export async function fetchNearbyRestaurants(
   }
 
   const payload: PlacesNearbyResult = await response.json();
-  const places = payload.places ?? [];
+  const places = isRecord(payload) && Array.isArray(payload.places) ? payload.places : [];
 
   return places
     .map((place) => normalizeNearbyRestaurant(place))

@@ -14,6 +14,56 @@ export interface LocationSearchResult {
   secondaryText: string;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function normalizeAutocompletePrediction(value: unknown): LocationSearchResult | null {
+  if (!isRecord(value)) return null;
+
+  const structuredFormatting = value.structured_formatting;
+  if (!isRecord(structuredFormatting)) return null;
+
+  const placeId = typeof value.place_id === 'string' ? value.place_id.trim() : '';
+  const description = typeof value.description === 'string' ? value.description.trim() : '';
+  const mainText =
+    typeof structuredFormatting.main_text === 'string'
+      ? structuredFormatting.main_text.trim()
+      : '';
+  const secondaryText =
+    typeof structuredFormatting.secondary_text === 'string'
+      ? structuredFormatting.secondary_text.trim()
+      : '';
+
+  if (!placeId || !description || !mainText) return null;
+
+  return {
+    placeId,
+    description,
+    mainText,
+    secondaryText,
+  };
+}
+
+function getPlaceDetailsCoords(value: unknown): { lat: number; lng: number } | null {
+  if (!isRecord(value)) return null;
+
+  const result = value.result;
+  if (!isRecord(result)) return null;
+
+  const geometry = result.geometry;
+  if (!isRecord(geometry)) return null;
+
+  const location = geometry.location;
+  if (!isRecord(location)) return null;
+
+  const { lat, lng } = location;
+  if (typeof lat !== 'number' || typeof lng !== 'number') return null;
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+
+  return { lat, lng };
+}
+
 interface Props {
   onLocationSelected: (lat: number, lng: number) => void;
 }
@@ -54,13 +104,10 @@ export function LocationSearchBar({ onLocationSelected }: Props) {
         const json = await res.json();
         if (autocompleteController.current !== controller) return;
         
-        if (json.status === 'OK') {
-          const formatted = json.predictions.map((p: any) => ({
-            placeId: p.place_id,
-            description: p.description,
-            mainText: p.structured_formatting.main_text,
-            secondaryText: p.structured_formatting.secondary_text,
-          }));
+        if (isRecord(json) && json.status === 'OK' && Array.isArray(json.predictions)) {
+          const formatted = json.predictions
+            .map(normalizeAutocompletePrediction)
+            .filter((result): result is LocationSearchResult => result !== null);
           setResults(formatted);
         } else {
           setResults([]);
@@ -113,8 +160,11 @@ export function LocationSearchBar({ onLocationSelected }: Props) {
       const json = await res.json();
       if (detailsController.current !== controller) return;
 
-      if (json.status === 'OK') {
-        const { lat, lng } = json.result.geometry.location;
+      if (isRecord(json) && json.status === 'OK') {
+        const coords = getPlaceDetailsCoords(json);
+        if (!coords) return;
+
+        const { lat, lng } = coords;
         onLocationSelected(lat, lng);
       }
     } catch (error) {

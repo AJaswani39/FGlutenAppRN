@@ -245,6 +245,41 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
     });
   }, [emitFilteredState, filters, strictCeliac]);
 
+  const mergeCachedScanData = useCallback((freshRestaurants: Restaurant[]) => {
+    const cachedByKey = new Map<string, Restaurant>();
+
+    for (const cachedRestaurant of rawRestaurants.current) {
+      const key = favoriteKey(cachedRestaurant);
+      if (key) {
+        cachedByKey.set(key, cachedRestaurant);
+      }
+    }
+
+    return freshRestaurants.map((freshRestaurant) => {
+      const key = favoriteKey(freshRestaurant);
+      const cachedRestaurant = key ? cachedByKey.get(key) : null;
+      if (!cachedRestaurant) return freshRestaurant;
+
+      return {
+        ...freshRestaurant,
+        menuUrl: cachedRestaurant.menuUrl,
+        rawMenuText: cachedRestaurant.rawMenuText,
+        gfMenu: cachedRestaurant.gfMenu,
+        menuScanStatus:
+          cachedRestaurant.menuScanStatus === 'FETCHING'
+            ? 'NOT_STARTED'
+            : cachedRestaurant.menuScanStatus,
+        menuScanTimestamp:
+          cachedRestaurant.menuScanStatus === 'FETCHING'
+            ? 0
+            : cachedRestaurant.menuScanTimestamp,
+        aiAnalysisResult: cachedRestaurant.aiAnalysisResult,
+        aiChatHistory: cachedRestaurant.aiChatHistory,
+        aiDeepAnalysis: cachedRestaurant.aiDeepAnalysis,
+      };
+    });
+  }, [favoriteKey]);
+
   // Flush on app close/background
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (nextAppState) => {
@@ -329,73 +364,76 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
     const requestId = loadRequestId.current + 1;
     loadRequestId.current = requestId;
 
-    const netInfo = await NetInfo.fetch();
-    if (!isActiveLoadRequest(requestId)) return;
+    try {
+      const netInfo = await NetInfo.fetch();
+      if (!isActiveLoadRequest(requestId)) return;
 
-    if (!netInfo.isConnected) {
-      if (rawRestaurants.current.length > 0) {
-        emitFilteredState({
-          message: 'No internet connection. Showing last cached results.',
-        });
-      } else {
-        setUiState({
-          status: 'error',
-          restaurants: [],
-          message: 'No internet connection. Please check your network and try again.',
-          userLatitude: null,
-          userLongitude: null,
-          scanProgress: null,
-        });
+      const isOnline =
+        netInfo.isConnected === true && netInfo.isInternetReachable !== false;
+
+      if (!isOnline) {
+        if (rawRestaurants.current.length > 0) {
+          emitFilteredState({
+            message: 'No internet connection. Showing last cached results.',
+          });
+        } else {
+          setUiState({
+            status: 'error',
+            restaurants: [],
+            message: 'No internet connection. Please check your network and try again.',
+            userLatitude: null,
+            userLongitude: null,
+            scanProgress: null,
+          });
+        }
+        return;
       }
-      return;
-    }
 
-    // Flush any pending scans from the previous search area
-    orchestrator.current?.flushQueue();
+      // Flush any pending scans from the previous search area
+      orchestrator.current?.flushQueue();
 
-    const mapsApiKey = getMapsApiKey();
-    await loadCachedIfAvailable(() => isActiveLoadRequest(requestId));
-    if (!isActiveLoadRequest(requestId)) return;
+      const mapsApiKey = getMapsApiKey();
+      await loadCachedIfAvailable(() => isActiveLoadRequest(requestId));
+      if (!isActiveLoadRequest(requestId)) return;
 
-    if (!mapsApiKey) {
+      if (!mapsApiKey) {
+        if (rawRestaurants.current.length > 0) {
+          emitFilteredState({
+            emptyReason: 'filters',
+            message: 'Showing cached results — Maps API key is missing. Live refresh is unavailable.',
+          });
+        } else {
+          setUiState({
+            status: 'error',
+            restaurants: [],
+            message: 'Maps API key is missing. Please configure MAPS_API_KEY.',
+            userLatitude: null,
+            userLongitude: null,
+            scanProgress: getScanProgress(),
+          });
+        }
+        return;
+      }
+
+      const isManualSearch = !!overrideCoords;
+
       if (rawRestaurants.current.length > 0) {
         emitFilteredState({
           emptyReason: 'filters',
-          message: 'Showing cached results — Maps API key is missing. Live refresh is unavailable.',
+          message: isManualSearch ? 'Searching this area…' : 'Refreshing nearby restaurants…',
+          status: 'loading',
         });
       } else {
         setUiState({
-          status: 'error',
+          status: 'loading',
           restaurants: [],
-          message: 'Maps API key is missing. Please configure MAPS_API_KEY.',
-          userLatitude: null,
-          userLongitude: null,
+          message: isManualSearch ? 'Searching this area…' : 'Finding restaurants near you…',
+          userLatitude: overrideCoords?.latitude ?? userLat.current,
+          userLongitude: overrideCoords?.longitude ?? userLng.current,
           scanProgress: getScanProgress(),
         });
       }
-      return;
-    }
 
-    const isManualSearch = !!overrideCoords;
-
-    if (rawRestaurants.current.length > 0) {
-      emitFilteredState({
-        emptyReason: 'filters',
-        message: isManualSearch ? 'Searching this area…' : 'Refreshing nearby restaurants…',
-        status: 'loading',
-      });
-    } else {
-      setUiState({
-        status: 'loading',
-        restaurants: [],
-        message: isManualSearch ? 'Searching this area…' : 'Finding restaurants near you…',
-        userLatitude: overrideCoords?.latitude ?? userLat.current,
-        userLongitude: overrideCoords?.longitude ?? userLng.current,
-        scanProgress: getScanProgress(),
-      });
-    }
-
-    try {
       let latitude: number;
       let longitude: number;
 
@@ -468,7 +506,7 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
       );
       if (!isActiveLoadRequest(requestId)) return;
 
-      const restaurantsWithDistance = applyFavorites(restaurants).map((restaurant) => ({
+      const restaurantsWithDistance = applyFavorites(mergeCachedScanData(restaurants)).map((restaurant) => ({
         ...restaurant,
         distanceMeters: distanceBetween(latitude, longitude, restaurant.latitude, restaurant.longitude),
       }));
@@ -516,7 +554,7 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
         });
       }
     }
-  }, [applyFavorites, emitFilteredState, getScanProgress, isActiveLoadRequest, kickOffMenuScans, loadCachedIfAvailable, persistCache]);
+  }, [applyFavorites, emitFilteredState, getScanProgress, isActiveLoadRequest, kickOffMenuScans, loadCachedIfAvailable, mergeCachedScanData, persistCache]);
 
   const setFavoriteStatus = useCallback(
     (restaurant: Restaurant, status: FavoriteStatus) => {

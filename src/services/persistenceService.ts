@@ -235,7 +235,9 @@ export const PersistenceService = {
       if (Array.isArray(parsed)) {
         return parsed.map(normalizeRestaurant).filter((r): r is Restaurant => r !== null);
       }
-    } catch (e) {}
+    } catch (error: unknown) {
+      logger.warn(`Failed to load saved restaurants: ${error instanceof Error ? error.message : String(error)}`);
+    }
     return [];
   },
 

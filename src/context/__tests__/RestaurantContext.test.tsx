@@ -1,6 +1,8 @@
 import React from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import NetInfo from '@react-native-community/netinfo';
 import TestRenderer, { act } from 'react-test-renderer';
+import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 import * as Location from 'expo-location';
 import Constants from 'expo-constants';
 import { FiltersProvider, useFilters } from '../FiltersContext';
@@ -31,10 +33,23 @@ type HarnessApi = {
 };
 
 const storage = AsyncStorage as typeof AsyncStorage & { __reset: () => void };
-const locationMock = Location as jest.Mocked<typeof Location>;
+const asyncStorageMock = AsyncStorage as typeof AsyncStorage & {
+  getItem: jest.MockedFunction<typeof AsyncStorage.getItem>;
+  setItem: jest.MockedFunction<typeof AsyncStorage.setItem>;
+};
+const locationMock = Location as typeof Location & {
+  requestForegroundPermissionsAsync: jest.MockedFunction<typeof Location.requestForegroundPermissionsAsync>;
+  getLastKnownPositionAsync: jest.MockedFunction<typeof Location.getLastKnownPositionAsync>;
+  getCurrentPositionAsync: jest.MockedFunction<typeof Location.getCurrentPositionAsync>;
+};
+const netInfoMock = NetInfo as typeof NetInfo & {
+  fetch: jest.MockedFunction<typeof NetInfo.fetch>;
+};
 const constantsMock = Constants as typeof Constants & {
   expoConfig?: { extra?: { MAPS_API_KEY?: string; ANDROID_MAPS_API_KEY?: string; IOS_MAPS_API_KEY?: string } };
 };
+type FetchMock = jest.MockedFunction<(...args: Parameters<typeof fetch>) => Promise<any>>;
+const fetchMock = () => global.fetch as unknown as FetchMock;
 
 function Probe({ capture }: { capture: (api: HarnessApi) => void }) {
   capture({
@@ -101,7 +116,12 @@ describe('RestaurantContext', () => {
     locationMock.getCurrentPositionAsync.mockResolvedValue({
       coords: { latitude: 40.7128, longitude: -74.006 },
     } as any);
-    global.fetch = jest.fn();
+    netInfoMock.fetch.mockResolvedValue({
+      isConnected: true,
+      isInternetReachable: true,
+      type: 'wifi',
+    } as any);
+    global.fetch = jest.fn<typeof fetch>();
   });
 
   it('returns an error when the maps api key is missing', async () => {
@@ -142,12 +162,67 @@ describe('RestaurantContext', () => {
       await getApi().restaurants.loadNearbyRestaurants();
     });
 
+    expect(getApi().restaurants.uiState.status).toBe('permission_required');
+    expect(getApi().restaurants.uiState.message).toContain('Location permission or services');
+  });
+
+  it('treats explicitly unreachable internet as offline', async () => {
+    netInfoMock.fetch.mockResolvedValue({
+      isConnected: true,
+      isInternetReachable: false,
+      type: 'wifi',
+    } as any);
+
+    const { getApi } = await renderHarness();
+
+    await act(async () => {
+      await getApi().restaurants.loadNearbyRestaurants();
+    });
+
     expect(getApi().restaurants.uiState.status).toBe('error');
-    expect(getApi().restaurants.uiState.message).toContain('Permission API failed');
+    expect(getApi().restaurants.uiState.message).toContain('No internet connection');
+    expect(global.fetch).not.toHaveBeenCalled();
+    expect(locationMock.requestForegroundPermissionsAsync).not.toHaveBeenCalled();
+  });
+
+  it('allows nearby loading when internet reachability is unknown', async () => {
+    netInfoMock.fetch.mockResolvedValue({
+      isConnected: true,
+      isInternetReachable: null,
+      type: 'wifi',
+    } as any);
+    fetchMock().mockResolvedValue({
+      ok: true,
+      json: async () => ({ places: [] }),
+    });
+
+    const { getApi } = await renderHarness();
+
+    await act(async () => {
+      await getApi().restaurants.loadNearbyRestaurants();
+    });
+
+    expect(getApi().restaurants.uiState.status).toBe('success');
+    expect(global.fetch).toHaveBeenCalled();
+    expect(locationMock.requestForegroundPermissionsAsync).toHaveBeenCalled();
+  });
+
+  it('surfaces NetInfo fetch failures through the restaurant error state', async () => {
+    netInfoMock.fetch.mockRejectedValue(new Error('NetInfo failed'));
+
+    const { getApi } = await renderHarness();
+
+    await act(async () => {
+      await getApi().restaurants.loadNearbyRestaurants();
+    });
+
+    expect(getApi().restaurants.uiState.status).toBe('error');
+    expect(getApi().restaurants.uiState.message).toContain('Could not load restaurants: NetInfo failed');
+    expect(global.fetch).not.toHaveBeenCalled();
   });
 
   it('treats empty nearby results as a success empty state', async () => {
-    (global.fetch as jest.Mock).mockResolvedValue({
+    fetchMock().mockResolvedValue({
       ok: true,
       json: async () => ({ places: [] }),
     });
@@ -164,7 +239,7 @@ describe('RestaurantContext', () => {
   });
 
   it('skips malformed places and keeps valid restaurants', async () => {
-    (global.fetch as jest.Mock).mockResolvedValue({
+    fetchMock().mockResolvedValue({
       ok: true,
       json: async () => ({
         places: [
@@ -234,8 +309,127 @@ describe('RestaurantContext', () => {
     expect(getApi().restaurants.uiState.message).toContain('Showing cached results');
   });
 
+  it('preserves cached scan data when a live refresh returns the same place', async () => {
+    await AsyncStorage.setItem(
+      'restaurant_cache',
+      JSON.stringify({
+        restaurants: [
+          {
+            placeId: 'cached-place',
+            name: 'Cached Cafe',
+            address: '456 State St',
+            latitude: 40.712,
+            longitude: -74.001,
+            rating: 4.2,
+            openNow: true,
+            hasGFMenu: false,
+            gfMenu: ['GF toast'],
+            distanceMeters: 200,
+            menuUrl: 'https://cached.example/menu',
+            rawMenuText: 'Gluten-free toast available',
+            menuScanStatus: 'SUCCESS',
+            menuScanTimestamp: Date.now(),
+            favoriteStatus: null,
+          },
+        ],
+        lat: 40.7128,
+        lng: -74.006,
+        timestamp: 555,
+      })
+    );
+    fetchMock().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        places: [
+          {
+            id: 'cached-place',
+            displayName: { text: 'Cached Cafe Updated' },
+            formattedAddress: '456 State St',
+            location: { latitude: 40.713, longitude: -74.002 },
+            rating: 4.8,
+            currentOpeningHours: { openNow: false },
+          },
+        ],
+      }),
+    });
+
+    const { getApi } = await renderHarness();
+
+    await act(async () => {
+      await getApi().restaurants.loadNearbyRestaurants();
+    });
+
+    expect(getApi().restaurants.uiState.restaurants[0]).toMatchObject({
+      placeId: 'cached-place',
+      name: 'Cached Cafe Updated',
+      rating: 4.8,
+      openNow: false,
+      menuUrl: 'https://cached.example/menu',
+      rawMenuText: 'Gluten-free toast available',
+      gfMenu: ['GF toast'],
+      menuScanStatus: 'SUCCESS',
+    });
+  });
+
+  it('does not preserve stale fetching scan state after a live refresh', async () => {
+    await AsyncStorage.setItem(
+      'restaurant_cache',
+      JSON.stringify({
+        restaurants: [
+          {
+            placeId: 'stale-fetching-place',
+            name: 'Stale Scan Cafe',
+            address: '111 Loop St',
+            latitude: 40.712,
+            longitude: -74.001,
+            rating: 4.2,
+            openNow: true,
+            hasGFMenu: false,
+            gfMenu: [],
+            distanceMeters: 200,
+            menuUrl: 'https://stale.example/menu',
+            rawMenuText: null,
+            menuScanStatus: 'FETCHING',
+            menuScanTimestamp: Date.now(),
+            favoriteStatus: null,
+          },
+        ],
+        lat: 40.7128,
+        lng: -74.006,
+        timestamp: 555,
+      })
+    );
+    fetchMock().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        places: [
+          {
+            id: 'stale-fetching-place',
+            displayName: { text: 'Stale Scan Cafe' },
+            formattedAddress: '111 Loop St',
+            location: { latitude: 40.713, longitude: -74.002 },
+            rating: 4.3,
+            currentOpeningHours: { openNow: true },
+          },
+        ],
+      }),
+    });
+
+    const { getApi } = await renderHarness();
+
+    await act(async () => {
+      await getApi().restaurants.loadNearbyRestaurants();
+    });
+
+    expect(getApi().restaurants.uiState.restaurants[0]).toMatchObject({
+      placeId: 'stale-fetching-place',
+      menuUrl: 'https://stale.example/menu',
+    });
+    expect(getApi().restaurants.uiState.restaurants[0].menuScanStatus).not.toBe('FETCHING');
+  });
+
   it('applies strict celiac filtering to weak heuristic-only matches', async () => {
-    (global.fetch as jest.Mock).mockResolvedValue({
+    fetchMock().mockResolvedValue({
       ok: true,
       json: async () => ({
         places: [
@@ -282,7 +476,7 @@ describe('RestaurantContext', () => {
         },
       ],
     };
-    (global.fetch as jest.Mock).mockResolvedValue({
+    fetchMock().mockResolvedValue({
       ok: true,
       json: async () => nearbyPayload,
     });
@@ -353,7 +547,7 @@ describe('RestaurantContext', () => {
   });
 
   it('keeps default settings when startup setting storage rejects', async () => {
-    (AsyncStorage.getItem as jest.Mock).mockRejectedValueOnce(new Error('settings unavailable'));
+    asyncStorageMock.getItem.mockRejectedValueOnce(new Error('settings unavailable'));
     const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
 
     const { getApi } = await renderHarness();
@@ -365,7 +559,7 @@ describe('RestaurantContext', () => {
   });
 
   it('keeps loaded restaurants visible when cache persistence rejects', async () => {
-    (global.fetch as jest.Mock).mockResolvedValue({
+    fetchMock().mockResolvedValue({
       ok: true,
       json: async () => ({
         places: [
@@ -380,7 +574,7 @@ describe('RestaurantContext', () => {
         ],
       }),
     });
-    (AsyncStorage.setItem as jest.Mock).mockImplementation(async (key: string, value: string) => {
+    asyncStorageMock.setItem.mockImplementation(async (key: string, value: string) => {
       if (key === 'restaurant_cache') {
         throw new Error('cache full');
       }
@@ -403,7 +597,7 @@ describe('RestaurantContext', () => {
   });
 
   it('uses the distance filter as the nearby search radius', async () => {
-    (global.fetch as jest.Mock).mockResolvedValue({
+    fetchMock().mockResolvedValue({
       ok: true,
       json: async () => ({ places: [] }),
     });
@@ -419,15 +613,17 @@ describe('RestaurantContext', () => {
       await getApi().restaurants.loadNearbyRestaurants();
     });
 
-    const nearbyCall = (global.fetch as jest.Mock).mock.calls.find(([url]) =>
+    const nearbyCall = fetchMock().mock.calls.find(([url]) =>
       String(url).includes('searchNearby')
     );
-    expect(nearbyCall).toBeDefined();
-    expect(JSON.parse(nearbyCall[1].body).locationRestriction.circle.radius).toBe(12000);
+    if (!nearbyCall) {
+      throw new Error('Expected a nearby search request');
+    }
+    expect(JSON.parse(String(nearbyCall[1]?.body)).locationRestriction.circle.radius).toBe(12000);
   });
 
   it('keeps saved restaurants independent from active filters', async () => {
-    (global.fetch as jest.Mock).mockResolvedValue({
+    fetchMock().mockResolvedValue({
       ok: true,
       json: async () => ({
         places: [
@@ -477,7 +673,7 @@ describe('RestaurantContext', () => {
   });
 
   it('removes restaurants from saved results when favorite status is cleared', async () => {
-    (global.fetch as jest.Mock).mockResolvedValue({
+    fetchMock().mockResolvedValue({
       ok: true,
       json: async () => ({
         places: [
@@ -515,9 +711,9 @@ describe('RestaurantContext', () => {
     expect(getApi().restaurants.savedRestaurants).toHaveLength(0);
   });
 
-  it('reports menu scan progress for the current scan batch', async () => {
-    (global.fetch as jest.Mock).mockImplementation(async (url: string) => {
-      if (url.includes('searchNearby')) {
+  it('clears menu scan progress after the current scan batch completes', async () => {
+    fetchMock().mockImplementation(async (url: RequestInfo | URL) => {
+      if (String(url).includes('searchNearby')) {
         return {
           ok: true,
           json: async () => ({
@@ -544,12 +740,10 @@ describe('RestaurantContext', () => {
     await act(async () => {
       await getApi().restaurants.loadNearbyRestaurants();
     });
-    await flushAsync();
-
-    expect(getApi().restaurants.uiState.scanProgress).toEqual({
-      completed: 5,
-      total: 5,
-      active: false,
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 1200));
     });
+
+    expect(getApi().restaurants.uiState.scanProgress).toBeNull();
   });
 });

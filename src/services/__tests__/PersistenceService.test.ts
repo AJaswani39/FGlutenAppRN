@@ -96,6 +96,8 @@ describe('PersistenceService', () => {
           menuScanStatus: 'SUCCESS',
           menuScanTimestamp: 123,
           favoriteStatus: 'safe',
+          aiAnalysisResult: null,
+          aiChatHistory: undefined,
         },
       ],
       lat: 40,

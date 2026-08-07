@@ -24,17 +24,27 @@ export default function SettingsScreen() {
   const handleThemeToggle = async () => {
     const newIsDark = !isDark;
     setIsDark(newIsDark);
-    await AsyncStorage.setItem('@fgluten_theme', newIsDark ? 'dark' : 'light');
-    if (!isMounted.current) return;
-    
-    Alert.alert(
-      'Theme Changed',
-      'The app needs to reload to apply the new theme.',
-      [
-        { text: 'Later', style: 'cancel' },
-        { text: 'Reload Now', onPress: () => Updates.reloadAsync().catch(() => {}) }
-      ]
-    );
+    try {
+      await AsyncStorage.setItem('@fgluten_theme', newIsDark ? 'dark' : 'light');
+      if (!isMounted.current) return;
+
+      Alert.alert(
+        'Theme Changed',
+        'The app needs to reload to apply the new theme.',
+        [
+          { text: 'Later', style: 'cancel' },
+          { text: 'Reload Now', onPress: () => Updates.reloadAsync().catch(() => {}) }
+        ]
+      );
+    } catch (error) {
+      if (!isMounted.current) return;
+
+      setIsDark(!newIsDark);
+      Alert.alert(
+        'Theme Not Saved',
+        'Could not save your theme preference. Please try again.'
+      );
+    }
   };
 
   return (

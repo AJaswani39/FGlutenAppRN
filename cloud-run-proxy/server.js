@@ -125,6 +125,13 @@ function isExpiredCertificateError(error) {
   return error?.cause?.code === 'CERT_HAS_EXPIRED';
 }
 
+function createHttpFallbackRedirectedToExpiredHttpsError(error) {
+  return Object.assign(new Error('HTTP fallback redirected back to HTTPS, but that HTTPS certificate has expired.'), {
+    status: Number(error?.status || 502),
+    exposeMessage: 'HTTP fallback redirected back to HTTPS, but that HTTPS certificate has expired.',
+  });
+}
+
 function isPrivateIpv4(address) {
   const parts = address.split('.').map((part) => Number(part));
   if (parts.length !== 4 || parts.some((part) => !Number.isInteger(part) || part < 0 || part > 255)) {
@@ -485,7 +492,15 @@ async function handleFetchMenuHtml(req, res) {
       requestedUrl: requestedUrl.toString(),
       failedUrl: fetchUrl.toString(),
     });
-    html = await fetchPublicHtml(requestedUrl);
+    try {
+      html = await fetchPublicHtml(requestedUrl);
+    } catch (fallbackError) {
+      if (isExpiredCertificateError(fallbackError)) {
+        throw createHttpFallbackRedirectedToExpiredHttpsError(fallbackError);
+      }
+
+      throw fallbackError;
+    }
   }
 
   if (!html) {

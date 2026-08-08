@@ -103,6 +103,41 @@ test('coalesces concurrent analysis requests for the same cache key', async () =
   assert.equal(inFlightAnalysisRequests.size, 0);
 });
 
+test('clears a failed analysis request so a later retry can run', async () => {
+  let rejectAnalysis;
+  let analysisCalls = 0;
+  const pendingAnalysis = new Promise((resolve, reject) => {
+    rejectAnalysis = reject;
+  });
+
+  const first = getOrCreateInFlightAnalysis('failed-analysis-key', () => {
+    analysisCalls += 1;
+    return pendingAnalysis;
+  });
+  const second = getOrCreateInFlightAnalysis('failed-analysis-key', () => {
+    analysisCalls += 1;
+    return pendingAnalysis;
+  });
+
+  const failure = new Error('Puter request failed.');
+  rejectAnalysis(failure);
+  await assert.rejects(first.promise, { message: failure.message });
+  await assert.rejects(second.promise, { message: failure.message });
+  await Promise.resolve();
+
+  assert.equal(analysisCalls, 1);
+  assert.equal(inFlightAnalysisRequests.size, 0);
+
+  const retry = getOrCreateInFlightAnalysis('failed-analysis-key', () => {
+    analysisCalls += 1;
+    return Promise.resolve('{"overallSafety":"CAUTION"}');
+  });
+
+  assert.equal(retry.isCoalesced, false);
+  assert.equal(await retry.promise, '{"overallSafety":"CAUTION"}');
+  assert.equal(analysisCalls, 2);
+});
+
 test('returns cached HTML for an unexpired URL', () => {
   cacheHtml('https://example.com/menu', '<html>menu</html>');
 

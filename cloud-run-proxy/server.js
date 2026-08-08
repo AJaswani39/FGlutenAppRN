@@ -1,16 +1,54 @@
 import http from 'node:http';
 import dns from 'node:dns/promises';
 import net from 'node:net';
+import { fileURLToPath } from 'node:url';
 
 const PORT = Number(process.env.PORT || 8080);
 const PUTER_API_KEY = process.env.PUTER_API_KEY || '';
 const VISION_API_KEY = process.env.VISION_API_KEY || '';
 const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || '*';
 const MAX_BODY_BYTES = Number(process.env.MAX_BODY_BYTES || 1_500_000);
-const RATE_LIMIT_REQUESTS = Number(process.env.RATE_LIMIT_REQUESTS || 60);
-const RATE_LIMIT_WINDOW_MS = Number(process.env.RATE_LIMIT_WINDOW_MS || 60_000);
+const DEFAULT_RATE_LIMIT = {
+  requests: Number(process.env.RATE_LIMIT_REQUESTS || 20),
+  windowMs: Number(process.env.RATE_LIMIT_WINDOW_MS || 10 * 60_000),
+};
+const ENDPOINT_RATE_LIMITS = {
+  '/fetch-menu-html': {
+    requests: Number(process.env.HTML_RATE_LIMIT_REQUESTS || 20),
+    windowMs: Number(process.env.HTML_RATE_LIMIT_WINDOW_MS || 10 * 60_000),
+  },
+  '/analyze-menu': {
+    requests: Number(process.env.ANALYZE_RATE_LIMIT_REQUESTS || 5),
+    windowMs: Number(process.env.ANALYZE_RATE_LIMIT_WINDOW_MS || 10 * 60_000),
+  },
+  '/ask-menu-question': {
+    requests: Number(process.env.QUESTION_RATE_LIMIT_REQUESTS || 10),
+    windowMs: Number(process.env.QUESTION_RATE_LIMIT_WINDOW_MS || 10 * 60_000),
+  },
+  '/ocr-menu-photo': {
+    requests: Number(process.env.OCR_RATE_LIMIT_REQUESTS || 3),
+    windowMs: Number(process.env.OCR_RATE_LIMIT_WINDOW_MS || 10 * 60_000),
+  },
+};
+function getPositiveIntegerEnv(name, fallback) {
+  const rawValue = process.env[name];
+  if (rawValue === undefined || rawValue.trim() === '') {
+    return fallback;
+  }
+
+  const value = Number(rawValue);
+  if (!Number.isSafeInteger(value) || value <= 0) {
+    console.warn(`Invalid ${name}; using default value ${fallback}.`);
+    return fallback;
+  }
+
+  return value;
+}
+
 const AI_REQUEST_TIMEOUT_MS = Number(process.env.AI_REQUEST_TIMEOUT_MS || 30_000);
 const HTML_FETCH_TIMEOUT_MS = Number(process.env.HTML_FETCH_TIMEOUT_MS || 8_000);
+const HTML_CACHE_TTL_MS = getPositiveIntegerEnv('HTML_CACHE_TTL_MS', 30 * 60_000);
+const HTML_CACHE_MAX_ENTRIES = getPositiveIntegerEnv('HTML_CACHE_MAX_ENTRIES', 200);
 const MAX_HTML_BYTES = Number(process.env.MAX_HTML_BYTES || 500_000);
 const MAX_HTML_REDIRECTS = Number(process.env.MAX_HTML_REDIRECTS || 3);
 
@@ -22,13 +60,53 @@ const MAX_QUESTION_CHARS = Number(process.env.MAX_QUESTION_CHARS || 1_000);
 const MAX_OCR_BASE64_CHARS = Number(process.env.MAX_OCR_BASE64_CHARS || 1_300_000);
 
 const rateBuckets = new Map();
+const htmlCache = new Map();
+const inFlightHtmlFetches = new Map();
 
-function sendJson(res, status, payload) {
+function getHtmlCacheKey(url) {
+  return url.toString();
+}
+
+function getCachedHtml(key) {
+  const entry = htmlCache.get(key);
+  if (!entry) return null;
+
+  if (entry.expiresAt <= Date.now()) {
+    htmlCache.delete(key);
+    return null;
+  }
+
+  return entry.html;
+}
+
+function cacheHtml(key, html) {
+  const now = Date.now();
+
+  for (const [cachedKey, entry] of htmlCache) {
+    if (entry.expiresAt <= now) {
+      htmlCache.delete(cachedKey);
+    }
+  }
+
+  if (!htmlCache.has(key) && htmlCache.size >= HTML_CACHE_MAX_ENTRIES) {
+    const oldestKey = htmlCache.keys().next().value;
+    htmlCache.delete(oldestKey);
+  }
+
+  htmlCache.set(key, {
+    html,
+    expiresAt: now + HTML_CACHE_TTL_MS,
+  });
+}
+
+function sendJson(res, status, payload, headers = {}) {
   res.writeHead(status, {
     'Content-Type': 'application/json',
     'Access-Control-Allow-Origin': ALLOWED_ORIGIN,
     'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type',
+    'Access-Control-Expose-Headers': 'X-Cache',
+    ...headers,
   });
   res.end(JSON.stringify(payload));
 }
@@ -42,18 +120,29 @@ function getClientKey(req) {
   return req.socket.remoteAddress || 'unknown';
 }
 
+function getRateLimitForPath(pathname) {
+  return ENDPOINT_RATE_LIMITS[pathname] || DEFAULT_RATE_LIMIT;
+}
+
+function getRateLimitState(req) {
+  const pathname = typeof req.url === 'string' ? req.url.split('?')[0] : '';
+  const limit = getRateLimitForPath(pathname);
+  const key = `${getClientKey(req)}:${pathname || '*'}`;
+  return { pathname, limit, key };
+}
+
 function isRateLimited(req) {
-  const key = getClientKey(req);
+  const { limit, key } = getRateLimitState(req);
   const now = Date.now();
   const current = rateBuckets.get(key);
 
   if (!current || current.resetAt <= now) {
-    rateBuckets.set(key, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS });
+    rateBuckets.set(key, { count: 1, resetAt: now + limit.windowMs });
     return false;
   }
 
   current.count += 1;
-  return current.count > RATE_LIMIT_REQUESTS;
+  return current.count > limit.requests;
 }
 
 function readJson(req) {
@@ -470,14 +559,9 @@ async function handleOcr(req, res) {
   sendJson(res, 200, { text });
 }
 
-async function handleFetchMenuHtml(req, res) {
-  const body = await readJson(req);
-  const requestedUrl = parsePublicHttpUrl(trimText(body.url, 2_000, 'url'));
-  const fetchUrl = getSecureCandidateUrl(requestedUrl);
-
-  let html;
+async function fetchMenuHtmlFromSite(requestedUrl, fetchUrl) {
   try {
-    html = await fetchPublicHtml(fetchUrl);
+    return await fetchPublicHtml(fetchUrl);
   } catch (error) {
     const canFallbackToHttp =
       requestedUrl.protocol === 'http:' &&
@@ -493,7 +577,7 @@ async function handleFetchMenuHtml(req, res) {
       failedUrl: fetchUrl.toString(),
     });
     try {
-      html = await fetchPublicHtml(requestedUrl);
+      return await fetchPublicHtml(requestedUrl);
     } catch (fallbackError) {
       if (isExpiredCertificateError(fallbackError)) {
         throw createHttpFallbackRedirectedToExpiredHttpsError(fallbackError);
@@ -502,12 +586,53 @@ async function handleFetchMenuHtml(req, res) {
       throw fallbackError;
     }
   }
+}
 
-  if (!html) {
-    throw Object.assign(new Error('No readable HTML was found at that URL.'), { status: 422 });
+function getOrCreateInFlightHtmlFetch(cacheKey, createFetch) {
+  const existingFetch = inFlightHtmlFetches.get(cacheKey);
+  if (existingFetch) {
+    return { promise: existingFetch, isCoalesced: true };
   }
 
-  sendJson(res, 200, { html });
+  const promise = Promise.resolve().then(createFetch);
+  inFlightHtmlFetches.set(cacheKey, promise);
+
+  void promise.finally(() => {
+    if (inFlightHtmlFetches.get(cacheKey) === promise) {
+      inFlightHtmlFetches.delete(cacheKey);
+    }
+  }).catch(() => {});
+
+  return { promise, isCoalesced: false };
+}
+
+async function handleFetchMenuHtml(req, res) {
+  const body = await readJson(req);
+  const requestedUrl = parsePublicHttpUrl(trimText(body.url, 2_000, 'url'));
+  const fetchUrl = getSecureCandidateUrl(requestedUrl);
+  const cacheKey = getHtmlCacheKey(fetchUrl);
+  const cachedHtml = getCachedHtml(cacheKey);
+  if (cachedHtml) {
+    console.info('HTML cache hit.', { host: fetchUrl.hostname });
+    sendJson(res, 200, { html: cachedHtml }, { 'X-Cache': 'HIT' });
+    return;
+  }
+
+  const { promise, isCoalesced } = getOrCreateInFlightHtmlFetch(cacheKey, async () => {
+    const html = await fetchMenuHtmlFromSite(requestedUrl, fetchUrl);
+    if (!html) {
+      throw Object.assign(new Error('No readable HTML was found at that URL.'), { status: 422 });
+    }
+
+    cacheHtml(cacheKey, html);
+    return html;
+  });
+
+  console.info(isCoalesced ? 'HTML fetch coalesced.' : 'HTML cache miss.', {
+    host: fetchUrl.hostname,
+  });
+  const html = await promise;
+  sendJson(res, 200, { html }, { 'X-Cache': isCoalesced ? 'COALESCED' : 'MISS' });
 }
 
 const server = http.createServer(async (req, res) => {
@@ -528,7 +653,16 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (isRateLimited(req)) {
-      sendJson(res, 429, { error: 'Too many requests. Please try again soon.' });
+      const { pathname, key } = getRateLimitState(req);
+      const current = rateBuckets.get(key);
+      const retryAfterMs =
+        current && current.resetAt > Date.now() ? current.resetAt - Date.now() : 0;
+      const retryAfterSeconds = Math.max(1, Math.ceil(retryAfterMs / 1000));
+      res.setHeader('Retry-After', String(retryAfterSeconds));
+      sendJson(res, 429, {
+        error: `Too many requests for ${pathname || 'this endpoint'}. Please try again later.`,
+        retryAfterSeconds,
+      });
       return;
     }
 
@@ -566,6 +700,18 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-server.listen(PORT, () => {
-  console.log(`FGluten proxy listening on ${PORT}`);
-});
+if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+  server.listen(PORT, () => {
+    console.log(`FGluten proxy listening on ${PORT}`);
+  });
+}
+
+export {
+  HTML_CACHE_MAX_ENTRIES,
+  cacheHtml,
+  getCachedHtml,
+  getPositiveIntegerEnv,
+  getOrCreateInFlightHtmlFetch,
+  htmlCache,
+  inFlightHtmlFetches,
+};

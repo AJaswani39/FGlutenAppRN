@@ -4,15 +4,23 @@ import {
   HTML_CACHE_MAX_ENTRIES,
   cacheHtml,
   getCachedHtml,
+  cacheAnalysis,
+  getCachedAnalysis,
+  getAnalysisCacheKey,
+  getOrCreateInFlightAnalysis,
   getOrCreateInFlightHtmlFetch,
   getPositiveIntegerEnv,
   htmlCache,
+  analysisCache,
   inFlightHtmlFetches,
+  inFlightAnalysisRequests,
 } from './server.js';
 
 beforeEach(() => {
   htmlCache.clear();
+  analysisCache.clear();
   inFlightHtmlFetches.clear();
+  inFlightAnalysisRequests.clear();
 });
 
 test('validates positive integer environment values', () => {
@@ -40,6 +48,59 @@ test('validates positive integer environment values', () => {
     delete process.env.TEST_CACHE_CONFIG_INVALID;
     delete process.env.TEST_CACHE_CONFIG_ZERO;
   }
+});
+
+test('creates stable analysis keys for equivalent inputs', () => {
+  const options = { strictCeliac: true, dairyFree: false, nutFree: true, soyFree: false };
+  const reorderedOptions = { soyFree: false, nutFree: true, dairyFree: false, strictCeliac: true };
+
+  assert.equal(
+    getAnalysisCacheKey('Menu text', options),
+    getAnalysisCacheKey('Menu text', reorderedOptions),
+  );
+  assert.notEqual(
+    getAnalysisCacheKey('Menu text', options),
+    getAnalysisCacheKey('Menu text', { ...options, dairyFree: true }),
+  );
+  assert.notEqual(getAnalysisCacheKey('Menu text', options), getAnalysisCacheKey('Different menu', options));
+});
+
+test('returns and expires cached analysis results', () => {
+  const key = getAnalysisCacheKey('Menu text', { strictCeliac: true });
+  cacheAnalysis(key, '{"overallSafety":"CAUTION"}');
+
+  assert.equal(getCachedAnalysis(key), '{"overallSafety":"CAUTION"}');
+
+  analysisCache.get(key).expiresAt = Date.now() - 1;
+  assert.equal(getCachedAnalysis(key), null);
+  assert.equal(analysisCache.has(key), false);
+});
+
+test('coalesces concurrent analysis requests for the same cache key', async () => {
+  let resolveAnalysis;
+  let analysisCalls = 0;
+  const pendingAnalysis = new Promise((resolve) => {
+    resolveAnalysis = resolve;
+  });
+
+  const first = getOrCreateInFlightAnalysis('analysis-key', () => {
+    analysisCalls += 1;
+    return pendingAnalysis;
+  });
+  const second = getOrCreateInFlightAnalysis('analysis-key', () => {
+    analysisCalls += 1;
+    return pendingAnalysis;
+  });
+
+  assert.equal(first.isCoalesced, false);
+  assert.equal(second.isCoalesced, true);
+  assert.strictEqual(first.promise, second.promise);
+
+  resolveAnalysis('{"overallSafety":"CAUTION"}');
+  assert.equal(await first.promise, '{"overallSafety":"CAUTION"}');
+  assert.equal(analysisCalls, 1);
+  await Promise.resolve();
+  assert.equal(inFlightAnalysisRequests.size, 0);
 });
 
 test('returns cached HTML for an unexpired URL', () => {

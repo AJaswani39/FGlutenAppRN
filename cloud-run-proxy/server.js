@@ -1,6 +1,7 @@
 import http from 'node:http';
 import dns from 'node:dns/promises';
 import net from 'node:net';
+import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 
 const PORT = Number(process.env.PORT || 8080);
@@ -49,11 +50,14 @@ const AI_REQUEST_TIMEOUT_MS = Number(process.env.AI_REQUEST_TIMEOUT_MS || 30_000
 const HTML_FETCH_TIMEOUT_MS = Number(process.env.HTML_FETCH_TIMEOUT_MS || 8_000);
 const HTML_CACHE_TTL_MS = getPositiveIntegerEnv('HTML_CACHE_TTL_MS', 30 * 60_000);
 const HTML_CACHE_MAX_ENTRIES = getPositiveIntegerEnv('HTML_CACHE_MAX_ENTRIES', 200);
+const ANALYSIS_CACHE_TTL_MS = getPositiveIntegerEnv('ANALYSIS_CACHE_TTL_MS', 30 * 60_000);
+const ANALYSIS_CACHE_MAX_ENTRIES = getPositiveIntegerEnv('ANALYSIS_CACHE_MAX_ENTRIES', 200);
 const MAX_HTML_BYTES = Number(process.env.MAX_HTML_BYTES || 500_000);
 const MAX_HTML_REDIRECTS = Number(process.env.MAX_HTML_REDIRECTS || 3);
 
 const PUTER_URL = 'https://api.puter.com/puterai/openai/v1/chat/completions';
 const PUTER_MODEL = process.env.PUTER_MODEL || 'openai/gpt-4o-mini';
+const ANALYSIS_PROMPT_VERSION = 'v1';
 const VISION_URL = 'https://vision.googleapis.com/v1/images:annotate';
 const MAX_MENU_CHARS = Number(process.env.MAX_MENU_CHARS || 20_000);
 const MAX_QUESTION_CHARS = Number(process.env.MAX_QUESTION_CHARS || 1_000);
@@ -61,7 +65,9 @@ const MAX_OCR_BASE64_CHARS = Number(process.env.MAX_OCR_BASE64_CHARS || 1_300_00
 
 const rateBuckets = new Map();
 const htmlCache = new Map();
+const analysisCache = new Map();
 const inFlightHtmlFetches = new Map();
+const inFlightAnalysisRequests = new Map();
 
 function getHtmlCacheKey(url) {
   return url.toString();
@@ -312,6 +318,13 @@ MENU TEXT:
 `;
 }
 
+function getAnalysisCacheKey(menuText, options = {}) {
+  const prompt = buildAnalysisPrompt(menuText, options);
+  return createHash('sha256')
+    .update(JSON.stringify({ model: PUTER_MODEL, promptVersion: ANALYSIS_PROMPT_VERSION, prompt }))
+    .digest('hex');
+}
+
 function buildQuestionPrompt(menuText, question) {
   return `
 You are "FGluten AI", a strictly cautious Celiac Disease dining assistant.
@@ -507,8 +520,27 @@ async function callPuter(prompt) {
 async function handleAnalyze(req, res) {
   const body = await readJson(req);
   const menuText = trimText(body.menuText, MAX_MENU_CHARS, 'menuText');
-  const analysis = await callPuter(buildAnalysisPrompt(menuText, body.options || {}));
-  sendJson(res, 200, { analysis });
+  const options = body.options || {};
+  const cacheKey = getAnalysisCacheKey(menuText, options);
+  const cachedAnalysis = getCachedAnalysis(cacheKey);
+  if (cachedAnalysis) {
+    console.info('Analysis cache hit.');
+    sendJson(res, 200, { analysis: cachedAnalysis }, { 'X-Cache': 'HIT' });
+    return;
+  }
+
+  const { promise, isCoalesced } = getOrCreateInFlightAnalysis(cacheKey, async () => {
+    const analysis = await callPuter(buildAnalysisPrompt(menuText, options));
+    if (analysis) {
+      cacheAnalysis(cacheKey, analysis);
+    }
+
+    return analysis;
+  });
+
+  console.info(isCoalesced ? 'Analysis request coalesced.' : 'Analysis cache miss.');
+  const analysis = await promise;
+  sendJson(res, 200, { analysis }, { 'X-Cache': isCoalesced ? 'COALESCED' : 'MISS' });
 }
 
 async function handleQuestion(req, res) {
@@ -600,6 +632,56 @@ function getOrCreateInFlightHtmlFetch(cacheKey, createFetch) {
   void promise.finally(() => {
     if (inFlightHtmlFetches.get(cacheKey) === promise) {
       inFlightHtmlFetches.delete(cacheKey);
+    }
+  }).catch(() => {});
+
+  return { promise, isCoalesced: false };
+}
+
+function getCachedAnalysis(key) {
+  const entry = analysisCache.get(key);
+  if (!entry) return null;
+
+  if (entry.expiresAt <= Date.now()) {
+    analysisCache.delete(key);
+    return null;
+  }
+
+  return entry.analysis;
+}
+
+function cacheAnalysis(key, analysis) {
+  const now = Date.now();
+
+  for (const [cachedKey, entry] of analysisCache) {
+    if (entry.expiresAt <= now) {
+      analysisCache.delete(cachedKey);
+    }
+  }
+
+  if (!analysisCache.has(key) && analysisCache.size >= ANALYSIS_CACHE_MAX_ENTRIES) {
+    const oldestKey = analysisCache.keys().next().value;
+    analysisCache.delete(oldestKey);
+  }
+
+  analysisCache.set(key, {
+    analysis,
+    expiresAt: now + ANALYSIS_CACHE_TTL_MS,
+  });
+}
+
+function getOrCreateInFlightAnalysis(cacheKey, createAnalysis) {
+  const existingRequest = inFlightAnalysisRequests.get(cacheKey);
+  if (existingRequest) {
+    return { promise: existingRequest, isCoalesced: true };
+  }
+
+  const promise = Promise.resolve().then(createAnalysis);
+  inFlightAnalysisRequests.set(cacheKey, promise);
+
+  void promise.finally(() => {
+    if (inFlightAnalysisRequests.get(cacheKey) === promise) {
+      inFlightAnalysisRequests.delete(cacheKey);
     }
   }).catch(() => {});
 
@@ -710,8 +792,14 @@ export {
   HTML_CACHE_MAX_ENTRIES,
   cacheHtml,
   getCachedHtml,
+  getAnalysisCacheKey,
+  getCachedAnalysis,
+  cacheAnalysis,
+  getOrCreateInFlightAnalysis,
   getPositiveIntegerEnv,
   getOrCreateInFlightHtmlFetch,
   htmlCache,
+  analysisCache,
   inFlightHtmlFetches,
+  inFlightAnalysisRequests,
 };

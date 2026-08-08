@@ -216,6 +216,15 @@ function parsePublicHttpUrl(value) {
   return url;
 }
 
+function getSafeUrlLogDetails(url) {
+  return {
+    protocol: url.protocol,
+    hostname: url.hostname,
+    port: url.port || '(default)',
+    pathname: url.pathname,
+  };
+}
+
 function getSecureCandidateUrl(url) {
   if (url.protocol !== 'http:') return url;
   const secureUrl = new URL(url.toString());
@@ -481,7 +490,7 @@ function logHtmlFetchFailure(url, error) {
   const cause = error?.cause;
 
   console.error('HTML fetch failed', {
-    url: url.toString(),
+    url: getSafeUrlLogDetails(url),
     name: error?.name,
     message: error instanceof Error ? error.message : String(error),
     causeName: cause?.name,
@@ -520,7 +529,7 @@ async function readLimitedText(response) {
 }
 
 async function fetchPublicHtml(url, redirectCount = 0) {
-  if (redirectCount > MAX_HTML_REDIRECTS) {
+  if (redirectCount >= MAX_HTML_REDIRECTS) {
     throw Object.assign(new Error('Too many redirects while fetching HTML.'), { status: 508 });
   }
 
@@ -690,8 +699,8 @@ async function fetchMenuHtmlFromSite(requestedUrl, fetchUrl) {
     }
 
     console.warn('HTML fetch falling back to original HTTP URL after expired HTTPS certificate.', {
-      requestedUrl: requestedUrl.toString(),
-      failedUrl: fetchUrl.toString(),
+      requestedUrl: getSafeUrlLogDetails(requestedUrl),
+      failedUrl: getSafeUrlLogDetails(fetchUrl),
     });
     try {
       return await fetchPublicHtml(requestedUrl);
@@ -882,6 +891,7 @@ export {
   cacheAnalysis,
   createPinnedLookup,
   fetchPinnedWithTimeout,
+  getSafeUrlLogDetails,
   isPrivateIp,
   parsePublicHttpUrl,
   getOrCreateInFlightAnalysis,

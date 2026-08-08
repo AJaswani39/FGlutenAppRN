@@ -517,6 +517,7 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
           ]).finally(() => {
             if (locationTimeout) {
               clearTimeout(locationTimeout);
+              locationTimeout = null;
             }
           });
           if (!isActiveLoadRequest(requestId)) return;

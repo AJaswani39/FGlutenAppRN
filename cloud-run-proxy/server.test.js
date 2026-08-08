@@ -15,6 +15,7 @@ import {
   analysisCache,
   createPinnedLookup,
   fetchPinnedWithTimeout,
+  getSafeUrlLogDetails,
   inFlightHtmlFetches,
   inFlightAnalysisRequests,
   isPrivateIp,
@@ -126,6 +127,18 @@ test('allows standard HTTP and HTTPS ports', () => {
   assert.equal(parsePublicHttpUrl('https://example.com:443/menu').port, '');
   assert.equal(parsePublicHttpUrl('http://example.com/menu').protocol, 'http:');
   assert.equal(parsePublicHttpUrl('https://example.com/menu').protocol, 'https:');
+});
+
+test('safe URL log details omit query strings and fragments', () => {
+  assert.deepEqual(
+    getSafeUrlLogDetails(new URL('https://example.com/menu?token=secret#private-fragment')),
+    {
+      protocol: 'https:',
+      hostname: 'example.com',
+      port: '(default)',
+      pathname: '/menu',
+    },
+  );
 });
 
 test('rejects nonstandard HTTP and HTTPS ports', () => {

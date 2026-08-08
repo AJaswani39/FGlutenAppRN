@@ -8,27 +8,27 @@ const PORT = Number(process.env.PORT || 8080);
 const PUTER_API_KEY = process.env.PUTER_API_KEY || '';
 const VISION_API_KEY = process.env.VISION_API_KEY || '';
 const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || '*';
-const MAX_BODY_BYTES = Number(process.env.MAX_BODY_BYTES || 1_500_000);
+const MAX_BODY_BYTES = getPositiveIntegerEnv('MAX_BODY_BYTES', 1_500_000);
 const DEFAULT_RATE_LIMIT = {
-  requests: Number(process.env.RATE_LIMIT_REQUESTS || 20),
-  windowMs: Number(process.env.RATE_LIMIT_WINDOW_MS || 10 * 60_000),
+  requests: getPositiveIntegerEnv('RATE_LIMIT_REQUESTS', 20),
+  windowMs: getPositiveIntegerEnv('RATE_LIMIT_WINDOW_MS', 10 * 60_000),
 };
 const ENDPOINT_RATE_LIMITS = {
   '/fetch-menu-html': {
-    requests: Number(process.env.HTML_RATE_LIMIT_REQUESTS || 20),
-    windowMs: Number(process.env.HTML_RATE_LIMIT_WINDOW_MS || 10 * 60_000),
+    requests: getPositiveIntegerEnv('HTML_RATE_LIMIT_REQUESTS', 20),
+    windowMs: getPositiveIntegerEnv('HTML_RATE_LIMIT_WINDOW_MS', 10 * 60_000),
   },
   '/analyze-menu': {
-    requests: Number(process.env.ANALYZE_RATE_LIMIT_REQUESTS || 5),
-    windowMs: Number(process.env.ANALYZE_RATE_LIMIT_WINDOW_MS || 10 * 60_000),
+    requests: getPositiveIntegerEnv('ANALYZE_RATE_LIMIT_REQUESTS', 5),
+    windowMs: getPositiveIntegerEnv('ANALYZE_RATE_LIMIT_WINDOW_MS', 10 * 60_000),
   },
   '/ask-menu-question': {
-    requests: Number(process.env.QUESTION_RATE_LIMIT_REQUESTS || 10),
-    windowMs: Number(process.env.QUESTION_RATE_LIMIT_WINDOW_MS || 10 * 60_000),
+    requests: getPositiveIntegerEnv('QUESTION_RATE_LIMIT_REQUESTS', 10),
+    windowMs: getPositiveIntegerEnv('QUESTION_RATE_LIMIT_WINDOW_MS', 10 * 60_000),
   },
   '/ocr-menu-photo': {
-    requests: Number(process.env.OCR_RATE_LIMIT_REQUESTS || 3),
-    windowMs: Number(process.env.OCR_RATE_LIMIT_WINDOW_MS || 10 * 60_000),
+    requests: getPositiveIntegerEnv('OCR_RATE_LIMIT_REQUESTS', 3),
+    windowMs: getPositiveIntegerEnv('OCR_RATE_LIMIT_WINDOW_MS', 10 * 60_000),
   },
 };
 function getPositiveIntegerEnv(name, fallback) {
@@ -46,22 +46,22 @@ function getPositiveIntegerEnv(name, fallback) {
   return value;
 }
 
-const AI_REQUEST_TIMEOUT_MS = Number(process.env.AI_REQUEST_TIMEOUT_MS || 30_000);
-const HTML_FETCH_TIMEOUT_MS = Number(process.env.HTML_FETCH_TIMEOUT_MS || 8_000);
+const AI_REQUEST_TIMEOUT_MS = getPositiveIntegerEnv('AI_REQUEST_TIMEOUT_MS', 30_000);
+const HTML_FETCH_TIMEOUT_MS = getPositiveIntegerEnv('HTML_FETCH_TIMEOUT_MS', 8_000);
 const HTML_CACHE_TTL_MS = getPositiveIntegerEnv('HTML_CACHE_TTL_MS', 30 * 60_000);
 const HTML_CACHE_MAX_ENTRIES = getPositiveIntegerEnv('HTML_CACHE_MAX_ENTRIES', 200);
 const ANALYSIS_CACHE_TTL_MS = getPositiveIntegerEnv('ANALYSIS_CACHE_TTL_MS', 30 * 60_000);
 const ANALYSIS_CACHE_MAX_ENTRIES = getPositiveIntegerEnv('ANALYSIS_CACHE_MAX_ENTRIES', 200);
-const MAX_HTML_BYTES = Number(process.env.MAX_HTML_BYTES || 500_000);
-const MAX_HTML_REDIRECTS = Number(process.env.MAX_HTML_REDIRECTS || 3);
+const MAX_HTML_BYTES = getPositiveIntegerEnv('MAX_HTML_BYTES', 500_000);
+const MAX_HTML_REDIRECTS = getPositiveIntegerEnv('MAX_HTML_REDIRECTS', 3);
 
 const PUTER_URL = 'https://api.puter.com/puterai/openai/v1/chat/completions';
 const PUTER_MODEL = process.env.PUTER_MODEL || 'openai/gpt-4o-mini';
 const ANALYSIS_PROMPT_VERSION = 'v1';
 const VISION_URL = 'https://vision.googleapis.com/v1/images:annotate';
-const MAX_MENU_CHARS = Number(process.env.MAX_MENU_CHARS || 20_000);
-const MAX_QUESTION_CHARS = Number(process.env.MAX_QUESTION_CHARS || 1_000);
-const MAX_OCR_BASE64_CHARS = Number(process.env.MAX_OCR_BASE64_CHARS || 1_300_000);
+const MAX_MENU_CHARS = getPositiveIntegerEnv('MAX_MENU_CHARS', 20_000);
+const MAX_QUESTION_CHARS = getPositiveIntegerEnv('MAX_QUESTION_CHARS', 1_000);
+const MAX_OCR_BASE64_CHARS = getPositiveIntegerEnv('MAX_OCR_BASE64_CHARS', 1_300_000);
 
 const rateBuckets = new Map();
 const htmlCache = new Map();

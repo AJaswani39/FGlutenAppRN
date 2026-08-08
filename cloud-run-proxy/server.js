@@ -203,6 +203,11 @@ function parsePublicHttpUrl(value) {
     throw Object.assign(new Error('url must include a hostname.'), { status: 400 });
   }
 
+  const defaultPort = url.protocol === 'https:' ? '443' : '80';
+  if (url.port && url.port !== defaultPort) {
+    throw Object.assign(new Error('url must use the standard HTTP or HTTPS port.'), { status: 400 });
+  }
+
   url.username = '';
   url.password = '';
   url.hash = '';
@@ -249,6 +254,9 @@ function isPrivateIpv4(address) {
 
 function isPrivateIpv6(address) {
   const normalized = address.toLowerCase();
+  const mappedIpv4 = getMappedIpv4(normalized);
+  if (mappedIpv4) return isPrivateIpv4(mappedIpv4);
+
   return (
     normalized === '::1' ||
     normalized === '::' ||
@@ -259,6 +267,22 @@ function isPrivateIpv6(address) {
     normalized.startsWith('fea') ||
     normalized.startsWith('feb')
   );
+}
+
+function getMappedIpv4(address) {
+  if (!address.startsWith('::ffff:')) return null;
+
+  const suffix = address.slice('::ffff:'.length);
+  if (suffix.includes('.')) return suffix;
+
+  const parts = suffix.split(':');
+  if (parts.length !== 2 || parts.some((part) => !/^[0-9a-f]{1,4}$/.test(part))) {
+    return null;
+  }
+
+  const high = Number.parseInt(parts[0], 16);
+  const low = Number.parseInt(parts[1], 16);
+  return `${high >> 8}.${high & 255}.${low >> 8}.${low & 255}`;
 }
 
 function isPrivateIp(address) {
@@ -795,6 +819,8 @@ export {
   getAnalysisCacheKey,
   getCachedAnalysis,
   cacheAnalysis,
+  isPrivateIp,
+  parsePublicHttpUrl,
   getOrCreateInFlightAnalysis,
   getPositiveIntegerEnv,
   getOrCreateInFlightHtmlFetch,

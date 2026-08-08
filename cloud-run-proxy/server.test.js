@@ -14,6 +14,8 @@ import {
   analysisCache,
   inFlightHtmlFetches,
   inFlightAnalysisRequests,
+  isPrivateIp,
+  parsePublicHttpUrl,
 } from './server.js';
 
 beforeEach(() => {
@@ -48,6 +50,31 @@ test('validates positive integer environment values', () => {
     delete process.env.TEST_CACHE_CONFIG_INVALID;
     delete process.env.TEST_CACHE_CONFIG_ZERO;
   }
+});
+
+test('blocks private IPv4-mapped IPv6 addresses', () => {
+  assert.equal(isPrivateIp('::ffff:127.0.0.1'), true);
+  assert.equal(isPrivateIp('::ffff:7f00:1'), true);
+  assert.equal(isPrivateIp('::ffff:10.0.0.1'), true);
+  assert.equal(isPrivateIp('::ffff:8.8.8.8'), false);
+});
+
+test('allows standard HTTP and HTTPS ports', () => {
+  assert.equal(parsePublicHttpUrl('http://example.com:80/menu').port, '');
+  assert.equal(parsePublicHttpUrl('https://example.com:443/menu').port, '');
+  assert.equal(parsePublicHttpUrl('http://example.com/menu').protocol, 'http:');
+  assert.equal(parsePublicHttpUrl('https://example.com/menu').protocol, 'https:');
+});
+
+test('rejects nonstandard HTTP and HTTPS ports', () => {
+  assert.throws(
+    () => parsePublicHttpUrl('http://example.com:8080/menu'),
+    /standard HTTP or HTTPS port/,
+  );
+  assert.throws(
+    () => parsePublicHttpUrl('https://example.com:8443/menu'),
+    /standard HTTP or HTTPS port/,
+  );
 });
 
 test('creates stable analysis keys for equivalent inputs', () => {

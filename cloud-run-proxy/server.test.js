@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import http from 'node:http';
 import test, { beforeEach } from 'node:test';
 import {
   HTML_CACHE_MAX_ENTRIES,
@@ -12,6 +13,8 @@ import {
   getPositiveIntegerEnv,
   htmlCache,
   analysisCache,
+  createPinnedLookup,
+  fetchPinnedWithTimeout,
   inFlightHtmlFetches,
   inFlightAnalysisRequests,
   isPrivateIp,
@@ -59,6 +62,65 @@ test('blocks private IPv4-mapped IPv6 addresses', () => {
   assert.equal(isPrivateIp('::ffff:8.8.8.8'), false);
 });
 
+test('pinned lookup returns the approved IPv4 record', () => {
+  const lookup = createPinnedLookup([
+    { address: '93.184.216.34', family: 4 },
+    { address: '2606:2800:220:1:248:1893:25c8:1946', family: 6 },
+  ]);
+  let result;
+
+  lookup('example.com', { family: 4 }, (error, address, family) => {
+    result = { error, address, family };
+  });
+
+  assert.deepEqual(result, { error: null, address: '93.184.216.34', family: 4 });
+});
+
+test('pinned lookup supports Node all-record lookup requests', () => {
+  const lookup = createPinnedLookup([{ address: '93.184.216.34', family: 4 }]);
+  let result;
+
+  lookup('example.com', { all: true, family: 4 }, (error, addresses) => {
+    result = { error, addresses };
+  });
+
+  assert.deepEqual(result, {
+    error: null,
+    addresses: [{ address: '93.184.216.34', family: 4 }],
+  });
+});
+
+test('pinned lookup returns the approved IPv6 record when requested', () => {
+  const lookup = createPinnedLookup([
+    { address: '93.184.216.34', family: 4 },
+    { address: '2606:2800:220:1:248:1893:25c8:1946', family: 6 },
+  ]);
+  let result;
+
+  lookup('example.com', { family: 6 }, (error, address, family) => {
+    result = { error, address, family };
+  });
+
+  assert.deepEqual(result, {
+    error: null,
+    address: '2606:2800:220:1:248:1893:25c8:1946',
+    family: 6,
+  });
+});
+
+test('pinned lookup reports an error when no records are approved', () => {
+  const lookup = createPinnedLookup([]);
+  let result;
+
+  lookup('example.com', { family: 4 }, (error, address, family) => {
+    result = { error, address, family };
+  });
+
+  assert.equal(result.address, undefined);
+  assert.equal(result.family, undefined);
+  assert.match(result.error.message, /could not be resolved/);
+});
+
 test('allows standard HTTP and HTTPS ports', () => {
   assert.equal(parsePublicHttpUrl('http://example.com:80/menu').port, '');
   assert.equal(parsePublicHttpUrl('https://example.com:443/menu').port, '');
@@ -75,6 +137,34 @@ test('rejects nonstandard HTTP and HTTPS ports', () => {
     () => parsePublicHttpUrl('https://example.com:8443/menu'),
     /standard HTTP or HTTPS port/,
   );
+});
+
+test('pinned request adapter connects using the approved address', async () => {
+  const server = http.createServer((request, response) => {
+    assert.equal(request.headers.host, 'example.com');
+    response.writeHead(200, { 'content-type': 'text/plain' });
+    response.end('pinned response');
+  });
+
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+
+  try {
+    const { port } = server.address();
+    const response = await fetchPinnedWithTimeout(
+      new URL(`http://example.com:${port}/menu`),
+      [{ address: '127.0.0.1', family: 4 }],
+      { headers: { Host: 'example.com' } },
+    );
+    const reader = response.body.getReader();
+    const { value } = await reader.read();
+
+    assert.equal(response.ok, true);
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get('content-type'), 'text/plain');
+    assert.equal(new TextDecoder().decode(value), 'pinned response');
+  } finally {
+    await new Promise((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
+  }
 });
 
 test('creates stable analysis keys for equivalent inputs', () => {

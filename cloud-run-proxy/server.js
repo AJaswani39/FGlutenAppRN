@@ -1,6 +1,8 @@
 import http from 'node:http';
+import https from 'node:https';
 import dns from 'node:dns/promises';
 import net from 'node:net';
+import { Readable } from 'node:stream';
 import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 
@@ -303,6 +305,29 @@ async function assertPublicHostname(hostname) {
       throw Object.assign(new Error('url resolves to a blocked network address.'), { status: 403 });
     }
   }
+
+  return records;
+}
+
+function createPinnedLookup(records) {
+  return (hostname, options, callback) => {
+    const matchingRecord = records.find(
+      (record) => !options.family || record.family === options.family,
+    );
+    const record = matchingRecord || records[0];
+
+    if (!record) {
+      callback(new Error('url hostname could not be resolved.'));
+      return;
+    }
+
+    if (options.all) {
+      callback(null, [{ address: record.address, family: record.family }]);
+      return;
+    }
+
+    callback(null, record.address, record.family);
+  };
 }
 
 function buildAnalysisPrompt(menuText, options = {}) {
@@ -384,6 +409,42 @@ async function fetchWithTimeout(url, options, timeoutMs = AI_REQUEST_TIMEOUT_MS)
   }
 }
 
+function fetchPinnedWithTimeout(url, records, options, timeoutMs = HTML_FETCH_TIMEOUT_MS) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  const requestModule = url.protocol === 'https:' ? https : http;
+  const requestHeaders = options.headers || {};
+  const requestPath = `${url.pathname}${url.search}`;
+
+  return new Promise((resolve, reject) => {
+    const request = requestModule.request(
+      {
+        hostname: url.hostname,
+        port: url.port || (url.protocol === 'https:' ? 443 : 80),
+        path: requestPath,
+        method: options.method || 'GET',
+        headers: requestHeaders,
+        lookup: createPinnedLookup(records),
+        ...(url.protocol === 'https:' ? { servername: url.hostname } : {}),
+        signal: controller.signal,
+      },
+      (response) => {
+        resolve({
+          ok: response.statusCode >= 200 && response.statusCode < 300,
+          status: response.statusCode,
+          headers: new Headers(response.headers),
+          body: Readable.toWeb(response),
+        });
+      },
+    );
+
+    request.on('error', reject);
+    request.end();
+  }).finally(() => {
+    clearTimeout(timeoutId);
+  });
+}
+
 function isRedirectStatus(status) {
   return status === 301 || status === 302 || status === 303 || status === 307 || status === 308;
 }
@@ -463,14 +524,14 @@ async function fetchPublicHtml(url, redirectCount = 0) {
     throw Object.assign(new Error('Too many redirects while fetching HTML.'), { status: 508 });
   }
 
-  await assertPublicHostname(url.hostname);
+  const records = await assertPublicHostname(url.hostname);
 
   let response;
   try {
-    response = await fetchWithTimeout(
-      url.toString(),
+    response = await fetchPinnedWithTimeout(
+      url,
+      records,
       {
-        redirect: 'manual',
         headers: {
           'User-Agent':
             'Mozilla/5.0 (iPhone; CPU iPhone OS 16_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.5 Mobile/15E148 Safari/604.1',
@@ -819,6 +880,8 @@ export {
   getAnalysisCacheKey,
   getCachedAnalysis,
   cacheAnalysis,
+  createPinnedLookup,
+  fetchPinnedWithTimeout,
   isPrivateIp,
   parsePublicHttpUrl,
   getOrCreateInFlightAnalysis,

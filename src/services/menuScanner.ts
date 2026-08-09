@@ -20,6 +20,17 @@ export interface MenuScanResult {
   menuScanTimestamp: number;
 }
 
+export function canUseBrowserMenuFallback(
+  restaurant: Pick<Restaurant, 'menuScanStatus' | 'menuUrl'>
+): boolean {
+  if (restaurant.menuScanStatus !== 'JS_ONLY' && restaurant.menuScanStatus !== 'NO_MENU_CONTENT') {
+    return false;
+  }
+
+  const menuUrl = normalizeHttpUrl(restaurant.menuUrl);
+  return Boolean(menuUrl?.startsWith('https://'));
+}
+
 export async function scanRestaurantMenu({
   restaurant,
   mapsApiKey,

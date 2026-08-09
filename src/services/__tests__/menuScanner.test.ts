@@ -1,5 +1,5 @@
 import { Restaurant } from '../../types/restaurant';
-import { scanRestaurantMenu } from '../menuScanner';
+import { canUseBrowserMenuFallback, scanRestaurantMenu } from '../menuScanner';
 
 function restaurant(overrides: Partial<Restaurant> = {}): Restaurant {
   return {
@@ -79,6 +79,29 @@ describe('menuScanner', () => {
       menuScanStatus: 'SUCCESS',
       menuScanTimestamp: 456,
     });
+  });
+
+  it('allows browser fallback only for user-actionable interactive menu states', () => {
+    expect(
+      canUseBrowserMenuFallback(
+        restaurant({ menuScanStatus: 'JS_ONLY', menuUrl: 'https://order.example/menu' })
+      )
+    ).toBe(true);
+    expect(
+      canUseBrowserMenuFallback(
+        restaurant({ menuScanStatus: 'NO_MENU_CONTENT', menuUrl: 'https://restaurant.example/menu' })
+      )
+    ).toBe(true);
+    expect(
+      canUseBrowserMenuFallback(
+        restaurant({ menuScanStatus: 'FAILED', menuUrl: 'https://restaurant.example/menu' })
+      )
+    ).toBe(false);
+    expect(
+      canUseBrowserMenuFallback(
+        restaurant({ menuScanStatus: 'JS_ONLY', menuUrl: 'http://order.example/menu' })
+      )
+    ).toBe(false);
   });
 
   it('tries https before falling back to http restaurant websites', async () => {

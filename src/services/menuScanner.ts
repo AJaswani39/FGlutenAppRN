@@ -9,6 +9,7 @@ import {
   hasLikelyMenuContent,
   findMenuLink,
   htmlToTextSegments,
+  normalizeHttpUrl,
 } from '../util/htmlUtils';
 
 export interface MenuScanResult {
@@ -33,15 +34,16 @@ export async function scanRestaurantMenu({
   if (!mapsApiKey || !restaurant.placeId) return null;
 
   // Use existing menuUrl as a hint if available, otherwise fetch from Places API
-  const initialUrl =
+  const websiteCandidate =
     restaurant.menuUrl || (await fetchWebsiteForPlace(restaurant.placeId, mapsApiKey));
+  const initialUrl = normalizeHttpUrl(websiteCandidate);
 
   if (!initialUrl) {
     return {
       menuUrl: null,
       gfMenu: [],
       rawMenuText: null,
-      menuScanStatus: 'NO_WEBSITE',
+      menuScanStatus: websiteCandidate ? 'FAILED' : 'NO_WEBSITE',
       menuScanTimestamp: scanStartedAt,
     };
   }

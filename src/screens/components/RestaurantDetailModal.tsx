@@ -17,6 +17,7 @@ import { Restaurant, FavoriteStatus } from '../../types/restaurant';
 import { formatDistance } from '../../util/formatters';
 
 import { getGfConfidenceLevel, isSameRestaurantIdentity } from '../../util/restaurantUtils';
+import { normalizeHttpUrl } from '../../util/htmlUtils';
 import { useRestaurants } from '../../context/RestaurantContext';
 import { useSettings } from '../../context/SettingsContext';
 import { logger } from '../../util/logger';
@@ -337,10 +338,7 @@ export default function RestaurantDetailModal({ restaurant: initial, useMiles, o
 }
 
 function getSafeExternalUrl(url: string | null): string | null {
-  const trimmed = url?.trim();
-  if (!trimmed) return null;
-  if (/^https?:\/\//i.test(trimmed)) return trimmed;
-  return `http://${trimmed}`;
+  return normalizeHttpUrl(url);
 }
 
 function confidenceMeta(restaurant: Restaurant, colors: ThemeColors) {
@@ -414,6 +412,7 @@ function menuStatusText(r: Restaurant): string {
         ? `✅ Scanned — ${r.gfMenu.length} GF item${r.gfMenu.length !== 1 ? 's' : ''} found`
         : '✅ Scanned — no specific GF items found';
     case 'NO_MENU_CONTENT': return '⚠️ Page loaded — no menu content found';
+    case 'JS_ONLY': return '🌐 Menu requires an interactive website';
     case 'NO_WEBSITE': return '🌐 No website found';
     case 'FAILED': return '⚠️ Could not load menu';
     default: return '⏳ Not yet scanned';

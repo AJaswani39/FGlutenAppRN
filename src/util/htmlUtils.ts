@@ -176,6 +176,20 @@ export function findMenuLink(html: string, baseUrl: string): string | null {
   return candidates[0]?.url || null;
 }
 
+export function normalizeHttpUrl(value: string | null | undefined): string | null {
+  const trimmed = value?.trim();
+  if (!trimmed) return null;
+
+  try {
+    const url = new URL(trimmed);
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') return null;
+    if (!url.hostname) return null;
+    return url.toString();
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Cleans a menu line, removing tags and truncating long fragments.
  */

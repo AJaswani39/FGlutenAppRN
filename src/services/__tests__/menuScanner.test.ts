@@ -97,14 +97,14 @@ describe('menuScanner', () => {
     await expect(
       scanRestaurantMenu({ restaurant: restaurant(), mapsApiKey: 'key', scanStartedAt: 789 })
     ).resolves.toMatchObject({
-      menuUrl: 'http://example.com',
+      menuUrl: 'http://example.com/',
       gfMenu: ['Gluten-free noodles'],
       menuScanStatus: 'SUCCESS',
       menuScanTimestamp: 789,
     });
 
-    expect((global.fetch as jest.Mock).mock.calls[1][0]).toBe('https://example.com');
-    expect((global.fetch as jest.Mock).mock.calls[2][0]).toBe('http://example.com');
+    expect((global.fetch as jest.Mock).mock.calls[1][0]).toBe('https://example.com/');
+    expect((global.fetch as jest.Mock).mock.calls[2][0]).toBe('http://example.com/');
   });
 
   it('does not mark a heading-only page as a successful menu scan', async () => {
@@ -145,5 +145,21 @@ describe('menuScanner', () => {
       rawMenuText: null,
       menuScanStatus: 'NO_MENU_CONTENT',
     });
+  });
+
+  it('rejects malformed website URLs before attempting an HTML fetch', async () => {
+    const result = await scanRestaurantMenu({
+      restaurant: restaurant({ menuUrl: 'javascript:alert(1)' }),
+      mapsApiKey: 'key',
+      scanStartedAt: 902,
+    });
+
+    expect(result).toMatchObject({
+      menuUrl: null,
+      rawMenuText: null,
+      menuScanStatus: 'FAILED',
+      menuScanTimestamp: 902,
+    });
+    expect(global.fetch).not.toHaveBeenCalled();
   });
 });

@@ -139,6 +139,17 @@ export default function MenuAnalysisSheet({ restaurant, onClose }: Props) {
     };
   }, [chatHistory.length]);
 
+  const scrollChatInputIntoView = useCallback(() => {
+    if (chatScrollTimeout.current) {
+      clearTimeout(chatScrollTimeout.current);
+    }
+
+    chatScrollTimeout.current = setTimeout(() => {
+      chatScrollRef.current?.scrollToEnd({ animated: true });
+      chatScrollTimeout.current = null;
+    }, 120);
+  }, []);
+
   const runAnalysis = useCallback(async (text: string) => {
     if (!text.trim()) {
       setError('Please enter or paste menu text to analyse.');
@@ -409,7 +420,7 @@ export default function MenuAnalysisSheet({ restaurant, onClose }: Props) {
     <ModalWrapper onClose={onClose}>
       <KeyboardAvoidingView 
         style={styles.container} 
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
         <View style={styles.header}>
           <View style={styles.handle} />
@@ -611,6 +622,7 @@ export default function MenuAnalysisSheet({ restaurant, onClose }: Props) {
                 value={userQuestion}
                 onChangeText={setUserQuestion}
                 onSubmitEditing={askAi}
+                onFocus={scrollChatInputIntoView}
               />
               <Pressable 
                 style={[styles.askBtn, (!userQuestion.trim() || isAsking) && styles.askBtnDisabled]} 

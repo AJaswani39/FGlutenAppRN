@@ -15,12 +15,16 @@ import {
   htmlCache,
   analysisCache,
   createPinnedLookup,
+  extractPdfText,
   fetchPinnedWithTimeout,
   getSafeUrlLogDetails,
   inFlightHtmlFetches,
   inFlightAnalysisRequests,
+  isImageContentType,
+  isPdfContentType,
   isPrivateIp,
   parsePublicHttpUrl,
+  renderPdfFirstPage,
 } from './server.js';
 
 beforeEach(() => {
@@ -55,6 +59,58 @@ test('validates positive integer environment values', () => {
     delete process.env.TEST_CACHE_CONFIG_INVALID;
     delete process.env.TEST_CACHE_CONFIG_ZERO;
   }
+});
+
+test('recognizes PDF content types', () => {
+  assert.equal(isPdfContentType('application/pdf'), true);
+  assert.equal(isPdfContentType('application/pdf; charset=binary'), true);
+  assert.equal(isPdfContentType('text/html'), false);
+});
+
+test('recognizes image content types', () => {
+  assert.equal(isImageContentType('image/jpeg'), true);
+  assert.equal(isImageContentType('image/png; charset=binary'), true);
+  assert.equal(isImageContentType('application/pdf'), false);
+});
+
+test('extracts embedded text from a PDF and renders a page for OCR fallback', async () => {
+  const text = 'Gluten-Free Pasta $18';
+  const stream = 'BT /F1 18 Tf 72 720 Td (' + text + ') Tj ET';
+  const objects = [
+    '<< /Type /Catalog /Pages 2 0 R >>',
+    '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>',
+    '<< /Length ' + Buffer.byteLength(stream) + ' >>\nstream\n' + stream + '\nendstream',
+    '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
+  ];
+  let pdf = '%PDF-1.4\n';
+  const offsets = [0];
+
+  objects.forEach((object, index) => {
+    offsets.push(Buffer.byteLength(pdf));
+    pdf += String(index + 1) + ' 0 obj\n' + object + '\nendobj\n';
+  });
+
+  const xrefOffset = Buffer.byteLength(pdf);
+  pdf += 'xref\n0 ' + String(objects.length + 1) + '\n0000000000 65535 f \n';
+  offsets.slice(1).forEach((offset) => {
+    pdf += String(offset).padStart(10, '0') + ' 00000 n \n';
+  });
+  pdf += 'trailer\n<< /Size ' + String(objects.length + 1) + ' /Root 1 0 R >>\nstartxref\n' + String(xrefOffset) + '\n%%EOF';
+
+  const extractedText = await extractPdfText(Buffer.from(pdf, 'utf8'));
+  assert.match(extractedText, /Gluten-Free Pasta/);
+
+  const renderedPage = await renderPdfFirstPage(Buffer.from(pdf, 'utf8'));
+  assert.ok(Buffer.isBuffer(renderedPage));
+  assert.ok(renderedPage.byteLength > 0);
+});
+
+test('reports malformed PDFs as unreadable menu content', async () => {
+  await assert.rejects(
+    () => extractPdfText(Buffer.from('not a PDF')),
+    (error) => error.status === 422 && error.message === 'PDF text extraction failed.',
+  );
 });
 
 test('blocks private IPv4-mapped IPv6 addresses', () => {
@@ -189,7 +245,7 @@ test('pinned request adapter aborts when the body stalls after headers', async (
   const server = http.createServer((request, response) => {
     response.writeHead(200, { 'content-type': 'text/plain' });
     response.flushHeaders();
-    setTimeout(() => response.end('late body'), 50);
+    setTimeout(() => response.end('late body'), 250);
   });
 
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
@@ -201,7 +257,7 @@ test('pinned request adapter aborts when the body stalls after headers', async (
       new URL(`http://example.com:${port}/slow-menu`),
       [{ address: '127.0.0.1', family: 4 }],
       {},
-      10,
+      75,
     );
     const reader = response.body.getReader();
 

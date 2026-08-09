@@ -230,7 +230,7 @@ function SafePickCard({
           </Text>
         </View>
         <View style={[styles.safePickScore, { borderColor: scoreTone }]}>
-          <Text style={[styles.safePickScoreValue, { color: scoreTone }]}>{pick.safetyScore.score}</Text>
+          <Text style={[styles.safePickScoreValue, { color: scoreTone }]}>{pick.safetyScore.score ?? '?'}</Text>
           <Text style={styles.safePickScoreLabel}>score</Text>
         </View>
       </View>

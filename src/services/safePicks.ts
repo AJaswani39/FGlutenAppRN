@@ -17,16 +17,21 @@ export function getSafeRestaurantPicks(
   return restaurants
     .map((restaurant) => {
       const safetyScore = getRestaurantSafetyScore(restaurant, { strictCeliac: options.strictCeliac });
-      const rankScore = getRankScore(restaurant, safetyScore.score);
+      const rankScore = getRankScore(restaurant, safetyScore.score ?? 0);
       return {
         restaurant,
         safetyScore,
         rankScore,
-        highlights: getHighlights(restaurant, safetyScore.score),
+        highlights: getHighlights(restaurant, safetyScore.score ?? 0),
       };
     })
     .filter((pick) => pick.restaurant.favoriteStatus !== 'avoid')
-    .filter((pick) => pick.safetyScore.score >= 50 || pick.restaurant.gfMenu.length > 0 || pick.restaurant.favoriteStatus === 'safe')
+    .filter(
+      (pick) =>
+        (pick.safetyScore.score !== null && pick.safetyScore.score >= 50) ||
+        pick.restaurant.gfMenu.length > 0 ||
+        pick.restaurant.favoriteStatus === 'safe'
+    )
     .sort((left, right) => {
       const rankDelta = right.rankScore - left.rankScore;
       if (rankDelta !== 0) return rankDelta;

@@ -2,6 +2,7 @@ import { API_ENDPOINTS } from '../constants';
 import { Restaurant } from '../types/restaurant';
 import { logger } from '../util/logger';
 import { fetchWithTimeout } from '../util/http';
+import { detectMenuSourceFormat } from '../util/htmlUtils';
 
 const DEFAULT_SEARCH_RADIUS_METERS = 5000;
 const MAX_SEARCH_RADIUS_METERS = 20000;
@@ -185,13 +186,14 @@ export async function fetchWebsiteForPlace(placeId: string, apiKey: string): Pro
 }
 
 export async function fetchHtml(url: string, proxyBaseUrl = ''): Promise<string | null> {
-  if (url.toLowerCase().trim().endsWith('.pdf')) {
-    logger.warn(`fetchHtml: Skipping direct PDF menu link: ${url}`);
-    return null;
-  }
-
+  const sourceFormat = detectMenuSourceFormat(url);
   const proxyHtml = await fetchHtmlViaProxy(url, proxyBaseUrl);
   if (proxyHtml) return proxyHtml;
+
+  if (sourceFormat === 'pdf' || sourceFormat === 'image') {
+    logger.warn(`fetchHtml: Skipping ${sourceFormat} menu source: ${url}`);
+    return null;
+  }
 
   const candidates = getHtmlFetchCandidates(url);
   for (const candidate of candidates) {
@@ -209,8 +211,9 @@ export async function fetchHtml(url: string, proxyBaseUrl = ''): Promise<string 
       }
 
       const contentType = response.headers.get('content-type') || '';
-      if (contentType.toLowerCase().includes('application/pdf')) {
-        logger.warn(`fetchHtml: Skipping resolved PDF content-type: ${candidate}`);
+      const resolvedFormat = detectMenuSourceFormat(candidate, contentType);
+      if (resolvedFormat === 'pdf' || resolvedFormat === 'image') {
+        logger.warn(`fetchHtml: Skipping resolved ${resolvedFormat} content-type: ${candidate}`);
         return null;
       }
 

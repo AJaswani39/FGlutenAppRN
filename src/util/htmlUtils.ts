@@ -1,5 +1,25 @@
 import { logger } from './logger';
 
+export type MenuSourceFormat = 'html' | 'pdf' | 'image' | 'javascript' | 'unknown';
+
+export function detectMenuSourceFormat(url: string, contentType = ''): MenuSourceFormat {
+  const normalizedType = contentType.toLowerCase().split(';', 1)[0].trim();
+  if (normalizedType === 'application/pdf') return 'pdf';
+  if (normalizedType.startsWith('image/')) return 'image';
+  if (normalizedType === 'text/html' || normalizedType === 'application/xhtml+xml') return 'html';
+
+  try {
+    const pathname = new URL(url).pathname.toLowerCase();
+    if (/\.pdf$/.test(pathname)) return 'pdf';
+    if (/\.(?:jpg|jpeg|png|gif|webp|heic|avif)$/.test(pathname)) return 'image';
+    if (/\.(?:html?|xhtml)$/.test(pathname)) return 'html';
+  } catch {
+    return 'unknown';
+  }
+
+  return 'unknown';
+}
+
 /**
  * Removes non-content tags like scripts, styles, and navigation from HTML string.
  */
@@ -43,6 +63,11 @@ export function stripNonContentTags(html: string): string {
  */
 export function htmlToTextSegments(html: string): string[] {
   const safeHtml = html.slice(0, 500_000);
+  const structuredMenuSegments = extractStructuredMenuSegments(safeHtml);
+  if (structuredMenuSegments.length >= 2) {
+    return ['Menu', ...structuredMenuSegments];
+  }
+
   const strippedHtml = stripNonContentTags(safeHtml);
   const menuFocusedHtml = extractMenuContainerHtml(strippedHtml);
   const sourceHtml = menuFocusedHtml || strippedHtml;
@@ -74,6 +99,68 @@ export function htmlToTextSegments(html: string): string[] {
     )
     .filter((segment) => !isLikelyNonMenuNoise(segment))
     .filter(segment => segment.length > 2); // Filter out tiny random character fragments
+}
+
+function extractStructuredMenuSegments(html: string): string[] {
+  const jsonLdPattern = /<script\b[^>]*type\s*=\s*["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
+  const segments: string[] = [];
+
+  for (const match of html.matchAll(jsonLdPattern)) {
+    const json = match[1]?.trim();
+    if (!json) continue;
+
+    try {
+      collectStructuredMenuSegments(JSON.parse(json), segments);
+    } catch {
+      // Malformed JSON-LD is common and should fall back to visible HTML parsing.
+    }
+  }
+
+  return Array.from(new Set(segments.map((segment) => segment.trim()).filter(Boolean))).slice(0, 80);
+}
+
+function collectStructuredMenuSegments(value: unknown, segments: string[]): void {
+  if (Array.isArray(value)) {
+    value.forEach((entry) => collectStructuredMenuSegments(entry, segments));
+    return;
+  }
+
+  if (!isRecord(value)) return;
+
+  const types = Array.isArray(value['@type']) ? value['@type'] : [value['@type']];
+  const typeNames = types.filter((type): type is string => typeof type === 'string');
+  const isMenuItem = typeNames.includes('MenuItem');
+  const isMenuSection = typeNames.includes('MenuSection');
+
+  if (isMenuSection && typeof value.name === 'string') {
+    segments.push(value.name);
+  }
+
+  if (isMenuItem && typeof value.name === 'string') {
+    const description = typeof value.description === 'string' ? ' - ' + value.description : '';
+    const price = getStructuredPrice(value.offers);
+    segments.push(value.name + (price ? ' $' + price : '') + description);
+  }
+
+  Object.values(value).forEach((entry) => collectStructuredMenuSegments(entry, segments));
+}
+
+function getStructuredPrice(value: unknown): string | null {
+  if (Array.isArray(value)) {
+    for (const entry of value) {
+      const price = getStructuredPrice(entry);
+      if (price) return price;
+    }
+    return null;
+  }
+
+  if (!isRecord(value)) return null;
+  const price = value.price;
+  return typeof price === 'number' || typeof price === 'string' ? String(price) : null;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
 }
 
 function extractMenuContainerHtml(html: string): string {

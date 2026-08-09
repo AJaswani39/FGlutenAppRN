@@ -2,9 +2,34 @@ import {
   extractGfEvidence,
   extractRawMenuText,
   findMenuLink,
+  detectMenuSourceFormat,
 } from '../htmlUtils';
 
 describe('htmlUtils', () => {
+  it('detects menu source formats from content types and URLs', () => {
+    expect(detectMenuSourceFormat('https://example.com/menu', 'text/html; charset=utf-8')).toBe('html');
+    expect(detectMenuSourceFormat('https://example.com/menu.pdf')).toBe('pdf');
+    expect(detectMenuSourceFormat('https://example.com/menu.png')).toBe('image');
+    expect(detectMenuSourceFormat('https://example.com/menu', 'application/pdf')).toBe('pdf');
+    expect(detectMenuSourceFormat('https://example.com/menu', 'image/jpeg')).toBe('image');
+    expect(detectMenuSourceFormat('not a url')).toBe('unknown');
+  });
+
+  it('prefers explicit menu items from structured JSON-LD data', () => {
+    const html = [
+      '<script type="application/ld+json">',
+      '{"@context":"https://schema.org","@type":"Menu","hasMenuSection":{"@type":"MenuSection","name":"Entrees","hasMenuItem":[{"@type":"MenuItem","name":"Gluten-Free Salmon","description":"Served with roasted vegetables.","offers":{"price":"24"}},{"@type":"MenuItem","name":"Chicken Bowl","offers":{"price":18}}]}}',
+      '</script>',
+      '<p>Download our app for rewards.</p>',
+    ].join('');
+
+    const menuText = extractRawMenuText(html);
+
+    expect(menuText).toContain('Gluten-Free Salmon $24');
+    expect(menuText).toContain('Chicken Bowl $18');
+    expect(menuText).not.toContain('Download our app');
+  });
+
   it('extracts gluten-free evidence from single-line html without duplicates', () => {
     const html =
       '<div><p>Menu</p><p>Gluten-Free Pizza</p><p>gluten free pizza</p><p>Celiac friendly pasta</p></div>';

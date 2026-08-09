@@ -105,4 +105,25 @@ describe('placesRepository', () => {
     expect(global.fetch).toHaveBeenCalledTimes(1);
     expect((global.fetch as jest.Mock).mock.calls[0][0]).toBe('https://restaurant.example/menu');
   });
+
+  it('sends known PDF menu sources to the configured proxy for text extraction', async () => {
+    (global.fetch as jest.Mock).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ html: 'Gluten-Free Pasta $18' }),
+    });
+
+    await expect(fetchHtml('https://restaurant.example/menu.pdf?download=1', 'https://proxy.example')).resolves.toBe(
+      'Gluten-Free Pasta $18'
+    );
+
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+    expect((global.fetch as jest.Mock).mock.calls[0][0]).toBe('https://proxy.example/fetch-menu-html');
+  });
+
+  it('skips known PDF and image menu sources when no proxy is configured', async () => {
+    await expect(fetchHtml('https://restaurant.example/menu.pdf?download=1')).resolves.toBeNull();
+    await expect(fetchHtml('https://restaurant.example/menu.png')).resolves.toBeNull();
+
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
 });

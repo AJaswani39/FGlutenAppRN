@@ -5,6 +5,7 @@ import net from 'node:net';
 import { Readable } from 'node:stream';
 import { createHash } from 'node:crypto';
 import { fileURLToPath, URL } from 'node:url';
+import { PDFParse } from 'pdf-parse';
 
 const PORT = Number(process.env.PORT || 8080);
 const PUTER_API_KEY = process.env.PUTER_API_KEY || '';
@@ -55,6 +56,7 @@ const HTML_CACHE_MAX_ENTRIES = getPositiveIntegerEnv('HTML_CACHE_MAX_ENTRIES', 2
 const ANALYSIS_CACHE_TTL_MS = getPositiveIntegerEnv('ANALYSIS_CACHE_TTL_MS', 30 * 60_000);
 const ANALYSIS_CACHE_MAX_ENTRIES = getPositiveIntegerEnv('ANALYSIS_CACHE_MAX_ENTRIES', 200);
 const MAX_HTML_BYTES = getPositiveIntegerEnv('MAX_HTML_BYTES', 500_000);
+const MAX_PDF_BYTES = getPositiveIntegerEnv('MAX_PDF_BYTES', 5_000_000);
 const MAX_HTML_REDIRECTS = getPositiveIntegerEnv('MAX_HTML_REDIRECTS', 3);
 
 const PUTER_URL = 'https://api.puter.com/puterai/openai/v1/chat/completions';
@@ -64,6 +66,7 @@ const VISION_URL = 'https://vision.googleapis.com/v1/images:annotate';
 const MAX_MENU_CHARS = getPositiveIntegerEnv('MAX_MENU_CHARS', 20_000);
 const MAX_QUESTION_CHARS = getPositiveIntegerEnv('MAX_QUESTION_CHARS', 1_000);
 const MAX_OCR_BASE64_CHARS = getPositiveIntegerEnv('MAX_OCR_BASE64_CHARS', 1_300_000);
+const MAX_REMOTE_OCR_IMAGE_BYTES = Math.floor(MAX_OCR_BASE64_CHARS * 0.75);
 
 const rateBuckets = new Map();
 const htmlCache = new Map();
@@ -489,6 +492,14 @@ function isReadableHtmlContentType(contentType) {
   );
 }
 
+function isPdfContentType(contentType) {
+  return contentType.toLowerCase().includes('application/pdf');
+}
+
+function isImageContentType(contentType) {
+  return contentType.toLowerCase().startsWith('image/');
+}
+
 function getFetchFailureMessage(error) {
   if (error?.name === 'AbortError') {
     return 'HTML fetch timed out.';
@@ -524,9 +535,9 @@ function logHtmlFetchFailure(url, error) {
   });
 }
 
-async function readLimitedText(response) {
+async function readLimitedBuffer(response, maxBytes, tooLargeMessage) {
   if (!response.body) {
-    return '';
+    return Buffer.alloc(0);
   }
 
   const reader = response.body.getReader();
@@ -538,15 +549,60 @@ async function readLimitedText(response) {
     if (done) break;
 
     totalBytes += value.byteLength;
-    if (totalBytes > MAX_HTML_BYTES) {
+    if (totalBytes > maxBytes) {
       await reader.cancel();
-      throw Object.assign(new Error('HTML response is too large.'), { status: 413 });
+      throw Object.assign(new Error(tooLargeMessage), { status: 413 });
     }
 
     chunks.push(value);
   }
 
-  return Buffer.concat(chunks).toString('utf8');
+  return Buffer.concat(chunks);
+}
+
+async function readLimitedText(response) {
+  const buffer = await readLimitedBuffer(response, MAX_HTML_BYTES, 'HTML response is too large.');
+  return buffer.toString('utf8');
+}
+
+async function extractPdfText(pdfBuffer) {
+  const parser = new PDFParse({ data: pdfBuffer });
+
+  try {
+    const result = await parser.getText();
+    const text = String(result.text || '').replace(/\r/g, '').replace(/\n{3,}/g, '\n\n').trim();
+    return text || null;
+  } catch (error) {
+    throw Object.assign(new Error('PDF text extraction failed.'), { status: 422, cause: error });
+  } finally {
+    await parser.destroy();
+  }
+}
+
+async function renderPdfFirstPage(pdfBuffer) {
+  const parser = new PDFParse({ data: pdfBuffer });
+
+  try {
+    const result = await parser.getScreenshot({
+      partial: [1],
+      desiredWidth: 1400,
+      imageDataUrl: false,
+    });
+    const screenshot = result.pages[0];
+    if (!screenshot?.data) return null;
+
+    const imageBuffer = Buffer.from(screenshot.data);
+    if (imageBuffer.byteLength > MAX_REMOTE_OCR_IMAGE_BYTES) {
+      throw Object.assign(new Error('Rendered PDF page is too large for OCR.'), { status: 413 });
+    }
+
+    return imageBuffer;
+  } catch (error) {
+    if (error?.status) throw error;
+    throw Object.assign(new Error('PDF page rendering failed.'), { status: 422, cause: error });
+  } finally {
+    await parser.destroy();
+  }
 }
 
 async function fetchPublicHtml(url, redirectCount = 0) {
@@ -601,6 +657,24 @@ async function fetchPublicHtml(url, redirectCount = 0) {
     }
 
     const contentType = response.headers.get('content-type') || '';
+    if (isPdfContentType(contentType)) {
+      const pdfBuffer = await readLimitedBuffer(response, MAX_PDF_BYTES, 'PDF response is too large.');
+      const pdfText = await extractPdfText(pdfBuffer);
+      if (pdfText) return pdfText;
+
+      const screenshot = await renderPdfFirstPage(pdfBuffer);
+      return screenshot ? extractOcrText(screenshot.toString('base64')) : null;
+    }
+
+    if (isImageContentType(contentType)) {
+      const imageBuffer = await readLimitedBuffer(
+        response,
+        MAX_REMOTE_OCR_IMAGE_BYTES,
+        'Image response is too large for OCR.',
+      );
+      return extractOcrText(imageBuffer.toString('base64'));
+    }
+
     if (!isReadableHtmlContentType(contentType)) {
       await response.body?.cancel();
       return null;
@@ -674,12 +748,16 @@ async function handleQuestion(req, res) {
 }
 
 async function handleOcr(req, res) {
+  const body = await readJson(req);
+  const base64 = trimText(body.base64, MAX_OCR_BASE64_CHARS, 'base64');
+  const text = await extractOcrText(base64);
+  sendJson(res, 200, { text });
+}
+
+async function extractOcrText(base64) {
   if (!VISION_API_KEY) {
     throw Object.assign(new Error('VISION_API_KEY is not configured.'), { status: 500 });
   }
-
-  const body = await readJson(req);
-  const base64 = trimText(body.base64, MAX_OCR_BASE64_CHARS, 'base64');
   const response = await fetchWithTimeout(`${VISION_URL}?key=${encodeURIComponent(VISION_API_KEY)}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -710,7 +788,7 @@ async function handleOcr(req, res) {
     throw Object.assign(new Error('No readable menu text was found in that image.'), { status: 422 });
   }
 
-  sendJson(res, 200, { text });
+  return text;
 }
 
 async function fetchMenuHtmlFromSite(requestedUrl, fetchUrl) {
@@ -920,8 +998,12 @@ export {
   createPinnedLookup,
   fetchPinnedWithTimeout,
   getSafeUrlLogDetails,
+  isImageContentType,
+  isPdfContentType,
   isPrivateIp,
   parsePublicHttpUrl,
+  extractPdfText,
+  renderPdfFirstPage,
   getOrCreateInFlightAnalysis,
   getPositiveIntegerEnv,
   getOrCreateInFlightHtmlFetch,

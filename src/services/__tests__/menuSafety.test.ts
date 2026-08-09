@@ -65,6 +65,10 @@ describe('menuSafety', () => {
     const normal = getRestaurantSafetyScore(base);
     const strict = getRestaurantSafetyScore(base, { strictCeliac: true });
 
+    if (normal.score === null || strict.score === null) {
+      throw new Error('Expected safety scores when menu evidence is available.');
+    }
+
     expect(strict.score).toBeLessThan(normal.score);
     expect(strict.reasons).toContain('Strict mode: cross-contact language detected');
   });

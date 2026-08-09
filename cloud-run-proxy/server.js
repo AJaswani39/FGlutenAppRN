@@ -424,6 +424,7 @@ function fetchPinnedWithTimeout(url, records, options, timeoutMs = HTML_FETCH_TI
   const requestModule = url.protocol === 'https:' ? https : http;
   const requestHeaders = options.headers || {};
   const requestPath = `${url.pathname}${url.search}`;
+  const cleanupTimeout = () => clearTimeout(timeoutId);
 
   return new Promise((resolve, reject) => {
     const request = requestModule.request(
@@ -443,14 +444,16 @@ function fetchPinnedWithTimeout(url, records, options, timeoutMs = HTML_FETCH_TI
           status: response.statusCode,
           headers: new Headers(response.headers),
           body: Readable.toWeb(response),
+          cleanup: cleanupTimeout,
         });
       },
     );
 
-    request.on('error', reject);
+    request.on('error', (error) => {
+      cleanupTimeout();
+      reject(error);
+    });
     request.end();
-  }).finally(() => {
-    clearTimeout(timeoutId);
   });
 }
 
@@ -562,27 +565,34 @@ async function fetchPublicHtml(url, redirectCount = 0) {
     throw Object.assign(new Error(getFetchFailureMessage(error)), { status });
   }
 
-  if (isRedirectStatus(response.status)) {
-    const location = response.headers.get('location');
-    if (!location) {
-      throw Object.assign(new Error('HTML fetch redirect did not include a location.'), { status: 502 });
+  try {
+    if (isRedirectStatus(response.status)) {
+      const location = response.headers.get('location');
+      await response.body?.cancel();
+      if (!location) {
+        throw Object.assign(new Error('HTML fetch redirect did not include a location.'), { status: 502 });
+      }
+
+      const redirectUrl = parsePublicHttpUrl(new URL(location, url).toString());
+      return fetchPublicHtml(redirectUrl, redirectCount + 1);
     }
 
-    const redirectUrl = parsePublicHttpUrl(new URL(location, url).toString());
-    return fetchPublicHtml(redirectUrl, redirectCount + 1);
-  }
+    if (!response.ok) {
+      await response.body?.cancel();
+      throw Object.assign(new Error(`HTML fetch failed with status ${response.status}.`), { status: 502 });
+    }
 
-  if (!response.ok) {
-    throw Object.assign(new Error(`HTML fetch failed with status ${response.status}.`), { status: 502 });
-  }
+    const contentType = response.headers.get('content-type') || '';
+    if (!isReadableHtmlContentType(contentType)) {
+      await response.body?.cancel();
+      return null;
+    }
 
-  const contentType = response.headers.get('content-type') || '';
-  if (!isReadableHtmlContentType(contentType)) {
-    return null;
+    const html = await readLimitedText(response);
+    return html.trim() ? html : null;
+  } finally {
+    response.cleanup();
   }
-
-  const html = await readLimitedText(response);
-  return html.trim() ? html : null;
 }
 
 async function callPuter(prompt) {

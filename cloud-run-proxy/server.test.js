@@ -161,9 +161,10 @@ test('pinned request adapter connects using the approved address', async () => {
 
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
 
+  let response;
   try {
     const { port } = server.address();
-    const response = await fetchPinnedWithTimeout(
+    response = await fetchPinnedWithTimeout(
       new URL(`http://example.com:${port}/menu`),
       [{ address: '127.0.0.1', family: 4 }],
       { headers: { Host: 'example.com' } },
@@ -176,6 +177,7 @@ test('pinned request adapter connects using the approved address', async () => {
     assert.equal(response.headers.get('content-type'), 'text/plain');
     assert.equal(new TextDecoder().decode(value), 'pinned response');
   } finally {
+    response?.cleanup();
     await new Promise((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
   }
 });

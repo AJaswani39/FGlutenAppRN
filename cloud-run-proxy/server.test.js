@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import test, { beforeEach } from 'node:test';
+import { URL } from 'node:url';
 import {
   HTML_CACHE_MAX_ENTRIES,
   cacheHtml,
@@ -169,13 +170,42 @@ test('pinned request adapter connects using the approved address', async () => {
       [{ address: '127.0.0.1', family: 4 }],
       { headers: { Host: 'example.com' } },
     );
-    const reader = response.body.getReader();
-    const { value } = await reader.read();
+    const chunks = [];
+    for await (const chunk of response.rawBody) {
+      chunks.push(chunk);
+    }
 
     assert.equal(response.ok, true);
     assert.equal(response.status, 200);
     assert.equal(response.headers.get('content-type'), 'text/plain');
-    assert.equal(new TextDecoder().decode(value), 'pinned response');
+    assert.equal(Buffer.concat(chunks).toString('utf8'), 'pinned response');
+  } finally {
+    response?.cleanup();
+    await new Promise((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
+  }
+});
+
+test('pinned request adapter aborts when the body stalls after headers', async () => {
+  const server = http.createServer((request, response) => {
+    response.writeHead(200, { 'content-type': 'text/plain' });
+    response.flushHeaders();
+    setTimeout(() => response.end('late body'), 50);
+  });
+
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+
+  let response;
+  try {
+    const { port } = server.address();
+    response = await fetchPinnedWithTimeout(
+      new URL(`http://example.com:${port}/slow-menu`),
+      [{ address: '127.0.0.1', family: 4 }],
+      {},
+      10,
+    );
+    const reader = response.body.getReader();
+
+    await assert.rejects(reader.read(), (error) => error?.name === 'AbortError' || error?.code === 'ABORT_ERR' || /aborted/i.test(error?.message || ''));
   } finally {
     response?.cleanup();
     await new Promise((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));

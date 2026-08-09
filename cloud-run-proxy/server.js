@@ -4,7 +4,7 @@ import dns from 'node:dns/promises';
 import net from 'node:net';
 import { Readable } from 'node:stream';
 import { createHash } from 'node:crypto';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, URL } from 'node:url';
 
 const PORT = Number(process.env.PORT || 8080);
 const PUTER_API_KEY = process.env.PUTER_API_KEY || '';
@@ -339,6 +339,21 @@ function createPinnedLookup(records) {
   };
 }
 
+function createResponseHeaders(rawHeaders) {
+  const normalizedHeaders = new Map(
+    Object.entries(rawHeaders).map(([name, value]) => [
+      name.toLowerCase(),
+      Array.isArray(value) ? value.join(', ') : String(value),
+    ]),
+  );
+
+  return {
+    get(name) {
+      return normalizedHeaders.get(name.toLowerCase()) ?? null;
+    },
+  };
+}
+
 function buildAnalysisPrompt(menuText, options = {}) {
   return `
 You are "FGluten AI", a strictly cautious dietary safety assistant.
@@ -442,8 +457,9 @@ function fetchPinnedWithTimeout(url, records, options, timeoutMs = HTML_FETCH_TI
         resolve({
           ok: response.statusCode >= 200 && response.statusCode < 300,
           status: response.statusCode,
-          headers: new Headers(response.headers),
+          headers: createResponseHeaders(response.headers),
           body: Readable.toWeb(response),
+          rawBody: response,
           cleanup: cleanupTimeout,
         });
       },
@@ -886,7 +902,7 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+if (typeof import.meta.url === 'string' && process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   server.listen(PORT, () => {
     console.log(`FGluten proxy listening on ${PORT}`);
   });

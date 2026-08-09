@@ -277,7 +277,13 @@ function FilterChip({ label, active, onToggle }: { label: string; active: boolea
   const filterStyles = useMemo(() => createFilterStyles(colors), [colors]);
 
   return (
-    <Pressable style={[filterStyles.chip, active && filterStyles.chipActive]} onPress={onToggle}>
+    <Pressable
+      style={[filterStyles.chip, active && filterStyles.chipActive]}
+      onPress={onToggle}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityState={{ selected: active }}
+    >
       <Text style={[filterStyles.chipText, active && filterStyles.chipTextActive]}>{label}</Text>
     </Pressable>
   );

@@ -102,7 +102,12 @@ export default function HomeScreen() {
           <View style={styles.statusContainer}>
             <Text style={styles.statusMessage}>{uiState.message}</Text>
             {uiState.status === 'permission_required' && (
-              <Pressable style={styles.settingsBtn} onPress={handleOpenSettings}>
+              <Pressable
+                style={styles.settingsBtn}
+                onPress={handleOpenSettings}
+                accessibilityRole="button"
+                accessibilityLabel="Open app settings"
+              >
                 <Text style={styles.settingsBtnText}>Open App Settings</Text>
               </Pressable>
             )}
@@ -207,7 +212,12 @@ function SafePickCard({
   const scoreTone = pick.safetyScore.level === 'safe' ? colors.success : colors.warning;
 
   return (
-    <Pressable style={styles.safePickCard} onPress={onPress} accessibilityRole="button">
+    <Pressable
+      style={styles.safePickCard}
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={`Open ${pick.restaurant.name}`}
+    >
       <View style={styles.safePickHeader}>
         <View style={styles.safePickTitleGroup}>
           <Text style={styles.safePickName} numberOfLines={1}>

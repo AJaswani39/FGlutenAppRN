@@ -569,6 +569,7 @@ function createStyles(colors: ThemeColors) {
   },
   closeBtn: {
     position: 'absolute',
+    top: Spacing.sm,
     right: Spacing.md,
     width: TouchTarget.minimum,
     height: TouchTarget.minimum,

@@ -239,7 +239,7 @@ export default function MenuAnalysisSheet({ restaurant, onClose }: Props) {
   const askAi = async () => {
     if (!userQuestion.trim()) return;
 
-    const menuTextForAi = buildAiText();
+    const menuTextForAi = editableText.trim() || restaurant.gfMenu.join('\n');
     if (!menuTextForAi) {
       setError('There is no menu text available to answer questions about this restaurant.');
       return;

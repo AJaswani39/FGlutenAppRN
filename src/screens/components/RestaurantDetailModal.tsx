@@ -55,6 +55,7 @@ export default function RestaurantDetailModal({ restaurant: initial, useMiles, o
   const confidence = confidenceMeta(restaurant, colors);
   const safetyScore = getRestaurantSafetyScore(restaurant, { strictCeliac });
   const safety = safetyMeta(safetyScore.level, colors);
+  const numericSafetyScore = safetyScore.level === 'unknown' ? null : safetyScore.score;
   const diningChecklist = getDiningChecklist(restaurant, {
     strictCeliac,
     safetyLevel: safetyScore.level,
@@ -158,8 +159,8 @@ export default function RestaurantDetailModal({ restaurant: initial, useMiles, o
               <View style={styles.safetyScoreHeader}>
                 <View>
                   <Text style={[styles.safetyScoreValue, { color: safety.color }]}>
-                    {safetyScore.score == null ? '?' : safetyScore.score}
-                    {safetyScore.score == null ? null : <Text style={styles.safetyScoreMax}>/100</Text>}
+                    {numericSafetyScore == null ? '?' : numericSafetyScore}
+                    {numericSafetyScore == null ? null : <Text style={styles.safetyScoreMax}>/100</Text>}
                   </Text>
                   <Text style={[styles.safetyScoreTitle, { color: safety.color }]}>
                     {safety.icon} {safetyScore.title}
@@ -170,7 +171,7 @@ export default function RestaurantDetailModal({ restaurant: initial, useMiles, o
                     style={[
                       styles.safetyMeterFill,
                       {
-                        width: `${safetyScore.score ?? 0}%`,
+                        width: `${numericSafetyScore ?? 0}%`,
                         backgroundColor: safety.color,
                       },
                     ]}

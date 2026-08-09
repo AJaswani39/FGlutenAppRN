@@ -87,6 +87,8 @@ export default function SavedPlacesScreen() {
                   impactAsync(Haptics.ImpactFeedbackStyle.Medium);
                   setFavoriteStatus(item, null);
                 }}
+                accessibilityRole="button"
+                accessibilityLabel={`Remove ${item.name} from saved places`}
               >
                 <Ionicons name="trash" size={24} color={colors.textInverse} />
               </Pressable>

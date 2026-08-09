@@ -126,7 +126,11 @@ export default function HomeScreen() {
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Best Nearby Right Now</Text>
-            <Pressable onPress={() => navigation.dispatch(TabActions.jumpTo('Restaurants'))}>
+            <Pressable
+              onPress={() => navigation.dispatch(TabActions.jumpTo('Restaurants'))}
+              accessibilityRole="button"
+              accessibilityLabel="Explore all restaurants"
+            >
               <Text style={styles.linkText}>Explore all</Text>
             </Pressable>
           </View>
@@ -145,7 +149,11 @@ export default function HomeScreen() {
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Recent Results</Text>
           {hasData ? (
-            <Pressable onPress={() => navigation.dispatch(TabActions.jumpTo('Restaurants'))}>
+            <Pressable
+              onPress={() => navigation.dispatch(TabActions.jumpTo('Restaurants'))}
+              accessibilityRole="button"
+              accessibilityLabel="Explore all restaurants"
+            >
               <Text style={styles.linkText}>Explore all</Text>
             </Pressable>
           ) : null}

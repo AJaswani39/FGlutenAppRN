@@ -396,7 +396,32 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
     loadRequestId.current = requestId;
 
     try {
-      const netInfo = await NetInfo.fetch();
+      let netInfo;
+      try {
+        netInfo = await NetInfo.fetch();
+      } catch (error: unknown) {
+        if (!isActiveLoadRequest(requestId)) return;
+
+        const message = error instanceof Error ? error.message : String(error);
+        logger.warn(`Could not determine network status: ${message}`);
+
+        if (rawRestaurants.current.length > 0) {
+          emitFilteredState({
+            message: 'Could not check the internet connection. Showing cached results.',
+          });
+        } else {
+          setUiState({
+            status: 'error',
+            restaurants: [],
+            message: 'Could not check the internet connection. Please try again.',
+            userLatitude: null,
+            userLongitude: null,
+            scanProgress: null,
+          });
+        }
+        return;
+      }
+
       if (!isActiveLoadRequest(requestId)) return;
 
       const isOnline =

@@ -54,7 +54,12 @@ export const RestaurantSummaryCard = React.memo(
     const Container = onPress ? Pressable : View;
 
     return (
-      <Container style={[styles.card, compact && styles.compactCard]} onPress={onPress}>
+      <Container
+        style={[styles.card, compact && styles.compactCard]}
+        onPress={onPress}
+        accessibilityRole={onPress ? 'button' : undefined}
+        accessibilityLabel={onPress ? `Open ${restaurant.name}` : undefined}
+      >
         <View style={styles.header}>
           <View style={styles.titleGroup}>
             <Text style={styles.name} numberOfLines={1}>

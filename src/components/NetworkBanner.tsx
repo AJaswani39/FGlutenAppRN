@@ -7,7 +7,7 @@ import { ThemeColors, useTheme } from '../context/ThemeContext';
 import { Ionicons } from './ui';
 
 export function NetworkBanner() {
-  const [isConnected, setIsConnected] = useState(true);
+  const [isConnected, setIsConnected] = useState<boolean | null>(null);
   const insets = useSafeAreaInsets();
   const [animation] = useState(new Animated.Value(0));
   const { colors } = useTheme();
@@ -40,7 +40,7 @@ export function NetworkBanner() {
 
   return (
     <Animated.View
-      pointerEvents={isConnected ? 'none' : 'auto'}
+      pointerEvents={isConnected === false ? 'auto' : 'none'}
       style={[
         styles.container,
         {

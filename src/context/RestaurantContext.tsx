@@ -47,6 +47,7 @@ interface RestaurantContextValue {
   loadNearbyRestaurants: (overrideCoords?: { latitude: number; longitude: number }) => Promise<void>;
   setFavoriteStatus: (restaurant: Restaurant, status: FavoriteStatus) => void;
   requestMenuRescan: (restaurant: Restaurant) => void;
+  requestInteractiveMenuRender: (restaurant: Restaurant) => void;
   retryFailedScans: () => void;
   updateAiSession: (
     restaurant: Restaurant,
@@ -637,6 +638,13 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
     []
   );
 
+  const requestInteractiveMenuRender = useCallback(
+    (restaurant: Restaurant) => {
+      void orchestrator.current?.requestInteractiveMenuRender(restaurant);
+    },
+    []
+  );
+
   const retryFailedScans = useCallback(() => {
     void orchestrator.current?.retryFailed(rawRestaurants.current);
   }, []);
@@ -660,10 +668,11 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
       loadNearbyRestaurants,
       setFavoriteStatus,
       requestMenuRescan,
+      requestInteractiveMenuRender,
       retryFailedScans,
       updateAiSession,
     }),
-    [uiState, savedRestaurants, loadNearbyRestaurants, setFavoriteStatus, requestMenuRescan, retryFailedScans, updateAiSession]
+    [uiState, savedRestaurants, loadNearbyRestaurants, setFavoriteStatus, requestMenuRescan, requestInteractiveMenuRender, retryFailedScans, updateAiSession]
   );
 
   return (

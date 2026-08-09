@@ -1,5 +1,5 @@
 import { Restaurant } from '../types/restaurant';
-import { scanRestaurantMenu } from './menuScanner';
+import { scanRestaurantMenu, scanRestaurantMenuWithBrowser } from './menuScanner';
 import { getMenuScanTargets, CONCURRENT_SCAN_LIMIT } from '../context/restaurantState';
 import { getRestaurantIdentityKey } from '../util/restaurantUtils';
 import { logger } from '../util/logger';
@@ -107,6 +107,52 @@ export class ScanOrchestrator {
 
     this.config.onNotifyUI();
     await this.enqueueAndStart([restaurant]);
+  }
+
+  async requestInteractiveMenuRender(restaurant: Restaurant): Promise<void> {
+    const id = restaurant.placeId;
+    if (!id || this.activeScans.has(id) || this.isDestroyed) return;
+
+    this.activeScans.add(id);
+    const scanStartedAt = Date.now();
+
+    try {
+      const started = this.config.onRestaurantUpdate(restaurant, (current) => ({
+        ...current,
+        gfMenu: [],
+        rawMenuText: null,
+        menuScanStatus: 'FETCHING',
+        menuScanTimestamp: scanStartedAt,
+      }));
+      if (!started) return;
+      this.config.onNotifyUI();
+
+      const result = await scanRestaurantMenuWithBrowser({
+        restaurant,
+        scanStartedAt,
+        htmlProxyBaseUrl: this.config.htmlProxyBaseUrl,
+      });
+      if (this.isDestroyed || !result) return;
+
+      const applied = this.config.onRestaurantUpdate(restaurant, (current) => {
+        if (current.menuScanStatus !== 'FETCHING' || current.menuScanTimestamp !== scanStartedAt) {
+          return current;
+        }
+        return { ...current, ...result };
+      });
+      if (applied) this.config.onNotifyUI();
+    } catch (error) {
+      if (this.isDestroyed) return;
+      logger.error('Interactive menu render failed for ' + restaurant.name, error);
+      this.config.onRestaurantUpdate(restaurant, (current) => ({
+        ...current,
+        menuScanStatus: 'NO_MENU_CONTENT',
+        menuScanTimestamp: scanStartedAt,
+      }));
+      this.config.onNotifyUI();
+    } finally {
+      this.activeScans.delete(id);
+    }
   }
 
   /**

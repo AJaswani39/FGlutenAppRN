@@ -227,6 +227,32 @@ export async function fetchHtml(url: string, proxyBaseUrl = ''): Promise<string 
   return null;
 }
 
+export async function fetchRenderedMenuText(url: string, proxyBaseUrl = ''): Promise<string | null> {
+  const trimmedProxyBaseUrl = proxyBaseUrl.trim().replace(/\/+$/, '');
+  if (!trimmedProxyBaseUrl) return null;
+
+  try {
+    const response = await fetchWithTimeout(trimmedProxyBaseUrl + '/render-menu', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url }),
+    });
+    const payload = await response.json().catch(() => null);
+    if (!response.ok) {
+      const message = isRecord(payload) && typeof payload.error === 'string' ? payload.error : response.status;
+      logger.warn('Interactive menu render failed for ' + url + ': ' + message);
+      return null;
+    }
+
+    const text = isRecord(payload) && typeof payload.text === 'string' ? payload.text.trim() : '';
+    return text || null;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    logger.warn('Interactive menu render request failed for ' + url + ': ' + message);
+    return null;
+  }
+}
+
 async function fetchHtmlViaProxy(url: string, proxyBaseUrl: string): Promise<string | null> {
   const trimmedProxyBaseUrl = proxyBaseUrl.trim().replace(/\/+$/, '');
   if (!trimmedProxyBaseUrl) return null;

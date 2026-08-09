@@ -25,6 +25,7 @@ import { IconName, Ionicons } from '../../components/ui';
 import { getRestaurantSafetyScore, MenuSafetyLevel } from '../../services/menuSafety';
 import { getDiningChecklist } from '../../services/diningChecklist';
 import { getCuisineRiskHints } from '../../services/cuisineRiskHints';
+import { canUseBrowserMenuFallback } from '../../services/menuScanner';
 import MenuAnalysisSheet from './MenuAnalysisSheet';
 import { impactAsync } from '../../util/haptics';
 
@@ -35,7 +36,7 @@ interface Props {
 }
 
 export default function RestaurantDetailModal({ restaurant: initial, useMiles, onClose }: Props) {
-  const { uiState, savedRestaurants, setFavoriteStatus, requestMenuRescan } = useRestaurants();
+  const { uiState, savedRestaurants, setFavoriteStatus, requestMenuRescan, requestInteractiveMenuRender } = useRestaurants();
   const { strictCeliac } = useSettings();
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
@@ -52,6 +53,7 @@ export default function RestaurantDetailModal({ restaurant: initial, useMiles, o
   const dist = formatDistance(restaurant.distanceMeters, useMiles);
 
   const safeMenuUrl = getSafeExternalUrl(restaurant.menuUrl);
+  const canOpenInteractiveMenu = canUseBrowserMenuFallback(restaurant);
   const confidence = confidenceMeta(restaurant, colors);
   const safetyScore = getRestaurantSafetyScore(restaurant, { strictCeliac });
   const safety = safetyMeta(safetyScore.level, colors);
@@ -100,6 +102,11 @@ export default function RestaurantDetailModal({ restaurant: initial, useMiles, o
   const handleRescan = () => {
     impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     requestMenuRescan(restaurant);
+  };
+
+  const handleInteractiveMenuRender = () => {
+    impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    requestInteractiveMenuRender(restaurant);
   };
 
   const buildAiText = (): string | null => {
@@ -306,6 +313,14 @@ export default function RestaurantDetailModal({ restaurant: initial, useMiles, o
                 onPress={openMenu}
                 disabled={!safeMenuUrl}
               />
+              {canOpenInteractiveMenu && (
+                <ActionButton
+                  icon="scan"
+                  label="Extract Interactive Menu"
+                  onPress={handleInteractiveMenuRender}
+                  disabled={restaurant.menuScanStatus === 'FETCHING'}
+                />
+              )}
               <ActionButton
                 icon="scan"
                 label="Rescan Menu"

@@ -1,5 +1,5 @@
 import { Restaurant } from '../../types/restaurant';
-import { canUseBrowserMenuFallback, scanRestaurantMenu } from '../menuScanner';
+import { canUseBrowserMenuFallback, scanRestaurantMenu, scanRestaurantMenuWithBrowser } from '../menuScanner';
 
 function restaurant(overrides: Partial<Restaurant> = {}): Restaurant {
   return {
@@ -102,6 +102,31 @@ describe('menuScanner', () => {
         restaurant({ menuScanStatus: 'JS_ONLY', menuUrl: 'http://order.example/menu' })
       )
     ).toBe(false);
+  });
+
+  it('turns explicitly rendered menu text into normal scan evidence', async () => {
+    (global.fetch as jest.Mock).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ text: 'Menu\nGluten-Free Pasta $18\nChicken Bowl $16' }),
+    });
+
+    await expect(
+      scanRestaurantMenuWithBrowser({
+        restaurant: restaurant({
+          menuScanStatus: 'JS_ONLY',
+          menuUrl: 'https://order.example/menu',
+        }),
+        scanStartedAt: 345,
+        htmlProxyBaseUrl: 'https://proxy.example',
+      })
+    ).resolves.toMatchObject({
+      menuUrl: 'https://order.example/menu',
+      gfMenu: ['Gluten-Free Pasta $18'],
+      menuScanStatus: 'SUCCESS',
+      menuScanTimestamp: 345,
+    });
+
+    expect((global.fetch as jest.Mock).mock.calls[0][0]).toBe('https://proxy.example/render-menu');
   });
 
   it('tries https before falling back to http restaurant websites', async () => {

@@ -6,10 +6,14 @@ import {
   HTML_CACHE_MAX_ENTRIES,
   cacheHtml,
   getCachedHtml,
+  getBrowserRenderCacheKey,
+  getOrRenderMenuText,
+  getBrowserResolverRule,
   cacheAnalysis,
   getCachedAnalysis,
   getAnalysisCacheKey,
   getOrCreateInFlightAnalysis,
+  getOrCreateBrowserRender,
   getOrCreateInFlightHtmlFetch,
   getPositiveIntegerEnv,
   htmlCache,
@@ -21,10 +25,12 @@ import {
   inFlightHtmlFetches,
   inFlightAnalysisRequests,
   isImageContentType,
+  isAllowedBrowserRequest,
   isPdfContentType,
   isPrivateIp,
   parsePublicHttpUrl,
   renderPdfFirstPage,
+  renderMenuWithBrowser,
 } from './server.js';
 
 beforeEach(() => {
@@ -409,4 +415,116 @@ test('coalesces concurrent requests for the same uncached URL', async () => {
   assert.equal(fetchCalls, 1);
   await Promise.resolve();
   assert.equal(inFlightHtmlFetches.size, 0);
+});
+
+test('allows one browser render at a time while coalescing duplicates', async () => {
+  let resolveRender;
+  const first = getOrCreateBrowserRender('browser:https://example.com/menu', () => new Promise((resolve) => {
+    resolveRender = resolve;
+  }));
+  const duplicate = getOrCreateBrowserRender('browser:https://example.com/menu', () => Promise.resolve('unused'));
+  const differentUrl = getOrCreateBrowserRender('browser:https://example.com/other', () => Promise.resolve('unused'));
+
+  assert.equal(first.isBusy, false);
+  assert.equal(first.isCoalesced, false);
+  assert.equal(duplicate.isCoalesced, true);
+  assert.strictEqual(duplicate.promise, first.promise);
+  assert.equal(differentUrl.isBusy, true);
+
+  await Promise.resolve();
+  resolveRender('rendered menu');
+  assert.equal(await first.promise, 'rendered menu');
+
+  await Promise.resolve();
+  const later = getOrCreateBrowserRender('browser:https://example.com/other', () => Promise.resolve('next render'));
+  assert.equal(later.isBusy, false);
+  assert.equal(await later.promise, 'next render');
+});
+
+test('uses a separate cache namespace for browser-rendered text', () => {
+  assert.equal(getBrowserRenderCacheKey(new URL('https://example.com/menu')), 'browser:https://example.com/menu');
+});
+
+test('only permits same-host HTTPS browser requests', () => {
+  assert.equal(isAllowedBrowserRequest('https://menu.example/dishes', 'menu.example'), true);
+  assert.equal(isAllowedBrowserRequest('http://menu.example/dishes', 'menu.example'), false);
+  assert.equal(isAllowedBrowserRequest('https://cdn.example/menu.js', 'menu.example'), false);
+  assert.equal(isAllowedBrowserRequest('not a URL', 'menu.example'), false);
+});
+
+test('pins the browser hostname to an approved DNS record', () => {
+  assert.equal(
+    getBrowserResolverRule('menu.example', [{ address: '93.184.216.34', family: 4 }]),
+    'MAP menu.example 93.184.216.34,EXCLUDE localhost',
+  );
+});
+
+test('renders visible menu text and closes the browser', async () => {
+  let closeCalls = 0;
+  let launchOptions;
+  let requestHandler;
+  const browser = {
+    newPage: async () => ({
+      setRequestInterception: async () => {},
+      on: (event, handler) => {
+        if (event === 'request') requestHandler = handler;
+      },
+      goto: async () => {},
+      waitForNetworkIdle: async () => {},
+      evaluate: async () => 'Menu\n\n\nGluten-Free Pasta\n$18',
+    }),
+    close: async () => {
+      closeCalls += 1;
+    },
+  };
+
+  const text = await renderMenuWithBrowser(new URL('https://menu.example/dishes'), {
+    launchBrowser: async (options) => {
+      launchOptions = options;
+      return browser;
+    },
+    resolveHostname: async () => [{ address: '93.184.216.34', family: 4 }],
+    timeoutMs: 100,
+  });
+
+  assert.equal(text, 'Menu\n\nGluten-Free Pasta\n$18');
+  assert.match(launchOptions.args.join(' '), /--host-resolver-rules=MAP menu\.example 93\.184\.216\.34/);
+  assert.equal(closeCalls, 1);
+
+  let aborted = false;
+  requestHandler({
+    resourceType: () => 'image',
+    url: () => 'https://menu.example/banner.jpg',
+    abort: async () => {
+      aborted = true;
+    },
+    continue: async () => {},
+  });
+  assert.equal(aborted, true);
+});
+
+test('caches and coalesces interactive menu renders', async () => {
+  let resolveRender;
+  let renderCalls = 0;
+  const url = new URL('https://menu.example/dishes');
+  const pendingRender = new Promise((resolve) => {
+    resolveRender = resolve;
+  });
+
+  const first = getOrRenderMenuText(url, () => {
+    renderCalls += 1;
+    return pendingRender;
+  });
+  const duplicate = getOrRenderMenuText(url, () => {
+    renderCalls += 1;
+    return pendingRender;
+  });
+
+  await Promise.resolve();
+  resolveRender('Gluten-Free Pasta');
+
+  assert.deepEqual(await first, { text: 'Gluten-Free Pasta', cacheStatus: 'MISS' });
+  assert.deepEqual(await duplicate, { text: 'Gluten-Free Pasta', cacheStatus: 'COALESCED' });
+  assert.equal(renderCalls, 1);
+  assert.deepEqual(await getOrRenderMenuText(url), { text: 'Gluten-Free Pasta', cacheStatus: 'HIT' });
 });

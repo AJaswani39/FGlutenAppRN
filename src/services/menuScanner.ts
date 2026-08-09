@@ -1,6 +1,7 @@
 import { Restaurant } from '../types/restaurant';
 import {
   fetchHtml,
+  fetchRenderedMenuText,
   fetchWebsiteForPlace,
 } from '../data/placesRepository';
 import {
@@ -29,6 +30,38 @@ export function canUseBrowserMenuFallback(
 
   const menuUrl = normalizeHttpUrl(restaurant.menuUrl);
   return Boolean(menuUrl?.startsWith('https://'));
+}
+
+export async function scanRestaurantMenuWithBrowser({
+  restaurant,
+  scanStartedAt,
+  htmlProxyBaseUrl = '',
+}: {
+  restaurant: Restaurant;
+  scanStartedAt: number;
+  htmlProxyBaseUrl?: string;
+}): Promise<MenuScanResult | null> {
+  if (!canUseBrowserMenuFallback(restaurant)) return null;
+
+  const menuUrl = normalizeHttpUrl(restaurant.menuUrl);
+  if (!menuUrl) return null;
+
+  const renderedText = await fetchRenderedMenuText(menuUrl, htmlProxyBaseUrl);
+  const segments = renderedText ? htmlToTextSegments(renderedText) : [];
+  const [gfMenu, rawMenuText] = await Promise.all([
+    Promise.resolve(renderedText ? extractGfEvidence(segments) : []),
+    Promise.resolve(renderedText ? extractRawMenuText(segments) : null),
+  ]);
+  const hasMenuContent = renderedText ? hasLikelyMenuContent(segments) : false;
+  const usableMenuText = hasMenuContent ? rawMenuText : null;
+
+  return {
+    menuUrl,
+    gfMenu,
+    rawMenuText: usableMenuText,
+    menuScanStatus: usableMenuText ? 'SUCCESS' : 'NO_MENU_CONTENT',
+    menuScanTimestamp: scanStartedAt,
+  };
 }
 
 export async function scanRestaurantMenu({

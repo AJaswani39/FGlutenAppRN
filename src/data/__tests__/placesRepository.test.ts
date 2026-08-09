@@ -1,4 +1,4 @@
-import { clearNearbySessionCache, fetchHtml, fetchNearbyRestaurants } from '../placesRepository';
+import { clearNearbySessionCache, fetchHtml, fetchNearbyRestaurants, fetchRenderedMenuText } from '../placesRepository';
 
 describe('placesRepository', () => {
   beforeEach(() => {
@@ -50,6 +50,23 @@ describe('placesRepository', () => {
     expect((global.fetch as jest.Mock).mock.calls[0][0]).toBe('https://proxy.example/fetch-menu-html');
     expect(JSON.parse((global.fetch as jest.Mock).mock.calls[0][1].body)).toEqual({
       url: 'http://restaurant.example/menu',
+    });
+  });
+
+  it('requests rendered menu text only through the configured proxy', async () => {
+    (global.fetch as jest.Mock).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ text: 'Menu\nGluten-Free Pasta $18' }),
+    });
+
+    await expect(
+      fetchRenderedMenuText('https://restaurant.example/interactive-menu', 'https://proxy.example/')
+    ).resolves.toBe('Menu\nGluten-Free Pasta $18');
+
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+    expect((global.fetch as jest.Mock).mock.calls[0][0]).toBe('https://proxy.example/render-menu');
+    expect(JSON.parse((global.fetch as jest.Mock).mock.calls[0][1].body)).toEqual({
+      url: 'https://restaurant.example/interactive-menu',
     });
   });
 

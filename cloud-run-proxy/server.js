@@ -6,6 +6,7 @@ import { Readable } from 'node:stream';
 import { createHash } from 'node:crypto';
 import { fileURLToPath, URL } from 'node:url';
 import { PDFParse } from 'pdf-parse';
+import puppeteer from 'puppeteer-core';
 
 const PORT = Number(process.env.PORT || 8080);
 const PUTER_API_KEY = process.env.PUTER_API_KEY || '';
@@ -33,6 +34,10 @@ const ENDPOINT_RATE_LIMITS = {
     requests: getPositiveIntegerEnv('OCR_RATE_LIMIT_REQUESTS', 3),
     windowMs: getPositiveIntegerEnv('OCR_RATE_LIMIT_WINDOW_MS', 10 * 60_000),
   },
+  '/render-menu': {
+    requests: getPositiveIntegerEnv('BROWSER_RENDER_RATE_LIMIT_REQUESTS', 2),
+    windowMs: getPositiveIntegerEnv('BROWSER_RENDER_RATE_LIMIT_WINDOW_MS', 10 * 60_000),
+  },
 };
 function getPositiveIntegerEnv(name, fallback) {
   const rawValue = process.env[name];
@@ -58,6 +63,7 @@ const ANALYSIS_CACHE_MAX_ENTRIES = getPositiveIntegerEnv('ANALYSIS_CACHE_MAX_ENT
 const MAX_HTML_BYTES = getPositiveIntegerEnv('MAX_HTML_BYTES', 500_000);
 const MAX_PDF_BYTES = getPositiveIntegerEnv('MAX_PDF_BYTES', 5_000_000);
 const MAX_HTML_REDIRECTS = getPositiveIntegerEnv('MAX_HTML_REDIRECTS', 3);
+const BROWSER_RENDER_TIMEOUT_MS = getPositiveIntegerEnv('BROWSER_RENDER_TIMEOUT_MS', 8_000);
 
 const PUTER_URL = 'https://api.puter.com/puterai/openai/v1/chat/completions';
 const PUTER_MODEL = process.env.PUTER_MODEL || 'openai/gpt-4o-mini';
@@ -73,9 +79,33 @@ const htmlCache = new Map();
 const analysisCache = new Map();
 const inFlightHtmlFetches = new Map();
 const inFlightAnalysisRequests = new Map();
+let activeBrowserRender = null;
 
 function getHtmlCacheKey(url) {
   return url.toString();
+}
+
+function getBrowserRenderCacheKey(url) {
+  return 'browser:' + url.toString();
+}
+
+function isAllowedBrowserRequest(requestUrl, allowedHostname) {
+  try {
+    const url = parsePublicHttpUrl(requestUrl);
+    return url.protocol === 'https:' && url.hostname === allowedHostname;
+  } catch {
+    return false;
+  }
+}
+
+function getBrowserResolverRule(hostname, records) {
+  const record = records.find((entry) => entry.family === 4) || records[0];
+  if (!record) {
+    throw Object.assign(new Error('Browser render hostname could not be resolved.'), { status: 502 });
+  }
+
+  const address = record.family === 6 ? '[' + record.address + ']' : record.address;
+  return 'MAP ' + hostname + ' ' + address + ',EXCLUDE localhost';
 }
 
 function getCachedHtml(key) {
@@ -108,6 +138,45 @@ function cacheHtml(key, html) {
     html,
     expiresAt: now + HTML_CACHE_TTL_MS,
   });
+}
+
+function getOrCreateBrowserRender(cacheKey, createRender) {
+  if (activeBrowserRender) {
+    if (activeBrowserRender.cacheKey === cacheKey) {
+      return { promise: activeBrowserRender.promise, isCoalesced: true, isBusy: false };
+    }
+
+    return { promise: null, isCoalesced: false, isBusy: true };
+  }
+
+  const promise = Promise.resolve().then(createRender);
+  activeBrowserRender = { cacheKey, promise };
+
+  void promise.finally(() => {
+    if (activeBrowserRender?.promise === promise) {
+      activeBrowserRender = null;
+    }
+  }).catch(() => {});
+
+  return { promise, isCoalesced: false, isBusy: false };
+}
+
+async function runWithTimeout(createTask, timeoutMs, message, onTimeout) {
+  let timeoutId;
+
+  try {
+    return await Promise.race([
+      Promise.resolve().then(createTask),
+      new Promise((_, reject) => {
+        timeoutId = setTimeout(() => {
+          onTimeout?.();
+          reject(Object.assign(new Error(message), { status: 504 }));
+        }, timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
+  }
 }
 
 function sendJson(res, status, payload, headers = {}) {
@@ -687,6 +756,106 @@ async function fetchPublicHtml(url, redirectCount = 0) {
   }
 }
 
+async function renderMenuWithBrowser(
+  url,
+  {
+    launchBrowser = (options) => puppeteer.launch(options),
+    resolveHostname = assertPublicHostname,
+    timeoutMs = BROWSER_RENDER_TIMEOUT_MS,
+  } = {},
+) {
+  if (url.protocol !== 'https:') {
+    throw Object.assign(new Error('Browser rendering requires an HTTPS URL.'), { status: 400 });
+  }
+
+  const records = await resolveHostname(url.hostname);
+  const resolverRule = getBrowserResolverRule(url.hostname, records);
+  let browser;
+
+  try {
+    return await runWithTimeout(
+      async () => {
+        browser = await launchBrowser({
+          headless: true,
+          executablePath: process.env.PUPPETEER_EXECUTABLE_PATH,
+          args: [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage',
+            '--host-resolver-rules=' + resolverRule,
+          ],
+        });
+        const page = await browser.newPage();
+        await page.setRequestInterception(true);
+        page.on('request', (request) => {
+          const resourceType = request.resourceType();
+          const isBlockedResource = ['image', 'media', 'font', 'manifest'].includes(resourceType);
+          if (isBlockedResource || !isAllowedBrowserRequest(request.url(), url.hostname)) {
+            void request.abort('blockedbyclient');
+            return;
+          }
+
+          void request.continue();
+        });
+
+        await page.goto(url.toString(), { waitUntil: 'domcontentloaded', timeout: timeoutMs });
+        await page.waitForNetworkIdle({ idleTime: 400, timeout: Math.min(1_500, timeoutMs) }).catch(() => {});
+        const text = await page.evaluate(() => document.body?.innerText || '');
+        const normalized = String(text).replace(/\r/g, '').replace(/\n{3,}/g, '\n\n').trim();
+        return normalized ? normalized.slice(0, MAX_MENU_CHARS) : null;
+      },
+      timeoutMs,
+      'Browser menu render timed out.',
+      () => {
+        void browser?.close().catch(() => {});
+      },
+    );
+  } catch (error) {
+    if (error?.status) throw error;
+    const cause = error?.cause;
+    console.error('Browser menu render failed', {
+      url: getSafeUrlLogDetails(url),
+      name: error?.name,
+      message: error instanceof Error ? error.message : String(error),
+      causeName: cause?.name,
+      causeMessage: cause?.message,
+      causeCode: cause?.code,
+    });
+    throw Object.assign(new Error('Browser menu render failed.'), { status: 502, cause: error });
+  } finally {
+    await browser?.close().catch(() => {});
+  }
+}
+
+async function getOrRenderMenuText(url, renderMenu = renderMenuWithBrowser) {
+  const cacheKey = getBrowserRenderCacheKey(url);
+  const cachedText = getCachedHtml(cacheKey);
+  if (cachedText) {
+    return { text: cachedText, cacheStatus: 'HIT' };
+  }
+
+  const render = getOrCreateBrowserRender(cacheKey, async () => {
+    const text = await renderMenu(url);
+    if (!text) {
+      throw Object.assign(new Error('No readable menu text was found after browser rendering.'), { status: 422 });
+    }
+
+    cacheHtml(cacheKey, text);
+    return text;
+  });
+
+  if (render.isBusy) {
+    throw Object.assign(new Error('An interactive menu render is already in progress. Please try again shortly.'), {
+      status: 429,
+    });
+  }
+
+  return {
+    text: await render.promise,
+    cacheStatus: render.isCoalesced ? 'COALESCED' : 'MISS',
+  };
+}
+
 async function callPuter(prompt) {
   if (!PUTER_API_KEY) {
     throw Object.assign(new Error('PUTER_API_KEY is not configured.'), { status: 500 });
@@ -917,6 +1086,17 @@ async function handleFetchMenuHtml(req, res) {
   sendJson(res, 200, { html }, { 'X-Cache': isCoalesced ? 'COALESCED' : 'MISS' });
 }
 
+async function handleRenderMenu(req, res) {
+  const body = await readJson(req);
+  const url = parsePublicHttpUrl(trimText(body.url, 2_000, 'url'));
+  if (url.protocol !== 'https:') {
+    throw Object.assign(new Error('Browser rendering requires an HTTPS URL.'), { status: 400 });
+  }
+
+  const { text, cacheStatus } = await getOrRenderMenuText(url);
+  sendJson(res, 200, { text }, { 'X-Cache': cacheStatus });
+}
+
 const server = http.createServer(async (req, res) => {
   try {
     if (req.method === 'OPTIONS') {
@@ -968,6 +1148,11 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    if (req.url === '/render-menu') {
+      await handleRenderMenu(req, res);
+      return;
+    }
+
     sendJson(res, 404, { error: 'Not found.' });
   } catch (error) {
     const status = Number(error?.status || 500);
@@ -992,6 +1177,9 @@ export {
   HTML_CACHE_MAX_ENTRIES,
   cacheHtml,
   getCachedHtml,
+  getBrowserRenderCacheKey,
+  getOrRenderMenuText,
+  getBrowserResolverRule,
   getAnalysisCacheKey,
   getCachedAnalysis,
   cacheAnalysis,
@@ -999,12 +1187,15 @@ export {
   fetchPinnedWithTimeout,
   getSafeUrlLogDetails,
   isImageContentType,
+  isAllowedBrowserRequest,
   isPdfContentType,
   isPrivateIp,
   parsePublicHttpUrl,
   extractPdfText,
   renderPdfFirstPage,
+  renderMenuWithBrowser,
   getOrCreateInFlightAnalysis,
+  getOrCreateBrowserRender,
   getPositiveIntegerEnv,
   getOrCreateInFlightHtmlFetch,
   htmlCache,

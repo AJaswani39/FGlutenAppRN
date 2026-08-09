@@ -61,6 +61,95 @@ describe('htmlUtils', () => {
     expect(menuText).not.toContain('Revoke Cookie Consent');
   });
 
+  it('filters visible promotional utility copy from extracted menu text', () => {
+    const html = `
+      <main>
+        <h1>Menu</h1>
+        <p>Download the Topgolf app for exclusive offers.</p>
+        <p>Gluten-free chicken bowl $18</p>
+      </main>
+    `;
+
+    const menuText = extractRawMenuText(html);
+
+    expect(menuText).toContain('Gluten-free chicken bowl $18');
+    expect(menuText).not.toContain('Download the Topgolf app');
+  });
+
+  it('prioritizes clearly labeled menu containers over unrelated page copy', () => {
+    const html = `
+      <main>
+        <p>Download the Topgolf app for exclusive offers.</p>
+        <section class="restaurant-menu">
+          <h2>Menu</h2>
+          <p>Gluten-free chicken bowl $18</p>
+        </section>
+        <p>Join our rewards program.</p>
+      </main>
+    `;
+
+    const menuText = extractRawMenuText(html);
+
+    expect(menuText).toContain('Gluten-free chicken bowl $18');
+    expect(menuText).not.toContain('rewards program');
+  });
+
+  it('prioritizes dish and price lines inside a menu section', () => {
+    const html = `
+      <main>
+        <h1>Menu</h1>
+        <p>Welcome to our restaurant and enjoy a memorable experience.</p>
+        <p>Appetizers</p>
+        <p>Gluten-free chicken bowl $18</p>
+        <p>Chocolate cake $9</p>
+      </main>
+    `;
+
+    const menuText = extractRawMenuText(html);
+
+    expect(menuText).toContain('Gluten-free chicken bowl $18');
+    expect(menuText).toContain('Chocolate cake $9');
+    expect(menuText).not.toContain('Welcome to our restaurant');
+  });
+
+  it('keeps useful descriptions adjacent to menu items', () => {
+    const html = `
+      <main>
+        <h1>Menu</h1>
+        <p>Gluten-free chicken bowl $18</p>
+        <p>Served with roasted vegetables and a dairy-free herb sauce.</p>
+        <p>Download our app for rewards.</p>
+        <p>Chocolate cake $9</p>
+      </main>
+    `;
+
+    const menuText = extractRawMenuText(html);
+
+    expect(menuText).toContain('Gluten-free chicken bowl $18');
+    expect(menuText).toContain('dairy-free herb sauce');
+    expect(menuText).toContain('Chocolate cake $9');
+    expect(menuText).not.toContain('Download our app');
+  });
+
+  it('filters obvious marketing and contact copy from menu text', () => {
+    const html = `
+      <main>
+        <h1>Menu</h1>
+        <p>Welcome to our restaurant.</p>
+        <p>Limited-time special offer: join our rewards program.</p>
+        <p>Gluten-free pasta $16</p>
+        <p>Contact us for hours and locations.</p>
+      </main>
+    `;
+
+    const menuText = extractRawMenuText(html);
+
+    expect(menuText).toContain('Gluten-free pasta $16');
+    expect(menuText).not.toContain('Welcome to our restaurant');
+    expect(menuText).not.toContain('special offer');
+    expect(menuText).not.toContain('Contact us');
+  });
+
   it('does not use CSS-like fallback text as menu content', () => {
     const html = `
       <div>OUR MENU Zyka .sZzeLbv .sTeeFV</div>

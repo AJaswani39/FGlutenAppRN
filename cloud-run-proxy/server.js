@@ -407,6 +407,8 @@ CRITICAL RULES:
 1. If the user's QUESTION is not related to the MENU, food, dining, or allergies, politely refuse.
 2. You are forbidden from writing code, scripts, or performing non-dining tasks.
 3. Be conservative and prioritize health and safety.
+4. Answer the user's QUESTION directly using the MENU as your primary source of evidence.
+5. If the MENU does not contain enough information, say that clearly and explain what is missing. Do not give a generic assistant response.
 
 MENU:
 """

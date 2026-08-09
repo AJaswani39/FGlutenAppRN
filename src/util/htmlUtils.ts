@@ -43,7 +43,10 @@ export function stripNonContentTags(html: string): string {
  */
 export function htmlToTextSegments(html: string): string[] {
   const safeHtml = html.slice(0, 500_000);
-  const withBreaks = stripNonContentTags(safeHtml)
+  const strippedHtml = stripNonContentTags(safeHtml);
+  const menuFocusedHtml = extractMenuContainerHtml(strippedHtml);
+  const sourceHtml = menuFocusedHtml || strippedHtml;
+  const withBreaks = sourceHtml
     .replace(
       /<(?:br\s*\/?|\/p|\/div|\/li|\/ul|\/ol|\/section|\/article|\/tr|\/table|\/h[1-6])>/gi,
       '\n'
@@ -71,6 +74,12 @@ export function htmlToTextSegments(html: string): string[] {
     )
     .filter((segment) => !isLikelyNonMenuNoise(segment))
     .filter(segment => segment.length > 2); // Filter out tiny random character fragments
+}
+
+function extractMenuContainerHtml(html: string): string {
+  const menuContainerPattern = /<([a-z][\w-]*)\b[^>]*(?:class|id)\s*=\s*["'][^"']*\b(?:menu|food|entrees?|appetizers?|desserts?|drinks?|beverages?)\b[^"']*["'][^>]*>[\s\S]*?<\/\1>/gi;
+  const blocks = Array.from(html.matchAll(menuContainerPattern), (match) => match[0]);
+  return blocks.join('\n');
 }
 
 function decodeHtmlEntity(entity: string): string {
@@ -105,11 +114,19 @@ function isLikelyNonMenuNoise(segment: string): boolean {
   const cssClassTokens = segment.match(/\.[A-Za-z_-][\w-]*/g) || [];
   const cssPropertyTokens = segment.match(/\b(?:display|position|font-family|background-color|padding|margin)\s*:/gi) || [];
   const cssKeywordTokens = segment.match(/\b(?:font-family|background-color|justify-content|align-items|flex-direction)\b/gi) || [];
+  const utilityCopy = /^(?:download|get|install|join|sign\s+up|follow|book|reserve|view|learn)\b.*\b(?:app|application|newsletter|rewards?|gift cards?|careers?|jobs?|reservations?)\b/i.test(
+    segment,
+  );
+  const marketingCopy = /^(?:welcome|visit\s+us|find\s+us|contact\s+us|our\s+locations?|hours?|learn\s+more|subscribe)\b|\b(?:limited[- ]time|special\s+offer|now\s+available|join\s+our)\b/i.test(
+    segment,
+  );
 
   return (
     cssClassTokens.length >= 2 ||
     cssPropertyTokens.length >= 1 ||
     cssKeywordTokens.length >= 1 ||
+    utilityCopy ||
+    marketingCopy ||
     /^(?:var\(|@media\b|@font-face\b|from\s+['"]|import\s+)/i.test(segment)
   );
 }
@@ -224,11 +241,51 @@ export function findMainContent(segments: string[]): string {
       menuIndicators.slice(1).some((indicator) => new RegExp(`^${indicator}s?\\b`, 'i').test(lower));
 
     if (isMenuHeading && segments[index].length < 60) {
-      return segments.slice(index, Math.min(index + 80, segments.length)).join('\n');
+      const block = segments.slice(index, Math.min(index + 80, segments.length));
+      const focusedItems = block.slice(1).filter(isLikelyMenuItem);
+      if (focusedItems.length >= 2) {
+        return [block[0], ...includeMenuDescriptions(block)].join('\n');
+      }
+      return block.join('\n');
     }
   }
 
   return '';
+}
+
+function isLikelyMenuItem(segment: string): boolean {
+  if (segment.length < 4 || segment.length > 160) return false;
+  if (/(?:\$\s?\d+(?:\.\d{1,2})?|\b\d+(?:\.\d{1,2})?\s?(?:usd|dollars?)\b)/i.test(segment)) return true;
+  if (/^(?:appetizers?|entrees?|mains?|desserts?|drinks?|beverages?|sides?)\b/i.test(segment)) return true;
+  if (/gluten[\s-]?free|\bgf\b|celiac|coeliac/i.test(segment)) return true;
+  return /^[A-Z][\w'&-]*(?:\s+[A-Z][\w'&-]*){1,5}(?:\s|$)/.test(segment);
+}
+
+function includeMenuDescriptions(block: string[]): string[] {
+  const selected: string[] = [];
+
+  for (let index = 1; index < block.length; index += 1) {
+    const segment = block[index];
+    if (isLikelyMenuItem(segment)) {
+      selected.push(segment);
+      const next = block[index + 1];
+      if (next && isLikelyMenuDescription(next)) {
+        selected.push(next);
+        index += 1;
+      }
+    }
+  }
+
+  return selected;
+}
+
+function isLikelyMenuDescription(segment: string): boolean {
+  return (
+    segment.length >= 20 &&
+    segment.length <= 140 &&
+    !isLikelyMenuItem(segment) &&
+    /\b(?:with|served|topped|made|contains|includes|choice|sauce|dressing|allergen|wheat|milk|egg|soy|nuts?)\b/i.test(segment)
+  );
 }
 
 /**

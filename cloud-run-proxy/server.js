@@ -6,7 +6,7 @@ import { Readable } from 'node:stream';
 import { createHash } from 'node:crypto';
 import { fileURLToPath, URL } from 'node:url';
 import { PDFParse } from 'pdf-parse';
-import puppeteer from 'puppeteer-core';
+import puppeteer from 'puppeteer';
 
 const PORT = Number(process.env.PORT || 8080);
 const PUTER_API_KEY = process.env.PUTER_API_KEY || '';
@@ -106,6 +106,16 @@ function getBrowserResolverRule(hostname, records) {
 
   const address = record.family === 6 ? '[' + record.address + ']' : record.address;
   return 'MAP ' + hostname + ' ' + address + ',EXCLUDE localhost';
+}
+
+function isBotVerificationPage(text) {
+  const normalized = text.toLowerCase();
+  return (
+    normalized.includes('performing security verification') ||
+    normalized.includes('challenges.cloudflare.com') ||
+    (normalized.includes('security service to protect against malicious bots') &&
+      normalized.includes('cloudflare'))
+  );
 }
 
 function getCachedHtml(key) {
@@ -770,6 +780,7 @@ async function renderMenuWithBrowser(
 
   const records = await resolveHostname(url.hostname);
   const resolverRule = getBrowserResolverRule(url.hostname, records);
+  const executablePath = process.env.PUPPETEER_EXECUTABLE_PATH || puppeteer.executablePath();
   let browser;
 
   try {
@@ -777,7 +788,7 @@ async function renderMenuWithBrowser(
       async () => {
         browser = await launchBrowser({
           headless: true,
-          executablePath: process.env.PUPPETEER_EXECUTABLE_PATH,
+          executablePath,
           args: [
             '--no-sandbox',
             '--disable-setuid-sandbox',
@@ -802,6 +813,9 @@ async function renderMenuWithBrowser(
         await page.waitForNetworkIdle({ idleTime: 400, timeout: Math.min(1_500, timeoutMs) }).catch(() => {});
         const text = await page.evaluate(() => document.body?.innerText || '');
         const normalized = String(text).replace(/\r/g, '').replace(/\n{3,}/g, '\n\n').trim();
+        if (isBotVerificationPage(normalized)) {
+          throw Object.assign(new Error('The restaurant website blocked automated menu access.'), { status: 422 });
+        }
         return normalized ? normalized.slice(0, MAX_MENU_CHARS) : null;
       },
       timeoutMs,
@@ -1180,6 +1194,7 @@ export {
   getBrowserRenderCacheKey,
   getOrRenderMenuText,
   getBrowserResolverRule,
+  isBotVerificationPage,
   getAnalysisCacheKey,
   getCachedAnalysis,
   cacheAnalysis,

@@ -25,6 +25,7 @@ import {
   inFlightHtmlFetches,
   inFlightAnalysisRequests,
   isImageContentType,
+  isBotVerificationPage,
   isAllowedBrowserRequest,
   isPdfContentType,
   isPrivateIp,
@@ -457,6 +458,15 @@ test('pins the browser hostname to an approved DNS record', () => {
     getBrowserResolverRule('menu.example', [{ address: '93.184.216.34', family: 4 }]),
     'MAP menu.example 93.184.216.34,EXCLUDE localhost',
   );
+});
+
+test('recognizes bot-verification pages as non-menu content', () => {
+  assert.equal(isBotVerificationPage('Performing security verification\nchallenges.cloudflare.com'), true);
+  assert.equal(
+    isBotVerificationPage('This website uses a security service to protect against malicious bots. Cloudflare'),
+    true,
+  );
+  assert.equal(isBotVerificationPage('Menu\nGluten-Free Pasta $18'), false);
 });
 
 test('renders visible menu text and closes the browser', async () => {

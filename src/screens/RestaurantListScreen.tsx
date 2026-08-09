@@ -12,7 +12,7 @@ import {
   ScrollView,
   Keyboard,
 } from 'react-native';
-import { Spacing, Radius, FontSize, FontWeight } from '../theme/colors';
+import { Spacing, Radius, FontSize, FontWeight, TouchTarget } from '../theme/colors';
 import { useRestaurants } from '../context/RestaurantContext';
 import { useFilters } from '../context/FiltersContext';
 import { useSettings } from '../context/SettingsContext';
@@ -440,8 +440,8 @@ function createFilterStyles(colors: ThemeColors) {
     },
     stepRow: { flexDirection: 'row', gap: 6 },
     stepBtn: {
-      width: 32,
-      height: 32,
+      width: TouchTarget.minimum,
+      height: TouchTarget.minimum,
       backgroundColor: colors.surface,
       borderRadius: Radius.full,
       alignItems: 'center',

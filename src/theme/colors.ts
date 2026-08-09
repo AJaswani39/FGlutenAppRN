@@ -83,6 +83,10 @@ export const Spacing = {
   xxl: 48,
 };
 
+export const TouchTarget = {
+  minimum: 44,
+};
+
 export const Radius = {
   sm: 8,
   md: 12,

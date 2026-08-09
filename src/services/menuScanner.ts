@@ -6,6 +6,7 @@ import {
 import {
   extractGfEvidence,
   extractRawMenuText,
+  hasLikelyMenuContent,
   findMenuLink,
   htmlToTextSegments,
 } from '../util/htmlUtils';
@@ -81,12 +82,14 @@ export async function scanRestaurantMenu({
     Promise.resolve(html ? extractGfEvidence(segments) : []),
     Promise.resolve(html ? extractRawMenuText(segments) : null),
   ]);
+  const hasMenuContent = html ? hasLikelyMenuContent(segments) : false;
+  const usableMenuText = hasMenuContent ? rawMenuText : null;
 
   return {
     menuUrl,
     gfMenu,
-    rawMenuText,
-    menuScanStatus: html ? 'SUCCESS' : 'FAILED',
+    rawMenuText: usableMenuText,
+    menuScanStatus: usableMenuText ? 'SUCCESS' : html ? 'NO_MENU_CONTENT' : 'FAILED',
     menuScanTimestamp: scanStartedAt,
   };
 }

@@ -13,7 +13,29 @@ export function stripNonContentTags(html: string): string {
     .replace(/<nav\b[^>]*>[\s\S]*?<\/nav>/gi, '\n')
     .replace(/<footer\b[^>]*>[\s\S]*?<\/footer>/gi, '\n')
     .replace(/<header\b[^>]*>[\s\S]*?<\/header>/gi, '\n')
-    .replace(/<aside\b[^>]*>[\s\S]*?<\/aside>/gi, '\n');
+    .replace(/<aside\b[^>]*>[\s\S]*?<\/aside>/gi, '\n')
+    .replace(
+      /<([a-z][\w-]*)\b([^>]*)>[\s\S]*?<\/\1>/gi,
+      (fullMatch, tagName: string, attributes: string) => {
+        const isUtilityRegion =
+          /(?:class|id)\s*=\s*["'][^"']*(?:cookie|consent|privacy|gdpr|onetrust|cmp|utility|navigation|navbar|drawer|overlay|modal)[^"']*["']/i.test(
+            attributes,
+          );
+        const isHiddenRegion =
+          /\bhidden(?:\s*=\s*(?:["'][^"']*["']|[^\s>]+))?|aria-hidden\s*=\s*["']true["']/i.test(attributes);
+
+        return isUtilityRegion || isHiddenRegion ? '\n' : fullMatch;
+      },
+    )
+    .replace(
+      /<([a-z][\w-]*)\b([^>]*)\/?\s*>/gi,
+      (fullMatch, _tagName: string, attributes: string) => {
+        const isHiddenElement =
+          /\bhidden(?:\s*=\s*(?:["'][^"']*["']|[^\s>]+))?|aria-hidden\s*=\s*["']true["']/i.test(attributes);
+
+        return isHiddenElement ? '\n' : fullMatch;
+      },
+    );
 }
 
 /**
@@ -26,12 +48,12 @@ export function htmlToTextSegments(html: string): string[] {
       /<(?:br\s*\/?|\/p|\/div|\/li|\/ul|\/ol|\/section|\/article|\/tr|\/table|\/h[1-6])>/gi,
       '\n'
     )
-    .replace(/&nbsp;/gi, ' ')
+    .replace(/&(?:nbsp|amp|quot|apos|lt|gt|egrave|ucirc|eacute|ntilde);|&#(?:x[0-9a-f]+|[0-9]+);/gi, decodeHtmlEntity)
     .replace(/<[^>]+>/g, ' ') // Strip all remaining HTML tags
     .replace(/\{[\s\S]*?\}/g, ' ') // Strip JSON-like objects (often leaked from JS hydration)
     .replace(/\[[\s\S]*?\]/g, ' ') // Strip JSON-like arrays
     .replace(/[{}()[\]]/g, '') // Strip remaining stray brackets
-    .replace(/[^\w\s.,!?'"$&%-]/g, ' ') // Strip weird unicode/garbled symbols
+    .replace(/[^\p{L}\p{N}\s.,!?'"$&%-]/gu, ' ') // Strip symbols while preserving Unicode letters and numbers
     .replace(/\r/g, '')
     .replace(/[ \t]+\n/g, '\n')
     .replace(/\n[ \t]+/g, '\n')
@@ -41,7 +63,55 @@ export function htmlToTextSegments(html: string): string[] {
     .split('\n')
     .map((segment) => segment.replace(/\s+/g, ' ').trim())
     .filter(Boolean)
+    .filter(
+      (segment) =>
+        !/^(?:revoke|manage|update|accept|reject)\s+(?:cookie|privacy|consent)|^(?:cookie|privacy)\s+(?:settings|preferences|consent)/i.test(
+          segment,
+        ),
+    )
+    .filter((segment) => !isLikelyNonMenuNoise(segment))
     .filter(segment => segment.length > 2); // Filter out tiny random character fragments
+}
+
+function decodeHtmlEntity(entity: string): string {
+  const namedEntities: Record<string, string> = {
+    '&nbsp;': ' ',
+    '&amp;': '&',
+    '&quot;': '"',
+    '&apos;': "'",
+    '&lt;': '<',
+    '&gt;': '>',
+    '&egrave;': 'è',
+    '&ucirc;': 'û',
+    '&eacute;': 'é',
+    '&ntilde;': 'ñ',
+  };
+  const named = namedEntities[entity.toLowerCase()];
+  if (named !== undefined) return named;
+
+  const numericMatch = entity.match(/^&#(x[0-9a-f]+|[0-9]+);$/i);
+  if (!numericMatch) return entity;
+
+  const codePoint = numericMatch[1].toLowerCase().startsWith('x')
+    ? Number.parseInt(numericMatch[1].slice(1), 16)
+    : Number.parseInt(numericMatch[1], 10);
+
+  return Number.isInteger(codePoint) && codePoint >= 0 && codePoint <= 0x10ffff
+    ? String.fromCodePoint(codePoint)
+    : entity;
+}
+
+function isLikelyNonMenuNoise(segment: string): boolean {
+  const cssClassTokens = segment.match(/\.[A-Za-z_-][\w-]*/g) || [];
+  const cssPropertyTokens = segment.match(/\b(?:display|position|font-family|background-color|padding|margin)\s*:/gi) || [];
+  const cssKeywordTokens = segment.match(/\b(?:font-family|background-color|justify-content|align-items|flex-direction)\b/gi) || [];
+
+  return (
+    cssClassTokens.length >= 2 ||
+    cssPropertyTokens.length >= 1 ||
+    cssKeywordTokens.length >= 1 ||
+    /^(?:var\(|@media\b|@font-face\b|from\s+['"]|import\s+)/i.test(segment)
+  );
 }
 
 /**
@@ -50,11 +120,21 @@ export function htmlToTextSegments(html: string): string[] {
 export function findMenuLink(html: string, baseUrl: string): string | null {
   const menuPattern = /href=["']([^"']*(?:menu|food|eat|dining)[^"']*)["']/gi;
   const EXCLUDED_EXTENSIONS = /\.(?:pdf|jpg|jpeg|png|gif|svg|css|js|zip|mp4|webp)$/i;
+  const EXCLUDED_PATHS = /(?:catering|private[-_ ]?dining|events?|reservations?|privacy|account|login|order[-_ ]?online|delivery)/i;
   const seen = new Set<string>();
+  const candidates: Array<{ url: string; score: number }> = [];
+
+  let base: URL;
+  try {
+    base = new URL(baseUrl);
+  } catch (error) {
+    logger.warn(`findMenuLink: failed to parse base URL ${baseUrl}: ${error}`);
+    return null;
+  }
 
   for (const match of html.matchAll(menuPattern)) {
     const href = match[1]?.trim();
-    if (!href || EXCLUDED_EXTENSIONS.test(href)) continue;
+    if (!href) continue;
     
     if (
       href.startsWith('#') ||
@@ -66,18 +146,34 @@ export function findMenuLink(html: string, baseUrl: string): string | null {
     }
 
     try {
-      const resolved = href.startsWith('http') ? href : new URL(href, baseUrl).toString();
+      const resolvedUrl = new URL(href, base);
+      if (resolvedUrl.protocol !== 'http:' && resolvedUrl.protocol !== 'https:') continue;
+
+      const pathname = resolvedUrl.pathname.toLowerCase();
+      if (EXCLUDED_EXTENSIONS.test(pathname) || EXCLUDED_PATHS.test(pathname)) continue;
+
+      const pathAndQuery = `${pathname}${resolvedUrl.search}`;
+
+      let score = 0;
+      if (/\bmenu\b/.test(pathAndQuery)) score += 5;
+      if (/\bfood\b/.test(pathAndQuery)) score += 3;
+      if (/\b(?:eat|dining)\b/.test(pathAndQuery)) score += 1;
+      if (resolvedUrl.origin === base.origin) score += 1;
+
+      resolvedUrl.hash = '';
+      const resolved = resolvedUrl.toString();
       const normalized = resolved.toLowerCase();
       if (seen.has(normalized)) continue;
 
       seen.add(normalized);
-      return resolved;
+      candidates.push({ url: resolved, score });
     } catch (error) {
       logger.warn(`findMenuLink: failed to parse URL ${href}: ${error}`);
     }
   }
 
-  return null;
+  candidates.sort((left, right) => right.score - left.score);
+  return candidates[0]?.url || null;
 }
 
 /**
@@ -109,12 +205,16 @@ export function findMainContent(segments: string[]): string {
 
   for (let index = 0; index < segments.length; index += 1) {
     const lower = segments[index].toLowerCase();
-    if (menuIndicators.some((indicator) => lower.includes(indicator)) && segments[index].length < 60) {
+    const isMenuHeading =
+      /\bmenu\b/i.test(lower) ||
+      menuIndicators.slice(1).some((indicator) => new RegExp(`^${indicator}s?\\b`, 'i').test(lower));
+
+    if (isMenuHeading && segments[index].length < 60) {
       return segments.slice(index, Math.min(index + 80, segments.length)).join('\n');
     }
   }
 
-  return segments.slice(0, 120).join('\n');
+  return '';
 }
 
 /**
@@ -150,4 +250,20 @@ export function extractGfEvidence(htmlOrSegments: string | string[]): string[] {
 export function extractRawMenuText(htmlOrSegments: string | string[]): string {
   const segments = typeof htmlOrSegments === 'string' ? htmlToTextSegments(htmlOrSegments) : htmlOrSegments;
   return findMainContent(segments).slice(0, 3000);
+}
+
+export function hasLikelyMenuContent(segments: string[]): boolean {
+  const itemLikeSegments = segments.filter((segment) => {
+    if (segment.length < 4 || segment.length > 160) return false;
+    if (/\bmenu\b|\b(?:food|dining|entrees?|appetizers?|desserts?)\b/i.test(segment)) return false;
+    return !/^(?:welcome|about|contact|hours|location|catering|private events)\b/i.test(segment);
+  });
+  const priceLines = segments.filter((segment) => /(?:\$\s?\d+(?:\.\d{1,2})?|\b\d+(?:\.\d{1,2})?\s?(?:usd|dollars?)\b)/i.test(segment));
+  const categoryHeadings = segments.filter((segment) => /^(?:appetizers?|entrees?|mains?|desserts?|drinks?|beverages?|sides?)\b/i.test(segment));
+  const gfEvidence = segments.filter((segment) => /gluten[\s-]?free|\bgf\b|celiac|coeliac/i.test(segment));
+
+  return (
+    (itemLikeSegments.length >= 2 && (priceLines.length > 0 || categoryHeadings.length > 0 || gfEvidence.length > 0)) ||
+    (itemLikeSegments.length >= 1 && gfEvidence.length > 0)
+  );
 }

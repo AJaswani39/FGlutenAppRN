@@ -12,7 +12,11 @@ export function getGfConfidenceLevel(restaurant: Restaurant): GfConfidenceLevel 
   if (restaurant.gfMenu.length > 0) return 'confirmed';
   if (restaurant.hasGFMenu) return 'name_match';
   if (restaurant.menuScanStatus === 'SUCCESS') return 'no_evidence';
-  if (restaurant.menuScanStatus === 'FAILED' || restaurant.menuScanStatus === 'NO_WEBSITE') {
+  if (
+    restaurant.menuScanStatus === 'FAILED' ||
+    restaurant.menuScanStatus === 'NO_MENU_CONTENT' ||
+    restaurant.menuScanStatus === 'NO_WEBSITE'
+  ) {
     return 'unavailable';
   }
 

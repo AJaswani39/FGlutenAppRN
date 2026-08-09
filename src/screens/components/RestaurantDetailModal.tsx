@@ -11,7 +11,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
-import { Spacing, Radius, FontSize, FontWeight } from '../../theme/colors';
+import { Spacing, Radius, FontSize, FontWeight, TouchTarget } from '../../theme/colors';
 import { ThemeColors, useTheme } from '../../context/ThemeContext';
 import { Restaurant, FavoriteStatus } from '../../types/restaurant';
 import { formatDistance } from '../../util/formatters';
@@ -157,8 +157,8 @@ export default function RestaurantDetailModal({ restaurant: initial, useMiles, o
               <View style={styles.safetyScoreHeader}>
                 <View>
                   <Text style={[styles.safetyScoreValue, { color: safety.color }]}>
-                    {safetyScore.score}
-                    <Text style={styles.safetyScoreMax}>/100</Text>
+                    {safetyScore.score == null ? '?' : safetyScore.score}
+                    {safetyScore.score == null ? null : <Text style={styles.safetyScoreMax}>/100</Text>}
                   </Text>
                   <Text style={[styles.safetyScoreTitle, { color: safety.color }]}>
                     {safety.icon} {safetyScore.title}
@@ -169,7 +169,7 @@ export default function RestaurantDetailModal({ restaurant: initial, useMiles, o
                     style={[
                       styles.safetyMeterFill,
                       {
-                        width: `${safetyScore.score}%`,
+                        width: `${safetyScore.score ?? 0}%`,
                         backgroundColor: safety.color,
                       },
                     ]}
@@ -413,6 +413,7 @@ function menuStatusText(r: Restaurant): string {
       return r.gfMenu.length > 0
         ? `✅ Scanned — ${r.gfMenu.length} GF item${r.gfMenu.length !== 1 ? 's' : ''} found`
         : '✅ Scanned — no specific GF items found';
+    case 'NO_MENU_CONTENT': return '⚠️ Page loaded — no menu content found';
     case 'NO_WEBSITE': return '🌐 No website found';
     case 'FAILED': return '⚠️ Could not load menu';
     default: return '⏳ Not yet scanned';
@@ -569,8 +570,8 @@ function createStyles(colors: ThemeColors) {
   closeBtn: {
     position: 'absolute',
     right: Spacing.md,
-    width: 32,
-    height: 32,
+    width: TouchTarget.minimum,
+    height: TouchTarget.minimum,
     backgroundColor: colors.surface,
     borderRadius: Radius.full,
     alignItems: 'center',

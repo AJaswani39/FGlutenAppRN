@@ -179,7 +179,7 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
           // Determine if this change is worth a disk save (terminal states or data changes)
           const statusChangedToTerminal =
             nextRestaurant.menuScanStatus !== restaurant.menuScanStatus &&
-            ['SUCCESS', 'FAILED', 'NO_WEBSITE', 'JS_ONLY'].includes(nextRestaurant.menuScanStatus);
+            ['SUCCESS', 'NO_MENU_CONTENT', 'FAILED', 'NO_WEBSITE', 'JS_ONLY'].includes(nextRestaurant.menuScanStatus);
 
           const favoriteChanged = nextRestaurant.favoriteStatus !== restaurant.favoriteStatus;
           const aiChanged =

@@ -1,7 +1,7 @@
 import React from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { FontSize, FontWeight, Radius, Spacing } from '../theme/colors';
+import { FontSize, FontWeight, Radius, Spacing, TouchTarget } from '../theme/colors';
 import { ThemeColors, useTheme } from '../context/ThemeContext';
 
 type IconName = keyof typeof Ionicons.glyphMap;
@@ -186,8 +186,8 @@ const styles = StyleSheet.create({
 function createStyles(colors: ThemeColors) {
   return StyleSheet.create({
     iconButton: {
-      width: 42,
-      height: 42,
+      width: TouchTarget.minimum,
+      height: TouchTarget.minimum,
       alignItems: 'center',
       justifyContent: 'center',
       borderRadius: Radius.full,

@@ -43,6 +43,7 @@ const MENU_SCAN_STATUSES = new Set<Restaurant['menuScanStatus']>([
   'NOT_STARTED',
   'FETCHING',
   'SUCCESS',
+  'NO_MENU_CONTENT',
   'NO_WEBSITE',
   'FAILED',
   'JS_ONLY',

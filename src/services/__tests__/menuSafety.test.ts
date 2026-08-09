@@ -68,4 +68,41 @@ describe('menuSafety', () => {
     expect(strict.score).toBeLessThan(normal.score);
     expect(strict.reasons).toContain('Strict mode: cross-contact language detected');
   });
+
+  it('does not assign a numeric safety score when menu evidence is unavailable', () => {
+    const result = getRestaurantSafetyScore(
+      restaurant({
+        menuScanStatus: 'NO_MENU_CONTENT',
+        rawMenuText: null,
+        gfMenu: [],
+      }),
+    );
+
+    expect(result.level).toBe('unknown');
+    expect(result.score).toBeNull();
+    expect(result.title).toBe('Needs verification');
+    expect(result.reasons).toContain('No menu evidence available');
+  });
+
+  it('ignores stale AI analysis when the current menu scan has no usable content', () => {
+    const result = getRestaurantSafetyScore(
+      restaurant({
+        menuScanStatus: 'NO_MENU_CONTENT',
+        rawMenuText: null,
+        gfMenu: [],
+        aiAnalysisResult: {
+          overallSafety: 'unsafe',
+          score: 10,
+          glutenFreeItems: [],
+          warnings: ['Old warning'],
+          crossContamRisk: 'Old risk',
+          summary: 'Old analysis result',
+        },
+      }),
+    );
+
+    expect(result.level).toBe('unknown');
+    expect(result.score).toBeNull();
+    expect(result.summary).toBe('The page loaded, but no menu content was found.');
+  });
 });

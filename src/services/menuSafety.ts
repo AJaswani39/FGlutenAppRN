@@ -22,7 +22,7 @@ export interface MenuAnalysisResult {
 
 export interface RestaurantSafetyScore {
   level: MenuSafetyLevel;
-  score: number;
+  score: number | null;
   title: string;
   summary: string;
   reasons: string[];
@@ -158,6 +158,18 @@ export function getRestaurantSafetyScore(
   const text = restaurant.rawMenuText?.trim() || restaurant.gfMenu.join('\n');
   const analysis = restaurant.aiAnalysisResult || (text.length > 0 ? analyseMenuText(text) : null);
   const reasons: string[] = [];
+  const hasUnavailableScan = ['NO_MENU_CONTENT', 'FAILED', 'NO_WEBSITE'].includes(restaurant.menuScanStatus);
+
+  if (!text && (!analysis || hasUnavailableScan)) {
+    return {
+      level: 'unknown',
+      score: null,
+      title: getSafetyTitle('unknown'),
+      summary: getFallbackSummary(restaurant),
+      reasons: ['No menu evidence available'],
+    };
+  }
+
   let score = analysis?.score ?? 35;
 
   if (restaurant.favoriteStatus === 'safe') {
@@ -234,6 +246,7 @@ function getSafetyTitle(level: MenuSafetyLevel): string {
 
 function getFallbackSummary(restaurant: Restaurant): string {
   if (restaurant.menuScanStatus === 'FETCHING') return 'Menu scan is still running.';
+  if (restaurant.menuScanStatus === 'NO_MENU_CONTENT') return 'The page loaded, but no menu content was found.';
   if (restaurant.menuScanStatus === 'NO_WEBSITE') return 'No website was found to inspect for menu evidence.';
   if (restaurant.menuScanStatus === 'FAILED') return 'Menu scan could not load reliable evidence.';
   return 'Not enough menu text is available yet.';

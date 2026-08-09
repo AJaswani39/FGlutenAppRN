@@ -16,7 +16,7 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
-import { Colors, Spacing, Radius, FontSize, FontWeight } from '../../theme/colors';
+import { Colors, Spacing, Radius, FontSize, FontWeight, TouchTarget } from '../../theme/colors';
 import { analyseMenuText, MenuAnalysisResult } from '../../services/menuSafety';
 import { extractMenuTextFromImage } from '../../services/menuOcr';
 import { PuterAiService } from '../../services/puterAiService';
@@ -238,6 +238,13 @@ export default function MenuAnalysisSheet({ restaurant, onClose }: Props) {
 
   const askAi = async () => {
     if (!userQuestion.trim()) return;
+
+    const menuTextForAi = buildAiText();
+    if (!menuTextForAi) {
+      setError('There is no menu text available to answer questions about this restaurant.');
+      return;
+    }
+
     askAbortController.current?.abort();
     const controller = new AbortController();
     askAbortController.current = controller;
@@ -261,7 +268,7 @@ export default function MenuAnalysisSheet({ restaurant, onClose }: Props) {
     }
 
     try {
-      await PuterAiService.askQuestion(editableText, questionText, (chunk) => {
+      await PuterAiService.askQuestion(menuTextForAi, questionText, (chunk) => {
         if (!isMounted.current) return;
         setChatHistory((prev) => 
           prev.map(msg => msg.timestamp === modelTimestamp ? { ...msg, text: chunk || '...' } : msg)
@@ -705,8 +712,8 @@ const styles = StyleSheet.create({
   headerTitle: { fontSize: FontSize.lg, fontWeight: FontWeight.bold, color: Colors.textPrimary },
   headerSub: { fontSize: FontSize.xs, color: Colors.textSecondary, marginTop: 2 },
   closeBtn: {
-    width: 32,
-    height: 32,
+    width: TouchTarget.minimum,
+    height: TouchTarget.minimum,
     borderRadius: Radius.full,
     backgroundColor: Colors.surfaceElevated,
     alignItems: 'center',

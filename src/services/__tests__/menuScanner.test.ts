@@ -106,4 +106,44 @@ describe('menuScanner', () => {
     expect((global.fetch as jest.Mock).mock.calls[1][0]).toBe('https://example.com');
     expect((global.fetch as jest.Mock).mock.calls[2][0]).toBe('http://example.com');
   });
+
+  it('does not mark a heading-only page as a successful menu scan', async () => {
+    (global.fetch as jest.Mock)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ websiteUri: 'https://example.com' }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        headers: { get: () => 'text/html' },
+        text: async () => '<h1>Menu</h1>',
+      });
+
+    await expect(
+      scanRestaurantMenu({ restaurant: restaurant(), mapsApiKey: 'key', scanStartedAt: 900 }),
+    ).resolves.toMatchObject({
+      rawMenuText: null,
+      menuScanStatus: 'NO_MENU_CONTENT',
+    });
+  });
+
+  it('does not treat generic prose mentioning a menu as menu content', async () => {
+    (global.fetch as jest.Mock)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ websiteUri: 'https://example.com' }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        headers: { get: () => 'text/html' },
+        text: async () => '<p>Ask about our menu for private events and catering.</p>',
+      });
+
+    await expect(
+      scanRestaurantMenu({ restaurant: restaurant(), mapsApiKey: 'key', scanStartedAt: 901 }),
+    ).resolves.toMatchObject({
+      rawMenuText: null,
+      menuScanStatus: 'NO_MENU_CONTENT',
+    });
+  });
 });

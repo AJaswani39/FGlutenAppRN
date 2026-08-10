@@ -2,7 +2,7 @@ import React from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import NetInfo from '@react-native-community/netinfo';
 import TestRenderer, { act } from 'react-test-renderer';
-import { beforeEach, describe, expect, it, jest } from '@jest/globals';
+import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
 import * as Location from 'expo-location';
 import Constants from 'expo-constants';
 import { FiltersProvider, useFilters } from '../FiltersContext';
@@ -51,6 +51,7 @@ const constantsMock = Constants as typeof Constants & {
 };
 type FetchMock = jest.MockedFunction<(...args: Parameters<typeof fetch>) => Promise<any>>;
 const fetchMock = () => global.fetch as unknown as FetchMock;
+const activeRenderers: TestRenderer.ReactTestRenderer[] = [];
 
 function Probe({ capture }: { capture: (api: HarnessApi) => void }) {
   capture({
@@ -86,6 +87,7 @@ async function renderHarness() {
       </SettingsProvider>
     );
   });
+  activeRenderers.push(renderer);
 
   await flushAsync();
 
@@ -102,6 +104,12 @@ async function renderHarness() {
 }
 
 describe('RestaurantContext', () => {
+  afterEach(() => {
+    act(() => {
+      activeRenderers.splice(0).forEach((renderer) => renderer.unmount());
+    });
+  });
+
   beforeEach(() => {
     storage.__reset();
     clearNearbySessionCache();
@@ -219,7 +227,7 @@ describe('RestaurantContext', () => {
     });
 
     expect(getApi().restaurants.uiState.status).toBe('error');
-    expect(getApi().restaurants.uiState.message).toContain('Could not load restaurants: NetInfo failed');
+    expect(getApi().restaurants.uiState.message).toContain('Could not check the internet connection. Please try again.');
     expect(global.fetch).not.toHaveBeenCalled();
   });
 
@@ -369,6 +377,75 @@ describe('RestaurantContext', () => {
       menuUrl: 'https://cached.example/menu',
       rawMenuText: 'Gluten-free toast available',
       gfMenu: ['GF toast'],
+      menuScanStatus: 'SUCCESS',
+    });
+  });
+
+  it('prefers the dedicated scan cache over the lightweight restaurant cache', async () => {
+    const timestamp = Date.now();
+    await AsyncStorage.setItem(
+      'restaurant_cache',
+      JSON.stringify({
+        restaurants: [
+          {
+            placeId: 'cached-place',
+            name: 'Cached Cafe',
+            address: '456 State St',
+            latitude: 40.712,
+            longitude: -74.001,
+            rating: 4.2,
+            openNow: true,
+            hasGFMenu: false,
+            gfMenu: ['Old GF toast'],
+            distanceMeters: 200,
+            menuUrl: 'https://cached.example/menu',
+            rawMenuText: null,
+            menuScanStatus: 'SUCCESS',
+            menuScanTimestamp: timestamp,
+            favoriteStatus: null,
+          },
+        ],
+        lat: 40.7128,
+        lng: -74.006,
+        timestamp,
+      })
+    );
+    await AsyncStorage.setItem(
+      'restaurant_menu_scan_cache',
+      JSON.stringify({
+        'cached-place': {
+          placeId: 'cached-place',
+          gfMenu: ['Gluten-free toast'],
+          rawMenuText: 'Gluten-free toast available',
+          menuScanStatus: 'SUCCESS',
+          menuScanTimestamp: timestamp,
+        },
+      })
+    );
+    fetchMock().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        places: [
+          {
+            id: 'cached-place',
+            displayName: { text: 'Cached Cafe' },
+            formattedAddress: '456 State St',
+            location: { latitude: 40.713, longitude: -74.002 },
+          },
+        ],
+      }),
+    });
+
+    const { getApi } = await renderHarness();
+
+    await act(async () => {
+      await getApi().restaurants.loadNearbyRestaurants();
+    });
+
+    expect(getApi().restaurants.uiState.restaurants[0]).toMatchObject({
+      menuUrl: 'https://cached.example/menu',
+      rawMenuText: 'Gluten-free toast available',
+      gfMenu: ['Gluten-free toast'],
       menuScanStatus: 'SUCCESS',
     });
   });

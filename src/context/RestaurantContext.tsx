@@ -285,7 +285,9 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
       const cachedScan = freshRestaurant.placeId ? menuScanCache.current[freshRestaurant.placeId] : null;
       if (!cachedRestaurant && !cachedScan) return freshRestaurant;
 
-      const scanSource = cachedRestaurant ?? cachedScan;
+      // The general restaurant cache intentionally omits raw menu text. Prefer the
+      // dedicated scan entry whenever it exists so fresh evidence survives a restart.
+      const scanSource = cachedScan ?? cachedRestaurant;
       if (!scanSource) return freshRestaurant;
 
       return {

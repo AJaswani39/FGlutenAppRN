@@ -26,6 +26,7 @@ import { useSettings } from '../../context/SettingsContext';
 import { Restaurant, AiChatMessage } from '../../types/restaurant';
 import { logger } from '../../util/logger';
 import { impactAsync } from '../../util/haptics';
+import { buildMenuAiContext } from '../../util/menuAiContext';
 import ViewShot, { captureRef } from 'react-native-view-shot';
 import * as Sharing from 'expo-sharing';
 import SafetyScorecard from './SafetyScorecard';
@@ -171,7 +172,7 @@ export default function MenuAnalysisSheet({ restaurant, onClose }: Props) {
       }
 
       // 2. Run Deep AI Analysis (always if possible, or if allergens active)
-      const deepResultRaw = await PuterAiService.analyzeMenu(text, {
+      const deepResultRaw = await PuterAiService.analyzeMenu(buildMenuAiContext(text), {
         strictCeliac,
         dairyFree,
         nutFree,
@@ -279,7 +280,7 @@ export default function MenuAnalysisSheet({ restaurant, onClose }: Props) {
     }
 
     try {
-      await PuterAiService.askQuestion(menuTextForAi, questionText, (chunk) => {
+      await PuterAiService.askQuestion(buildMenuAiContext(menuTextForAi), questionText, (chunk) => {
         if (!isMounted.current) return;
         setChatHistory((prev) => 
           prev.map(msg => msg.timestamp === modelTimestamp ? { ...msg, text: chunk || '...' } : msg)

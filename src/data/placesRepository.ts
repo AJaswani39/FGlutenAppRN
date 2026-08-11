@@ -239,8 +239,8 @@ export async function fetchRenderedMenuText(url: string, proxyBaseUrl = ''): Pro
     });
     const payload = await response.json().catch(() => null);
     if (!response.ok) {
-      const message = isRecord(payload) && typeof payload.error === 'string' ? payload.error : response.status;
-      logger.warn('Interactive menu render failed for ' + url + ': ' + message);
+      const message = isRecord(payload) && typeof payload.error === 'string' ? payload.error : 'Unknown render failure.';
+      logger.warn(`Interactive menu render failed for ${url} (HTTP ${response.status}): ${message}`);
       return null;
     }
 

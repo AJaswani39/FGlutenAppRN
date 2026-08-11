@@ -45,6 +45,21 @@ export class ScanOrchestrator {
     this.config = config;
   }
 
+  private trackBatchKey(restaurant: Restaurant) {
+    const getKey = this.config.getIdentityKey || getRestaurantIdentityKey;
+    const key = getKey(restaurant);
+    if (key && !this.currentBatchKeys.includes(key)) {
+      this.currentBatchKeys.push(key);
+    }
+  }
+
+  private clearBatchTrackingIfIdle() {
+    if (this.isDestroyed) return;
+    if (this.scanQueue.length > 0 || this.activeScans.size > 0 || this.isProcessing) return;
+
+    this.currentBatchKeys = [];
+  }
+
   /**
    * Clears the pending scan queue and stops tracking for the current batch.
    * This should be called when the user starts a fresh search or navigates away.
@@ -87,13 +102,7 @@ export class ScanOrchestrator {
    * Forces a rescan for a specific restaurant, clearing previous data.
    */
   async requestRescan(restaurant: Restaurant): Promise<void> {
-    const getKey = this.config.getIdentityKey || getRestaurantIdentityKey;
-    const key = getKey(restaurant);
-    
-    // Reset batch tracking to focus on this single item if desired
-    if (key) {
-      this.currentBatchKeys = [key];
-    }
+    this.trackBatchKey(restaurant);
 
     const scanRequestedAt = Date.now();
     const updated = this.config.onRestaurantUpdate(restaurant, (current) => ({
@@ -113,6 +122,7 @@ export class ScanOrchestrator {
     const id = restaurant.placeId;
     if (!id || this.activeScans.has(id) || this.isDestroyed) return;
 
+    this.trackBatchKey(restaurant);
     this.activeScans.add(id);
     const scanStartedAt = Date.now();
 
@@ -152,6 +162,8 @@ export class ScanOrchestrator {
       this.config.onNotifyUI();
     } finally {
       this.activeScans.delete(id);
+      this.clearBatchTrackingIfIdle();
+      this.config.onNotifyUI();
     }
   }
 
@@ -160,7 +172,6 @@ export class ScanOrchestrator {
    */
   private async enqueueAndStart(targets: Restaurant[]): Promise<void> {
     if (this.isDestroyed) return;
-    const getKey = this.config.getIdentityKey || getRestaurantIdentityKey;
     
     // Add new targets to queue, avoiding duplicates already in queue or processing
     for (const target of targets) {
@@ -169,11 +180,8 @@ export class ScanOrchestrator {
       if (id && !this.activeScans.has(id) && !isAlreadyInQueue) {
         this.scanQueue.push(target);
       }
-      
-      const key = getKey(target);
-      if (key && !this.currentBatchKeys.includes(key)) {
-        this.currentBatchKeys.push(key);
-      }
+
+      this.trackBatchKey(target);
     }
 
     if (this.scanQueue.length > 0 && !this.isProcessing) {
@@ -213,10 +221,8 @@ export class ScanOrchestrator {
       if (this.isDestroyed) return;
 
       // Clear batch tracking when the queue is finally empty and workers are done
-      if (this.scanQueue.length === 0) {
-        this.currentBatchKeys = [];
-        this.config.onNotifyUI();
-      }
+      this.clearBatchTrackingIfIdle();
+      this.config.onNotifyUI();
     }
   }
 

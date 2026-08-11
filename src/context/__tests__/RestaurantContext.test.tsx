@@ -9,6 +9,7 @@ import { FiltersProvider, useFilters } from '../FiltersContext';
 import { RestaurantProvider, useRestaurants } from '../RestaurantContext';
 import { SettingsProvider, useSettings } from '../SettingsContext';
 import { clearNearbySessionCache } from '../../data/placesRepository';
+import * as menuScanner from '../../services/menuScanner';
 
 jest.mock('@react-native-async-storage/async-storage');
 jest.mock('expo-location', () => ({
@@ -25,6 +26,11 @@ jest.mock('expo-constants', () => ({
       IOS_MAPS_API_KEY: 'ios-test-key',
     },
   },
+}));
+jest.mock('../../services/menuScanner', () => ({
+  scanRestaurantMenu: jest.fn(),
+  scanRestaurantMenuWithBrowser: jest.fn(),
+  canUseBrowserMenuFallback: jest.fn(() => true),
 }));
 
 type HarnessApi = {
@@ -45,6 +51,10 @@ const locationMock = Location as typeof Location & {
 };
 const netInfoMock = NetInfo as typeof NetInfo & {
   fetch: jest.MockedFunction<typeof NetInfo.fetch>;
+};
+const menuScannerMock = menuScanner as typeof menuScanner & {
+  scanRestaurantMenu: jest.MockedFunction<typeof menuScanner.scanRestaurantMenu>;
+  scanRestaurantMenuWithBrowser: jest.MockedFunction<typeof menuScanner.scanRestaurantMenuWithBrowser>;
 };
 const constantsMock = Constants as typeof Constants & {
   expoConfig?: { extra?: { MAPS_API_KEY?: string; ANDROID_MAPS_API_KEY?: string; IOS_MAPS_API_KEY?: string } };
@@ -68,6 +78,15 @@ async function flushAsync() {
     await Promise.resolve();
     await Promise.resolve();
   });
+}
+
+function createDeferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((res) => {
+    resolve = res;
+  });
+
+  return { promise, resolve };
 }
 
 async function renderHarness() {
@@ -131,6 +150,20 @@ describe('RestaurantContext', () => {
       isInternetReachable: true,
       type: 'wifi',
     } as any);
+    menuScannerMock.scanRestaurantMenu.mockImplementation(async ({ restaurant, scanStartedAt }) => ({
+      menuUrl: restaurant.menuUrl,
+      gfMenu: [],
+      rawMenuText: 'Menu text',
+      menuScanStatus: 'SUCCESS',
+      menuScanTimestamp: scanStartedAt,
+    }));
+    menuScannerMock.scanRestaurantMenuWithBrowser.mockImplementation(async ({ restaurant, scanStartedAt }) => ({
+      menuUrl: restaurant.menuUrl,
+      gfMenu: [],
+      rawMenuText: 'Rendered menu text',
+      menuScanStatus: 'SUCCESS',
+      menuScanTimestamp: scanStartedAt,
+    }));
     global.fetch = jest.fn<typeof fetch>();
   });
 
@@ -824,5 +857,116 @@ describe('RestaurantContext', () => {
     });
 
     expect(getApi().restaurants.uiState.scanProgress).toBeNull();
+  });
+
+  it('keeps the existing scan total when a manual rescan starts during an active batch', async () => {
+    const deferredScan = createDeferred<Awaited<ReturnType<typeof menuScanner.scanRestaurantMenu>>>();
+    menuScannerMock.scanRestaurantMenu.mockImplementation(() => deferredScan.promise);
+
+    fetchMock().mockImplementation(async (url: RequestInfo | URL) => {
+      if (String(url).includes('searchNearby')) {
+        return {
+          ok: true,
+          json: async () => ({
+            places: Array.from({ length: 3 }).map((_, index) => ({
+              id: `rescan-place-${index}`,
+              displayName: { text: `Rescan Cafe ${index}` },
+              formattedAddress: `${index} Main St`,
+              location: { latitude: 40.715 + index * 0.001, longitude: -74.004 },
+              rating: 4.1,
+              currentOpeningHours: { openNow: true },
+            })),
+          }),
+        };
+      }
+
+      return {
+        ok: true,
+        json: async () => ({}),
+      };
+    });
+
+    const { getApi } = await renderHarness();
+
+    await act(async () => {
+      await getApi().restaurants.loadNearbyRestaurants();
+    });
+
+    expect(getApi().restaurants.uiState.scanProgress?.total).toBe(3);
+
+    const [restaurant] = getApi().restaurants.uiState.restaurants;
+    act(() => {
+      getApi().restaurants.requestMenuRescan(restaurant);
+    });
+
+    expect(getApi().restaurants.uiState.scanProgress?.total).toBe(3);
+
+    deferredScan.resolve({
+      menuUrl: restaurant.menuUrl,
+      gfMenu: [],
+      rawMenuText: 'Menu text',
+      menuScanStatus: 'SUCCESS',
+      menuScanTimestamp: Date.now(),
+    });
+
+    await flushAsync();
+  });
+
+  it('tracks interactive menu renders in scan progress while they are active', async () => {
+    const deferredRender = createDeferred<Awaited<ReturnType<typeof menuScanner.scanRestaurantMenuWithBrowser>>>();
+    menuScannerMock.scanRestaurantMenuWithBrowser.mockImplementation(() => deferredRender.promise);
+
+    fetchMock().mockImplementation(async (url: RequestInfo | URL) => {
+      if (String(url).includes('searchNearby')) {
+        return {
+          ok: true,
+          json: async () => ({
+            places: [
+              {
+                id: 'interactive-place-1',
+                displayName: { text: 'Interactive Cafe' },
+                formattedAddress: '1 Main St',
+                location: { latitude: 40.715, longitude: -74.004 },
+                rating: 4.1,
+                currentOpeningHours: { openNow: true },
+              },
+            ],
+          }),
+        };
+      }
+
+      return {
+        ok: true,
+        json: async () => ({}),
+      };
+    });
+
+    const { getApi } = await renderHarness();
+
+    await act(async () => {
+      await getApi().restaurants.loadNearbyRestaurants();
+    });
+
+    const [restaurant] = getApi().restaurants.uiState.restaurants;
+    act(() => {
+      getApi().restaurants.requestInteractiveMenuRender({
+        ...restaurant,
+        menuUrl: 'https://example.com/menu',
+        menuScanStatus: 'NO_MENU_CONTENT',
+      });
+    });
+
+    expect(getApi().restaurants.uiState.scanProgress?.total).toBe(1);
+    expect(getApi().restaurants.uiState.scanProgress?.active).toBe(true);
+
+    deferredRender.resolve({
+      menuUrl: 'https://example.com/menu',
+      gfMenu: [],
+      rawMenuText: 'Rendered menu text',
+      menuScanStatus: 'SUCCESS',
+      menuScanTimestamp: Date.now(),
+    });
+
+    await flushAsync();
   });
 });

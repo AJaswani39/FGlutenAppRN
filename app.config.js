@@ -78,6 +78,7 @@ export default {
     },
     plugins: [
       "expo-font",
+      "expo-sharing",
       [
         "expo-splash-screen",
         {

@@ -78,7 +78,6 @@ export default {
     },
     plugins: [
       "expo-font",
-      "expo-sharing",
       [
         "expo-splash-screen",
         {
@@ -91,7 +90,6 @@ export default {
           },
         },
       ],
-      "expo-status-bar",
       [
         "expo-location",
         {

@@ -1,4 +1,5 @@
 import { MenuSafetyLevel } from '../services/menuSafety';
+import { isRecord } from './typeGuards';
 
 export interface MenuAiRiskFactor {
   factor: string;
@@ -13,10 +14,6 @@ export interface MenuAiResponse {
   cautionItems?: string[];
   warningItems?: string[];
   riskBreakdown?: MenuAiRiskFactor[];
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
 }
 
 function parseSafetyLevel(value: unknown): MenuSafetyLevel | undefined {

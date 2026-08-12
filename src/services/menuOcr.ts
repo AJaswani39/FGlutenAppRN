@@ -1,9 +1,6 @@
 import { API_ENDPOINTS, API_TIMEOUTS } from '../constants';
 import { fetchWithTimeout } from '../util/http';
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
-}
+import { isRecord } from '../util/typeGuards';
 
 function extractVisionText(payload: unknown): string {
   if (!isRecord(payload) || !Array.isArray(payload.responses)) {
@@ -111,4 +108,3 @@ export async function extractMenuTextFromImage({
 
   return normalized;
 }
-

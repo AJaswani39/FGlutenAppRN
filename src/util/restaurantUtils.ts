@@ -4,10 +4,6 @@ export function normalizeSearchQuery(query: string): string {
   return query.trim().toLowerCase();
 }
 
-export function hasRestaurantGfEvidence(restaurant: Restaurant): boolean {
-  return restaurant.hasGFMenu || restaurant.gfMenu.length > 0;
-}
-
 export function getGfConfidenceLevel(restaurant: Restaurant): GfConfidenceLevel {
   if (restaurant.gfMenu.length > 0) return 'confirmed';
   if (restaurant.hasGFMenu) return 'name_match';
@@ -59,10 +55,12 @@ export function isSameRestaurantIdentity(
   return leftFallback != null && leftFallback === rightFallback;
 }
 
-function getSortableDistance(restaurant: Restaurant): number {
-  return Number.isFinite(restaurant.distanceMeters)
-    ? restaurant.distanceMeters
-    : Number.POSITIVE_INFINITY;
+export function getComparableDistanceMeters(restaurant: Pick<Restaurant, 'distanceMeters'>): number {
+  if (!Number.isFinite(restaurant.distanceMeters)) {
+    return Number.POSITIVE_INFINITY;
+  }
+
+  return Math.max(0, restaurant.distanceMeters);
 }
 
 export function filterAndSortRestaurants(
@@ -82,7 +80,7 @@ export function filterAndSortRestaurants(
     // 1. Boolean/Numeric filters (Fastest)
     if (openNowOnly && restaurant.openNow !== true) return false;
     if (minRating > 0 && (restaurant.rating ?? 0) < minRating) return false;
-    if (maxDist > 0 && getSortableDistance(restaurant) > maxDist) return false;
+    if (maxDist > 0 && getComparableDistanceMeters(restaurant) > maxDist) return false;
 
     // 2. GF Evidence check
     if (needsGfEvidence) {
@@ -106,7 +104,7 @@ export function filterAndSortRestaurants(
 
   // Sort the filtered array directly to avoid extra shallow copy
   if (filters.sortMode === 'distance') {
-    return filtered.sort((a, b) => getSortableDistance(a) - getSortableDistance(b));
+    return filtered.sort((a, b) => getComparableDistanceMeters(a) - getComparableDistanceMeters(b));
   } else {
     return filtered.sort((a, b) => {
       const nameA = a.name.toLowerCase();

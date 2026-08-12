@@ -1,6 +1,7 @@
 import { logger } from '../util/logger';
 import { fetchWithTimeout } from '../util/http';
 import { AiChatMessage } from '../types/restaurant';
+import { isRecord } from '../util/typeGuards';
 
 /**
  * Service to interact with Puter.js AI for deep menu analysis.
@@ -11,10 +12,6 @@ import { AiChatMessage } from '../types/restaurant';
 const AI_REQUEST_TIMEOUT_MS = 30_000;
 const MAX_CHAT_HISTORY_MESSAGES = 6;
 const MAX_CHAT_MESSAGE_CHARS = 800;
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
-}
 
 function getStringField(value: unknown, field: string): string {
   return isRecord(value) && typeof value[field] === 'string' ? value[field].trim() : '';

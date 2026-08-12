@@ -1,5 +1,6 @@
 import { Restaurant } from '../types/restaurant';
 import { getRestaurantSafetyScore, RestaurantSafetyScore } from './menuSafety';
+import { getComparableDistanceMeters } from '../util/restaurantUtils';
 
 export interface SafeRestaurantPick {
   restaurant: Restaurant;
@@ -38,14 +39,6 @@ export function getSafeRestaurantPicks(
       return getComparableDistanceMeters(left.restaurant) - getComparableDistanceMeters(right.restaurant);
     })
     .slice(0, limit);
-}
-
-function getComparableDistanceMeters(restaurant: Restaurant): number {
-  if (!Number.isFinite(restaurant.distanceMeters)) {
-    return Number.POSITIVE_INFINITY;
-  }
-
-  return Math.max(0, restaurant.distanceMeters);
 }
 
 function getRankScore(restaurant: Restaurant, safetyScore: number): number {

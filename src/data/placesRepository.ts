@@ -3,6 +3,7 @@ import { Restaurant } from '../types/restaurant';
 import { logger } from '../util/logger';
 import { fetchWithTimeout } from '../util/http';
 import { detectMenuSourceFormat } from '../util/htmlUtils';
+import { isRecord } from '../util/typeGuards';
 
 const DEFAULT_SEARCH_RADIUS_METERS = 5000;
 const MAX_SEARCH_RADIUS_METERS = 20000;
@@ -11,10 +12,6 @@ const nearbySessionCache = new Map<string, Restaurant[]>();
 
 export function clearNearbySessionCache(): void {
   nearbySessionCache.clear();
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
 }
 
 function isValidLatitude(value: number): boolean {

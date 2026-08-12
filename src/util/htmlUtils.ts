@@ -1,4 +1,5 @@
 import { logger } from './logger';
+import { isRecord } from './typeGuards';
 
 export type MenuSourceFormat = 'html' | 'pdf' | 'image' | 'javascript' | 'unknown';
 
@@ -157,10 +158,6 @@ function getStructuredPrice(value: unknown): string | null {
   if (!isRecord(value)) return null;
   const price = value.price;
   return typeof price === 'number' || typeof price === 'string' ? String(price) : null;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
 }
 
 function extractMenuContainerHtml(html: string): string {

@@ -7,16 +7,13 @@ import { Ionicons } from './ui';
 import { getMapsApiKey } from '../context/restaurantState';
 import { API_TIMEOUTS } from '../constants';
 import { fetchWithTimeout } from '../util/http';
+import { isRecord } from '../util/typeGuards';
 
 export interface LocationSearchResult {
   placeId: string;
   description: string;
   mainText: string;
   secondaryText: string;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
 }
 
 function normalizeAutocompletePrediction(value: unknown): LocationSearchResult | null {

@@ -1,9 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import Constants from 'expo-constants';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
-import * as ExpoClipboard from 'expo-clipboard';
-import * as Haptics from 'expo-haptics';
 import {
   View,
   Text,
@@ -23,13 +20,14 @@ import { PuterAiService } from '../../services/puterAiService';
 import { Ionicons } from '@expo/vector-icons';
 import { useRestaurants } from '../../context/RestaurantContext';
 import { useSettings } from '../../context/SettingsContext';
-import { Restaurant, AiChatMessage } from '../../types/restaurant';
+import { Restaurant } from '../../types/restaurant';
 import { logger } from '../../util/logger';
-import { impactAsync } from '../../util/haptics';
 import { buildMenuAiContext } from '../../util/menuAiContext';
+import { parseMenuAiResponse } from '../../util/menuAiResponse';
 import ViewShot, { captureRef } from 'react-native-view-shot';
 import * as Sharing from 'expo-sharing';
 import SafetyScorecard from './SafetyScorecard';
+import { getRuntimeConfig } from '../../config/runtimeConfig';
 
 interface Props {
   restaurant: Restaurant;
@@ -59,7 +57,6 @@ export default function MenuAnalysisSheet({ restaurant, onClose }: Props) {
   const [editableText, setEditableText] = useState(restaurant.rawMenuText || '');
   const [analysisResult, setAnalysisResult] = useState<MenuAnalysisResult | null>(restaurant.aiAnalysisResult || null);
   const [deepAnalysisMarkdown, setDeepAnalysisMarkdown] = useState<string | null>(restaurant.aiDeepAnalysis || null);
-  const [chatHistory, setChatHistory] = useState<AiChatMessage[]>(restaurant.aiChatHistory || []);
   
   const { dairyFree, nutFree, soyFree, strictCeliac } = useSettings();
   
@@ -69,29 +66,20 @@ export default function MenuAnalysisSheet({ restaurant, onClose }: Props) {
   const isMounted = useRef(true);
 
   // AI Chat State
-  const [userQuestion, setUserQuestion] = useState('');
-  const [isAsking, setIsAsking] = useState(false);
   const [isSharing, setIsSharing] = useState(false);
   
   const scorecardRef = useRef(null);
-  const chatScrollRef = useRef<ScrollView>(null);
-  const chatScrollTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const askAbortController = useRef<AbortController | null>(null);
   const analysisAbortController = useRef<AbortController | null>(null);
 
   useEffect(() => {
     // Initialize Puter AI with key from config.
-    const extra = Constants.expoConfig?.extra as any;
-    const puterKey = extra?.PUTER_API_KEY ?? '';
-    const aiProxyBaseUrl = extra?.AI_PROXY_BASE_URL ?? '';
-    PuterAiService.init(puterKey, aiProxyBaseUrl);
+    const config = getRuntimeConfig();
+    PuterAiService.init(config.puterApiKey, config.aiProxyBaseUrl);
 
     return () => {
       isMounted.current = false;
       analysisAbortController.current?.abort();
       analysisAbortController.current = null;
-      askAbortController.current?.abort();
-      askAbortController.current = null;
     };
   }, []);
 
@@ -99,17 +87,15 @@ export default function MenuAnalysisSheet({ restaurant, onClose }: Props) {
   // We only sync back to the global RestaurantContext when the sheet is closed (unmount)
   const sessionDataRef = useRef({
     analysis: analysisResult,
-    chat: chatHistory,
     deepAnalysis: deepAnalysisMarkdown,
   });
 
   useEffect(() => {
     sessionDataRef.current = {
       analysis: analysisResult,
-      chat: chatHistory,
       deepAnalysis: deepAnalysisMarkdown,
     };
-  }, [analysisResult, chatHistory, deepAnalysisMarkdown]);
+  }, [analysisResult, deepAnalysisMarkdown]);
 
   useEffect(() => {
     return () => {
@@ -118,38 +104,6 @@ export default function MenuAnalysisSheet({ restaurant, onClose }: Props) {
     };
   }, [restaurant, updateAiSession]);
 
-  // Auto-scroll to the bottom of the chat history whenever a new message arrives
-  useEffect(() => {
-    if (chatScrollTimeout.current) {
-      clearTimeout(chatScrollTimeout.current);
-      chatScrollTimeout.current = null;
-    }
-
-    if (chatHistory.length > 0) {
-      chatScrollTimeout.current = setTimeout(() => {
-        chatScrollRef.current?.scrollToEnd({ animated: true });
-        chatScrollTimeout.current = null;
-      }, 80);
-    }
-
-    return () => {
-      if (chatScrollTimeout.current) {
-        clearTimeout(chatScrollTimeout.current);
-        chatScrollTimeout.current = null;
-      }
-    };
-  }, [chatHistory.length]);
-
-  const scrollChatInputIntoView = useCallback(() => {
-    if (chatScrollTimeout.current) {
-      clearTimeout(chatScrollTimeout.current);
-    }
-
-    chatScrollTimeout.current = setTimeout(() => {
-      chatScrollRef.current?.scrollToEnd({ animated: true });
-      chatScrollTimeout.current = null;
-    }, 120);
-  }, []);
 
   const runAnalysis = useCallback(async (text: string) => {
     if (!text.trim()) {
@@ -182,29 +136,25 @@ export default function MenuAnalysisSheet({ restaurant, onClose }: Props) {
       });
 
       if (isMounted.current) {
-        try {
-          // Robust JSON extraction: look for the first '{' and last '}'
-          const jsonMatch = deepResultRaw.match(/\{[\s\S]*\}/);
-          const jsonString = jsonMatch ? jsonMatch[0] : deepResultRaw;
-          const parsed = JSON.parse(jsonString);
-          
+        const parsed = parseMenuAiResponse(deepResultRaw);
+        if (!parsed) {
+          logger.warn('Failed to parse Puter AI JSON, falling back to markdown display');
+          setDeepAnalysisMarkdown(deepResultRaw);
+        } else {
           // Merge deep results into analysisResult for UI rendering
           setAnalysisResult((prev) => {
             if (!prev) return localResult;
             return {
               ...prev,
-              overallSafety: (parsed.overallSafety?.toLowerCase() as any) || prev.overallSafety,
-              summary: parsed.summary || prev.summary,
+              overallSafety: parsed.overallSafety ?? prev.overallSafety,
+              summary: parsed.summary ?? prev.summary,
               safeItems: parsed.safeItems ?? prev.safeItems ?? [],
               cautionItems: parsed.cautionItems ?? prev.cautionItems ?? [],
               unsafeItems: parsed.warningItems ?? prev.unsafeItems ?? [],
-              riskFactors: parsed.riskBreakdown ?? [],
+              riskFactors: parsed.riskBreakdown ?? prev.riskFactors ?? [],
             };
           });
           setDeepAnalysisMarkdown(null); // No longer needed as markdown if we have JSON
-        } catch (parseErr) {
-          logger.warn('Failed to parse Puter AI JSON, falling back to markdown display');
-          setDeepAnalysisMarkdown(deepResultRaw);
         }
       }
     } catch (err: any) {
@@ -224,21 +174,6 @@ export default function MenuAnalysisSheet({ restaurant, onClose }: Props) {
     }
   }, [dairyFree, nutFree, soyFree, strictCeliac]);
 
-  const copyToClipboard = useCallback((text: string) => {
-    void ExpoClipboard.setStringAsync(text).catch((error: unknown) => {
-      const message = error instanceof Error ? error.message : String(error);
-      logger.error(`Failed to copy text to clipboard: ${message}`);
-      if (isMounted.current) {
-        setError('Could not copy text to clipboard.');
-      }
-    });
-  }, []);
-
-  const clearChat = useCallback(() => {
-    setChatHistory([]);
-    setError(null);
-  }, []);
-
   // Auto-analyse on mount if we have text but no previous result.
   // runAnalysis is stable (wrapped in useCallback) so it's safe in this dep array.
   useEffect(() => {
@@ -247,64 +182,6 @@ export default function MenuAnalysisSheet({ restaurant, onClose }: Props) {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [runAnalysis]);
-
-  const askAi = async () => {
-    if (!userQuestion.trim()) return;
-
-    const menuTextForAi = editableText.trim() || restaurant.gfMenu.join('\n');
-    if (!menuTextForAi) {
-      setError('There is no menu text available to answer questions about this restaurant.');
-      return;
-    }
-
-    askAbortController.current?.abort();
-    const controller = new AbortController();
-    askAbortController.current = controller;
-
-    setIsAsking(true);
-    setError(null);
-    impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    
-    const questionText = userQuestion;
-    setUserQuestion('');
-
-    const modelTimestamp = Date.now() + 1; // Ensure unique timestamp for the model message
-    
-    // Add placeholder messages immediately so the user sees their question right away
-    if (isMounted.current) {
-      setChatHistory((prev) => [
-        ...prev, 
-        { role: 'user', text: questionText, timestamp: Date.now() },
-        { role: 'model', text: '...', timestamp: modelTimestamp }
-      ]);
-    }
-
-    try {
-      await PuterAiService.askQuestion(buildMenuAiContext(menuTextForAi), questionText, (chunk) => {
-        if (!isMounted.current) return;
-        setChatHistory((prev) => 
-          prev.map(msg => msg.timestamp === modelTimestamp ? { ...msg, text: chunk || '...' } : msg)
-        );
-      }, {
-        signal: controller.signal,
-      });
-    } catch (err: any) {
-      const isCancelled = err instanceof Error && err.name === 'AbortError';
-      if (isMounted.current && !isCancelled) {
-        setError(err.message || 'Failed to get AI answer.');
-        // Remove the empty placeholder if it failed
-        setChatHistory((prev) => prev.filter(msg => msg.timestamp !== modelTimestamp));
-      }
-    } finally {
-      const isCurrentRequest = askAbortController.current === controller;
-      if (isCurrentRequest) {
-        askAbortController.current = null;
-      }
-      if (isMounted.current && isCurrentRequest) {
-        setIsAsking(false);
-      }
-    }
-  };
 
   const pickMenuPhoto = async () => {
     setError(null);
@@ -342,10 +219,12 @@ export default function MenuAnalysisSheet({ restaurant, onClose }: Props) {
         throw new Error('Failed to process image data.');
       }
 
-      const extra = Constants.expoConfig?.extra as any;
-      const visionKey = extra?.VISION_API_KEY ?? '';
-      const aiProxyBaseUrl = extra?.AI_PROXY_BASE_URL ?? '';
-      const text = await extractMenuTextFromImage({ base64, apiKey: visionKey, proxyBaseUrl: aiProxyBaseUrl });
+      const config = getRuntimeConfig();
+      const text = await extractMenuTextFromImage({
+        base64,
+        apiKey: config.visionApiKey,
+        proxyBaseUrl: config.aiProxyBaseUrl,
+      });
       if (!isMounted.current) return;
 
       const combinedText = editableText ? `${editableText}\n\n${text}` : text;
@@ -430,7 +309,7 @@ export default function MenuAnalysisSheet({ restaurant, onClose }: Props) {
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                 <Text style={styles.headerTitle}>🤖 AI Menu Analysis</Text>
                 <Text style={{ fontSize: 10, color: Colors.textMuted, fontWeight: 'bold' }}>
-                  v{Constants.expoConfig?.version ?? '1.0'}
+                  v{getRuntimeConfig().appVersion}
                 </Text>
               </View>
               <Text style={styles.headerSub} numberOfLines={1}>
@@ -444,7 +323,6 @@ export default function MenuAnalysisSheet({ restaurant, onClose }: Props) {
         </View>
 
         <ScrollView
-          ref={chatScrollRef}
           contentContainerStyle={styles.content}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
@@ -584,66 +462,6 @@ export default function MenuAnalysisSheet({ restaurant, onClose }: Props) {
               )}
             </View>
           )}
-
-          {/* AI Chat Section */}
-          <View style={styles.aiChatContainer}>
-            <Text style={styles.sectionLabel}>ASK FGLUTEN AI</Text>
-            
-            <View style={styles.chatHistory}>
-              {chatHistory.map((msg, i) => (
-                <Pressable 
-                  key={i} 
-                  style={[
-                    styles.chatBubble, 
-                    msg.role === 'user' ? styles.userBubble : styles.modelBubble
-                  ]}
-                  onLongPress={() => copyToClipboard(msg.text)}
-                  delayLongPress={300}
-                >
-                  <Text style={[
-                    styles.chatText,
-                    msg.role === 'user' ? styles.userChatText : styles.modelChatText
-                  ]}>
-                    {msg.text}
-                  </Text>
-                  {msg.role === 'model' && (
-                    <Pressable style={styles.copyIcon} onPress={() => copyToClipboard(msg.text)}>
-                      <Ionicons name="copy-outline" size={12} color={Colors.textMuted} />
-                    </Pressable>
-                  )}
-                </Pressable>
-              ))}
-            </View>
-
-            <View style={styles.chatInputRow}>
-              <TextInput
-                style={styles.chatInput}
-                placeholder="Ask about an ingredient or dish..."
-                placeholderTextColor={Colors.textMuted}
-                value={userQuestion}
-                onChangeText={setUserQuestion}
-                onSubmitEditing={askAi}
-                onFocus={scrollChatInputIntoView}
-              />
-              <Pressable 
-                style={[styles.askBtn, (!userQuestion.trim() || isAsking) && styles.askBtnDisabled]} 
-                onPress={askAi}
-                disabled={!userQuestion.trim() || isAsking}
-              >
-                {isAsking ? (
-                  <ActivityIndicator size="small" color={Colors.textInverse} />
-                ) : (
-                  <Ionicons name="send" size={18} color={Colors.textInverse} />
-                )}
-              </Pressable>
-            </View>
-            
-            {chatHistory.length > 0 && (
-              <Pressable onPress={() => setChatHistory([])} style={styles.clearHistoryBtn}>
-                <Text style={styles.clearChatText}>Clear Chat History</Text>
-              </Pressable>
-            )}
-          </View>
 
           <Text style={styles.disclaimer}>
             ⚠️ This analysis is based on keyword scanning and is not a substitute for
@@ -797,13 +615,6 @@ const styles = StyleSheet.create({
     paddingTop: Spacing.md,
     marginTop: Spacing.sm,
   },
-  aiChatContainer: {
-    marginTop: Spacing.lg,
-    paddingTop: Spacing.md,
-    borderTopWidth: 1,
-    borderTopColor: Colors.border,
-    marginBottom: Spacing.lg,
-  },
   allergenBanner: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -835,10 +646,6 @@ const styles = StyleSheet.create({
     fontSize: FontSize.sm,
     lineHeight: 20,
     fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
-  },
-  chatHistory: {
-    marginBottom: Spacing.md,
-    gap: Spacing.sm,
   },
   shareBtn: {
     flexDirection: 'row',
@@ -906,76 +713,6 @@ const styles = StyleSheet.create({
     fontSize: FontSize.xs,
     lineHeight: 16,
     marginTop: 2,
-  },
-  chatBubble: {
-    maxWidth: '85%',
-    padding: Spacing.md,
-    borderRadius: Radius.md,
-  },
-  userBubble: {
-    alignSelf: 'flex-end',
-    backgroundColor: Colors.primaryLight,
-    borderBottomRightRadius: 2,
-  },
-  modelBubble: {
-    alignSelf: 'flex-start',
-    backgroundColor: Colors.surfaceElevated,
-    borderBottomLeftRadius: 2,
-    borderLeftWidth: 4,
-    borderLeftColor: Colors.primary,
-  },
-  chatText: {
-    fontSize: FontSize.sm,
-    lineHeight: 20,
-  },
-  userChatText: {
-    color: Colors.primary,
-    fontWeight: FontWeight.medium,
-  },
-  modelChatText: {
-    color: Colors.textPrimary,
-  },
-  copyIcon: {
-    position: 'absolute',
-    right: 8,
-    bottom: 8,
-    opacity: 0.8,
-  },
-  chatInputRow: {
-    flexDirection: 'row',
-    gap: Spacing.sm,
-    alignItems: 'center',
-  },
-  chatInput: {
-    flex: 1,
-    backgroundColor: Colors.surface,
-    borderRadius: Radius.full,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    paddingHorizontal: Spacing.md,
-    paddingVertical: 10,
-    color: Colors.textPrimary,
-    fontSize: FontSize.sm,
-  },
-  askBtn: {
-    backgroundColor: Colors.primary,
-    width: 44,
-    height: 44,
-    borderRadius: Radius.full,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  askBtnDisabled: {
-    opacity: 0.5,
-  },
-  clearHistoryBtn: {
-    marginTop: Spacing.md,
-    alignSelf: 'center',
-  },
-  clearChatText: {
-    color: Colors.textMuted,
-    fontSize: FontSize.xs,
-    fontWeight: FontWeight.medium,
   },
 });
 

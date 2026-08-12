@@ -480,7 +480,7 @@ function getAnalysisCacheKey(menuText, options = {}) {
     .digest('hex');
 }
 
-function buildQuestionPrompt(menuText, question) {
+function buildQuestionPrompt(menuText, question, restaurantName = '', history = '') {
   return `
 You are "FGluten AI", a strictly cautious Celiac Disease dining assistant.
 Your ONLY purpose is to answer questions about the provided menu, cross-contamination, gluten-free dining, and food allergies.
@@ -489,13 +489,20 @@ CRITICAL RULES:
 1. If the user's QUESTION is not related to the MENU, food, dining, or allergies, politely refuse.
 2. You are forbidden from writing code, scripts, or performing non-dining tasks.
 3. Be conservative and prioritize health and safety.
-4. Answer the user's QUESTION directly using the MENU as your primary source of evidence.
-5. If the MENU does not contain enough information, say that clearly and explain what is missing. Do not give a generic assistant response.
+4. Answer the user's QUESTION directly in the first sentence using the MENU as your primary source of evidence.
+5. Refer to the restaurant by name when it is provided.
+6. If the MENU does not contain enough information, name the missing evidence and suggest one specific question to ask staff. Do not give a generic assistant response.
 
 MENU:
 """
 ${menuText}
 """
+
+RESTAURANT:
+${restaurantName || 'Unknown restaurant'}
+
+RECENT CONVERSATION:
+${history || '(No earlier conversation)'}
 
 UNTRUSTED USER QUESTION:
 ###
@@ -926,7 +933,9 @@ async function handleQuestion(req, res) {
   const body = await readJson(req);
   const menuText = trimText(body.menuText, MAX_MENU_CHARS, 'menuText');
   const question = trimText(body.question, MAX_QUESTION_CHARS, 'question');
-  const answer = await callPuter(buildQuestionPrompt(menuText, question));
+  const restaurantName = trimText(body.restaurantName || '', 300, 'restaurantName');
+  const history = trimText(body.history || '', 5_000, 'history');
+  const answer = await callPuter(buildQuestionPrompt(menuText, question, restaurantName, history));
   sendJson(res, 200, { answer });
 }
 

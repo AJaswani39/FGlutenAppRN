@@ -27,6 +27,7 @@ import { getDiningChecklist } from '../../services/diningChecklist';
 import { getCuisineRiskHints } from '../../services/cuisineRiskHints';
 import { canUseBrowserMenuFallback } from '../../services/menuScanner';
 import MenuAnalysisSheet from './MenuAnalysisSheet';
+import MenuChatSheet from './MenuChatSheet';
 import { impactAsync } from '../../util/haptics';
 
 interface Props {
@@ -36,11 +37,12 @@ interface Props {
 }
 
 export default function RestaurantDetailModal({ restaurant: initial, useMiles, onClose }: Props) {
-  const { uiState, savedRestaurants, setFavoriteStatus, requestMenuRescan, requestInteractiveMenuRender } = useRestaurants();
+  const { uiState, savedRestaurants, setFavoriteStatus, requestMenuRescan, requestInteractiveMenuRender, updateAiSession } = useRestaurants();
   const { strictCeliac } = useSettings();
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const [showAI, setShowAI] = useState(false);
+  const [showChat, setShowChat] = useState(false);
 
   if (!initial) return null;
 
@@ -337,6 +339,15 @@ export default function RestaurantDetailModal({ restaurant: initial, useMiles, o
                 disabled={!buildAiText()}
                 primary
               />
+              <ActionButton
+                icon="chatbubble-ellipses"
+                label="Ask FGluten AI"
+                onPress={() => {
+                  impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+                  setShowChat(true);
+                }}
+                disabled={!buildAiText()}
+              />
             </View>
           </Section>
         </ScrollView>
@@ -347,6 +358,15 @@ export default function RestaurantDetailModal({ restaurant: initial, useMiles, o
         <MenuAnalysisSheet
           restaurant={restaurant}
           onClose={() => setShowAI(false)}
+        />
+      )}
+      {showChat && (
+        <MenuChatSheet
+          restaurant={restaurant}
+          menuText={buildAiText() ?? ''}
+          initialHistory={restaurant.aiChatHistory ?? []}
+          onHistoryChange={(chat) => updateAiSession(restaurant, { chat })}
+          onClose={() => setShowChat(false)}
         />
       )}
     </Modal>

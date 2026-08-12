@@ -1,7 +1,7 @@
-import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 import { FavoriteStatus, MenuScanProgress, Restaurant } from '../types/restaurant';
 import { getRestaurantIdentityKey } from '../util/restaurantUtils';
+import { getRuntimeConfig } from '../config/runtimeConfig';
 
 const MENU_SCAN_TTL_DAYS = 14;
 export const MENU_SCAN_TTL_MS = MENU_SCAN_TTL_DAYS * 24 * 60 * 60 * 1000;
@@ -10,28 +10,20 @@ export const CONCURRENT_SCAN_LIMIT = 2;
 
 export type EmptyResultsReason = 'filters' | 'nearby';
 
-interface ExpoConfigExtra {
-  MAPS_API_KEY?: string;
-  ANDROID_MAPS_API_KEY?: string;
-  IOS_MAPS_API_KEY?: string;
-  AI_PROXY_BASE_URL?: string;
-}
-
 export function getMapsApiKey(): string {
-  const extra = Constants.expoConfig?.extra as ExpoConfigExtra | undefined;
+  const config = getRuntimeConfig();
   if (Platform.OS === 'android') {
-    return extra?.ANDROID_MAPS_API_KEY ?? extra?.MAPS_API_KEY ?? '';
+    return config.androidMapsApiKey ?? config.mapsApiKey ?? '';
   }
   if (Platform.OS === 'ios') {
-    return extra?.IOS_MAPS_API_KEY ?? extra?.MAPS_API_KEY ?? '';
+    return config.iosMapsApiKey ?? config.mapsApiKey ?? '';
   }
 
-  return extra?.MAPS_API_KEY ?? extra?.ANDROID_MAPS_API_KEY ?? extra?.IOS_MAPS_API_KEY ?? '';
+  return config.mapsApiKey ?? config.androidMapsApiKey ?? config.iosMapsApiKey ?? '';
 }
 
 export function getAiProxyBaseUrl(): string {
-  const extra = Constants.expoConfig?.extra as ExpoConfigExtra | undefined;
-  return extra?.AI_PROXY_BASE_URL ?? '';
+  return getRuntimeConfig().aiProxyBaseUrl;
 }
 
 export function getEmptyResultsMessage(reason: EmptyResultsReason): string {

@@ -8,7 +8,6 @@ import {
   Pressable,
   Linking,
   Platform,
-  ActivityIndicator,
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { Spacing, Radius, FontSize, FontWeight, TouchTarget } from '../../theme/colors';
@@ -22,12 +21,14 @@ import { useRestaurants } from '../../context/RestaurantContext';
 import { useSettings } from '../../context/SettingsContext';
 import { logger } from '../../util/logger';
 import { IconName, Ionicons } from '../../components/ui';
-import { getRestaurantSafetyScore, MenuSafetyLevel } from '../../services/menuSafety';
+import { getRestaurantSafetyScore } from '../../services/menuSafety';
 import { getDiningChecklist } from '../../services/diningChecklist';
 import { getCuisineRiskHints } from '../../services/cuisineRiskHints';
 import { canUseBrowserMenuFallback } from '../../services/menuScanner';
 import MenuAnalysisSheet from './MenuAnalysisSheet';
 import MenuChatSheet from './MenuChatSheet';
+import RestaurantSafetySection from './RestaurantSafetySection';
+import RestaurantMenuEvidence from './RestaurantMenuEvidence';
 import { impactAsync } from '../../util/haptics';
 
 interface Props {
@@ -58,8 +59,6 @@ export default function RestaurantDetailModal({ restaurant: initial, useMiles, o
   const canOpenInteractiveMenu = canUseBrowserMenuFallback(restaurant);
   const confidence = confidenceMeta(restaurant, colors);
   const safetyScore = getRestaurantSafetyScore(restaurant, { strictCeliac });
-  const safety = safetyMeta(safetyScore.level, colors);
-  const numericSafetyScore = safetyScore.level === 'unknown' ? null : safetyScore.score;
   const diningChecklist = getDiningChecklist(restaurant, {
     strictCeliac,
     safetyLevel: safetyScore.level,
@@ -164,41 +163,7 @@ export default function RestaurantDetailModal({ restaurant: initial, useMiles, o
           </Section>
 
           <Section title="Safety Score">
-            <View style={[styles.safetyScoreCard, { backgroundColor: safety.bg }]}>
-              <View style={styles.safetyScoreHeader}>
-                <View>
-                  <Text style={[styles.safetyScoreValue, { color: safety.color }]}>
-                    {numericSafetyScore == null ? '?' : numericSafetyScore}
-                    {numericSafetyScore == null ? null : <Text style={styles.safetyScoreMax}>/100</Text>}
-                  </Text>
-                  <Text style={[styles.safetyScoreTitle, { color: safety.color }]}>
-                    {safety.icon} {safetyScore.title}
-                  </Text>
-                </View>
-                <View style={[styles.safetyMeter, { borderColor: safety.color }]}>
-                  <View
-                    style={[
-                      styles.safetyMeterFill,
-                      {
-                        width: `${numericSafetyScore ?? 0}%`,
-                        backgroundColor: safety.color,
-                      },
-                    ]}
-                  />
-                </View>
-              </View>
-              <Text style={styles.safetyScoreSummary}>{safetyScore.summary}</Text>
-              {safetyScore.reasons.length > 0 && (
-                <View style={styles.safetyReasons}>
-                  {safetyScore.reasons.map((reason) => (
-                    <View key={reason} style={styles.safetyReason}>
-                      <Text style={[styles.safetyReasonDot, { color: safety.color }]}>•</Text>
-                      <Text style={styles.safetyReasonText}>{reason}</Text>
-                    </View>
-                  ))}
-                </View>
-              )}
-            </View>
+            <RestaurantSafetySection safetyScore={safetyScore} colors={colors} />
           </Section>
 
           <Section title="Ask Before You Eat">
@@ -256,23 +221,7 @@ export default function RestaurantDetailModal({ restaurant: initial, useMiles, o
 
           {/* Menu scan status */}
           <Section title="Menu Scan">
-            <View style={styles.scanRow}>
-              <Text style={styles.scanStatus}>{menuStatusText(restaurant)}</Text>
-              {restaurant.menuScanStatus === 'FETCHING' && (
-                <ActivityIndicator size="small" color={colors.primary} />
-              )}
-            </View>
-
-            {restaurant.gfMenu.length > 0 && (
-              <View style={styles.menuItems}>
-                {restaurant.gfMenu.map((item, i) => (
-                  <View key={`${item}-${i}`} style={styles.menuItem}>
-                    <Text style={styles.bulletDot}>•</Text>
-                    <Text style={styles.menuItemText}>{item}</Text>
-                  </View>
-                ))}
-              </View>
-            )}
+            <RestaurantMenuEvidence restaurant={restaurant} colors={colors} />
           </Section>
 
           {/* Favorite toggle */}
@@ -426,34 +375,6 @@ function confidenceMeta(restaurant: Restaurant, colors: ThemeColors) {
   }
 }
 
-function safetyMeta(level: MenuSafetyLevel, colors: ThemeColors) {
-  if (level === 'safe') {
-    return { icon: '✅', color: colors.success, bg: colors.successBg };
-  }
-  if (level === 'caution') {
-    return { icon: '⚠️', color: colors.warning, bg: colors.warningBg };
-  }
-  if (level === 'unsafe') {
-    return { icon: '❌', color: colors.error, bg: colors.errorBg };
-  }
-
-  return { icon: '❓', color: colors.textSecondary, bg: colors.surfaceElevated };
-}
-
-function menuStatusText(r: Restaurant): string {
-  switch (r.menuScanStatus) {
-    case 'FETCHING': return '🔄 Scanning menu…';
-    case 'SUCCESS':
-      return r.gfMenu.length > 0
-        ? `✅ Scanned — ${r.gfMenu.length} GF item${r.gfMenu.length !== 1 ? 's' : ''} found`
-        : '✅ Scanned — no specific GF items found';
-    case 'NO_MENU_CONTENT': return '⚠️ Page loaded — no menu content found';
-    case 'JS_ONLY': return '🌐 Menu requires an interactive website';
-    case 'NO_WEBSITE': return '🌐 No website found';
-    case 'FAILED': return '⚠️ Could not load menu';
-    default: return '⏳ Not yet scanned';
-  }
-}
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   const { colors } = useTheme();
@@ -636,66 +557,6 @@ function createStyles(colors: ThemeColors) {
     lineHeight: 20,
     marginTop: Spacing.xs,
   },
-  safetyScoreCard: {
-    borderRadius: Radius.md,
-    padding: Spacing.md,
-  },
-  safetyScoreHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: Spacing.md,
-  },
-  safetyScoreValue: {
-    fontSize: FontSize.xxl,
-    fontWeight: FontWeight.extraBold,
-  },
-  safetyScoreMax: {
-    color: colors.textSecondary,
-    fontSize: FontSize.md,
-    fontWeight: FontWeight.semiBold,
-  },
-  safetyScoreTitle: {
-    fontSize: FontSize.md,
-    fontWeight: FontWeight.semiBold,
-    marginTop: 2,
-  },
-  safetyMeter: {
-    flex: 1,
-    height: 10,
-    borderRadius: Radius.full,
-    borderWidth: 1,
-    overflow: 'hidden',
-    backgroundColor: colors.surface,
-  },
-  safetyMeterFill: {
-    height: '100%',
-    borderRadius: Radius.full,
-  },
-  safetyScoreSummary: {
-    color: colors.textSecondary,
-    fontSize: FontSize.sm,
-    lineHeight: 20,
-    marginTop: Spacing.sm,
-  },
-  safetyReasons: {
-    marginTop: Spacing.sm,
-    gap: 4,
-  },
-  safetyReason: {
-    flexDirection: 'row',
-    gap: Spacing.sm,
-  },
-  safetyReasonDot: {
-    fontSize: FontSize.md,
-    lineHeight: 20,
-  },
-  safetyReasonText: {
-    flex: 1,
-    color: colors.textSecondary,
-    fontSize: FontSize.sm,
-    lineHeight: 20,
-  },
   checklistCard: {
     backgroundColor: colors.surface,
     borderRadius: Radius.md,
@@ -773,22 +634,6 @@ function createStyles(colors: ThemeColors) {
     lineHeight: 17,
     marginTop: Spacing.xs,
   },
-  scanRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
-    marginBottom: Spacing.sm,
-  },
-  scanStatus: { color: colors.textSecondary, fontSize: FontSize.sm, flex: 1 },
-  menuItems: {
-    backgroundColor: colors.surfaceElevated,
-    borderRadius: Radius.md,
-    padding: Spacing.md,
-    gap: Spacing.xs,
-  },
-  menuItem: { flexDirection: 'row', gap: Spacing.sm },
-  bulletDot: { color: colors.primary, fontSize: FontSize.md, lineHeight: 20 },
-  menuItemText: { flex: 1, color: colors.textSecondary, fontSize: FontSize.sm, lineHeight: 20 },
   favRow: { flexDirection: 'row', gap: Spacing.sm },
   actionsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm },
   });

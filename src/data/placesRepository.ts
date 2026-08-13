@@ -177,6 +177,7 @@ export async function fetchWebsiteForPlace(placeId: string, apiKey: string, sign
       ? payload.websiteUri.trim()
       : null;
   } catch (error) {
+    if (signal?.aborted) throw error;
     const message = error instanceof Error ? error.message : String(error);
     logger.warn(`fetchWebsiteForPlace failed for ${placeId}: ${message}`);
     return null;
@@ -202,7 +203,7 @@ export async function fetchHtml(url: string, proxyBaseUrl = '', signal?: AbortSi
           Accept: 'text/html',
         },
         signal,
-      }, undefined, undefined);
+      }, undefined);
 
       if (!response.ok) {
         logger.warn(`fetchHtml: HTTP ${response.status} for ${candidate}`);
@@ -218,6 +219,7 @@ export async function fetchHtml(url: string, proxyBaseUrl = '', signal?: AbortSi
 
       return await response.text();
     } catch (error) {
+      if (signal?.aborted) throw error;
       const message = error instanceof Error ? error.message : String(error);
       logger.warn(`fetchHtml failed for ${candidate}: ${message}`);
     }
@@ -237,7 +239,10 @@ export async function fetchRenderedMenuText(url: string, proxyBaseUrl = '', sign
       body: JSON.stringify({ url }),
       signal,
     });
-    const payload = await response.json().catch(() => null);
+    const payload = await response.json().catch((error: unknown) => {
+      if (signal?.aborted) throw error;
+      return null;
+    });
     if (!response.ok) {
       const message = isRecord(payload) && typeof payload.error === 'string' ? payload.error : 'Unknown render failure.';
       logger.warn(`Interactive menu render failed for ${url} (HTTP ${response.status}): ${message}`);
@@ -247,6 +252,7 @@ export async function fetchRenderedMenuText(url: string, proxyBaseUrl = '', sign
     const text = isRecord(payload) && typeof payload.text === 'string' ? payload.text.trim() : '';
     return text || null;
   } catch (error) {
+    if (signal?.aborted) throw error;
     const message = error instanceof Error ? error.message : String(error);
     logger.warn('Interactive menu render request failed for ' + url + ': ' + message);
     return null;
@@ -265,7 +271,10 @@ async function fetchHtmlViaProxy(url: string, proxyBaseUrl: string, signal?: Abo
       signal,
     });
 
-    const payload = await response.json().catch(() => null);
+    const payload = await response.json().catch((error: unknown) => {
+      if (signal?.aborted) throw error;
+      return null;
+    });
     if (!response.ok) {
       const message = isRecord(payload) && typeof payload.error === 'string' ? payload.error : response.status;
       logger.warn(`fetchHtml proxy failed for ${url}: ${message}`);
@@ -275,6 +284,7 @@ async function fetchHtmlViaProxy(url: string, proxyBaseUrl: string, signal?: Abo
     const html = isRecord(payload) && typeof payload.html === 'string' ? payload.html.trim() : '';
     return html || null;
   } catch (error) {
+    if (signal?.aborted) throw error;
     const message = error instanceof Error ? error.message : String(error);
     logger.warn(`fetchHtml proxy request failed for ${url}: ${message}`);
     return null;

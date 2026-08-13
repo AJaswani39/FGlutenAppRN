@@ -34,6 +34,8 @@ export class ScanOrchestrator {
    */
   destroy() {
     this.isDestroyed = true;
+    for (const controller of this.scanControllers.values()) controller.abort();
+    this.scanControllers.clear();
     this.scanQueue = [];
     this.currentBatchKeys = [];
   }
@@ -105,6 +107,19 @@ export class ScanOrchestrator {
    * Forces a rescan for a specific restaurant, clearing previous data.
    */
   async requestRescan(restaurant: Restaurant): Promise<void> {
+    if (this.isDestroyed) return;
+
+    const id = restaurant.placeId;
+    const existingController = id ? this.scanControllers.get(id) : undefined;
+    if (existingController) {
+      existingController.abort();
+      this.scanControllers.delete(id);
+    }
+    if (id) {
+      this.activeScans.delete(id);
+      this.scanQueue = this.scanQueue.filter((queued) => queued.placeId !== id);
+    }
+
     this.trackBatchKey(restaurant);
 
     const scanRequestedAt = Date.now();

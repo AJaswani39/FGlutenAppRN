@@ -157,13 +157,14 @@ export async function fetchNearbyRestaurants(
   return cloneRestaurants(restaurants);
 }
 
-export async function fetchWebsiteForPlace(placeId: string, apiKey: string): Promise<string | null> {
+export async function fetchWebsiteForPlace(placeId: string, apiKey: string, signal?: AbortSignal): Promise<string | null> {
   try {
     const response = await fetchWithTimeout(`${API_ENDPOINTS.PLACE_DETAILS}/${placeId}`, {
       headers: {
         'X-Goog-Api-Key': apiKey,
         'X-Goog-FieldMask': 'websiteUri',
       },
+      signal,
     });
 
     if (!response.ok) {
@@ -182,9 +183,9 @@ export async function fetchWebsiteForPlace(placeId: string, apiKey: string): Pro
   }
 }
 
-export async function fetchHtml(url: string, proxyBaseUrl = ''): Promise<string | null> {
+export async function fetchHtml(url: string, proxyBaseUrl = '', signal?: AbortSignal): Promise<string | null> {
   const sourceFormat = detectMenuSourceFormat(url);
-  const proxyHtml = await fetchHtmlViaProxy(url, proxyBaseUrl);
+  const proxyHtml = await fetchHtmlViaProxy(url, proxyBaseUrl, signal);
   if (proxyHtml) return proxyHtml;
 
   if (sourceFormat === 'pdf' || sourceFormat === 'image') {
@@ -195,12 +196,13 @@ export async function fetchHtml(url: string, proxyBaseUrl = ''): Promise<string 
   const candidates = getHtmlFetchCandidates(url);
   for (const candidate of candidates) {
     try {
-      const response = await fetchWithTimeout(candidate, {
+    const response = await fetchWithTimeout(candidate, {
         headers: {
           'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.5 Mobile/15E148 Safari/604.1',
           Accept: 'text/html',
         },
-      });
+        signal,
+      }, undefined, undefined);
 
       if (!response.ok) {
         logger.warn(`fetchHtml: HTTP ${response.status} for ${candidate}`);
@@ -224,7 +226,7 @@ export async function fetchHtml(url: string, proxyBaseUrl = ''): Promise<string 
   return null;
 }
 
-export async function fetchRenderedMenuText(url: string, proxyBaseUrl = ''): Promise<string | null> {
+export async function fetchRenderedMenuText(url: string, proxyBaseUrl = '', signal?: AbortSignal): Promise<string | null> {
   const trimmedProxyBaseUrl = proxyBaseUrl.trim().replace(/\/+$/, '');
   if (!trimmedProxyBaseUrl) return null;
 
@@ -233,6 +235,7 @@ export async function fetchRenderedMenuText(url: string, proxyBaseUrl = ''): Pro
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ url }),
+      signal,
     });
     const payload = await response.json().catch(() => null);
     if (!response.ok) {
@@ -250,7 +253,7 @@ export async function fetchRenderedMenuText(url: string, proxyBaseUrl = ''): Pro
   }
 }
 
-async function fetchHtmlViaProxy(url: string, proxyBaseUrl: string): Promise<string | null> {
+async function fetchHtmlViaProxy(url: string, proxyBaseUrl: string, signal?: AbortSignal): Promise<string | null> {
   const trimmedProxyBaseUrl = proxyBaseUrl.trim().replace(/\/+$/, '');
   if (!trimmedProxyBaseUrl) return null;
 
@@ -259,6 +262,7 @@ async function fetchHtmlViaProxy(url: string, proxyBaseUrl: string): Promise<str
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ url }),
+      signal,
     });
 
     const payload = await response.json().catch(() => null);

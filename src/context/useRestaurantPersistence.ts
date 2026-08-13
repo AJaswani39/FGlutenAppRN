@@ -18,6 +18,7 @@ interface Options {
 export function useRestaurantPersistence({ rawRestaurants, userLat, userLng }: Options) {
   const menuScanCache = useRef<Record<string, MenuScanCacheEntry>>({});
   const persistTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const menuScanWriteQueue = useRef<Promise<void>>(Promise.resolve());
 
   const flushPersistence = useCallback(async () => {
     if (persistTimeout.current) {
@@ -50,14 +51,23 @@ export function useRestaurantPersistence({ rawRestaurants, userLat, userLng }: O
 
   const persistMenuScan = useCallback((restaurant: Restaurant) => {
     const entry = getMenuScanCacheEntry(restaurant);
-    if (entry) {
-      menuScanCache.current[entry.placeId] = entry;
-    }
+    if (!entry) return;
 
-    void PersistenceService.saveMenuScanCacheEntry(restaurant, MENU_SCAN_TTL_MS).catch((error: unknown) => {
-      const message = error instanceof Error ? error.message : String(error);
-      logger.warn(`Failed to save menu scan cache entry: ${message}`);
-    });
+    // Update the session cache immediately, then serialize the persistent
+    // read/merge/write operations so concurrent scans cannot overwrite one
+    // another with stale snapshots of AsyncStorage.
+    menuScanCache.current[entry.placeId] = entry;
+    menuScanWriteQueue.current = menuScanWriteQueue.current
+      .catch(() => undefined)
+      .then(async () => {
+        const cache = await PersistenceService.loadMenuScanCache(MENU_SCAN_TTL_MS);
+        cache[entry.placeId] = entry;
+        await PersistenceService.saveMenuScanCache(cache, MENU_SCAN_TTL_MS);
+      })
+      .catch((error: unknown) => {
+        const message = error instanceof Error ? error.message : String(error);
+        logger.warn(`Failed to save menu scan cache entry: ${message}`);
+      });
   }, []);
 
   useEffect(() => {

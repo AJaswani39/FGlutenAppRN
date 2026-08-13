@@ -526,13 +526,28 @@ async function fetchWithTimeout(url, options, timeoutMs = AI_REQUEST_TIMEOUT_MS)
 
 function fetchPinnedWithTimeout(url, records, options, timeoutMs = HTML_FETCH_TIMEOUT_MS) {
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
   const requestModule = url.protocol === 'https:' ? https : http;
   const requestHeaders = options.headers || {};
   const requestPath = `${url.pathname}${url.search}`;
+  let responseStream = null;
+  let settled = false;
+  let timeoutId;
   const cleanupTimeout = () => clearTimeout(timeoutId);
 
   return new Promise((resolve, reject) => {
+    timeoutId = setTimeout(() => {
+      const error = Object.assign(new Error('The operation was aborted'), {
+        name: 'AbortError',
+        code: 'ABORT_ERR',
+      });
+
+      if (responseStream) {
+        responseStream.destroy(error);
+      } else {
+        controller.abort();
+      }
+    }, timeoutMs);
+
     const request = requestModule.request(
       {
         hostname: url.hostname,
@@ -545,6 +560,8 @@ function fetchPinnedWithTimeout(url, records, options, timeoutMs = HTML_FETCH_TI
         signal: controller.signal,
       },
       (response) => {
+        responseStream = response;
+        settled = true;
         resolve({
           ok: response.statusCode >= 200 && response.statusCode < 300,
           status: response.statusCode,
@@ -558,7 +575,7 @@ function fetchPinnedWithTimeout(url, records, options, timeoutMs = HTML_FETCH_TI
 
     request.on('error', (error) => {
       cleanupTimeout();
-      reject(error);
+      if (!settled) reject(error);
     });
     request.end();
   });

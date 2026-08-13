@@ -21,6 +21,7 @@ export interface ScanOrchestratorConfig {
  */
 export class ScanOrchestrator {
   private activeScans = new Set<string>();
+  private scanControllers = new Map<string, AbortController>();
   private currentBatchKeys: string[] = [];
   private scanQueue: Restaurant[] = [];
   private isProcessing = false;
@@ -65,6 +66,8 @@ export class ScanOrchestrator {
    * This should be called when the user starts a fresh search or navigates away.
    */
   flushQueue() {
+    for (const controller of this.scanControllers.values()) controller.abort();
+    this.scanControllers.clear();
     this.scanQueue = [];
     this.currentBatchKeys = [];
     this.activeScans.clear();
@@ -124,6 +127,8 @@ export class ScanOrchestrator {
 
     this.trackBatchKey(restaurant);
     this.activeScans.add(id);
+    const controller = new AbortController();
+    this.scanControllers.set(id, controller);
     const scanStartedAt = Date.now();
 
     try {
@@ -141,6 +146,7 @@ export class ScanOrchestrator {
         restaurant,
         scanStartedAt,
         htmlProxyBaseUrl: this.config.htmlProxyBaseUrl,
+        signal: controller.signal,
       });
       if (this.isDestroyed || !result) return;
 
@@ -153,6 +159,7 @@ export class ScanOrchestrator {
       if (applied) this.config.onNotifyUI();
     } catch (error) {
       if (this.isDestroyed) return;
+      if (controller.signal.aborted) return;
       logger.error('Interactive menu render failed for ' + restaurant.name, error);
       this.config.onRestaurantUpdate(restaurant, (current) => ({
         ...current,
@@ -162,6 +169,7 @@ export class ScanOrchestrator {
       this.config.onNotifyUI();
     } finally {
       this.activeScans.delete(id);
+      if (this.scanControllers.get(id) === controller) this.scanControllers.delete(id);
       this.clearBatchTrackingIfIdle();
       this.config.onNotifyUI();
     }
@@ -234,6 +242,8 @@ export class ScanOrchestrator {
     if (!id || this.activeScans.has(id) || !this.config.mapsApiKey || this.isDestroyed) return;
 
     this.activeScans.add(id);
+    const controller = new AbortController();
+    this.scanControllers.set(id, controller);
     const scanStartedAt = Date.now();
 
     try {
@@ -253,6 +263,7 @@ export class ScanOrchestrator {
         mapsApiKey: this.config.mapsApiKey,
         scanStartedAt,
         htmlProxyBaseUrl: this.config.htmlProxyBaseUrl,
+        signal: controller.signal,
       });
 
       if (this.isDestroyed) return;
@@ -276,6 +287,7 @@ export class ScanOrchestrator {
       }
     } catch (error) {
       if (this.isDestroyed) return;
+      if (controller.signal.aborted) return;
 
       // CRITICAL FIX: Ensure restaurant doesn't stay in 'FETCHING' state if scan crashes
       logger.error(`Scan failed for ${restaurant.name}`, error);
@@ -287,6 +299,7 @@ export class ScanOrchestrator {
       this.config.onNotifyUI();
     } finally {
       this.activeScans.delete(id);
+      if (this.scanControllers.get(id) === controller) this.scanControllers.delete(id);
     }
   }
 }

@@ -36,17 +36,19 @@ export async function scanRestaurantMenuWithBrowser({
   restaurant,
   scanStartedAt,
   htmlProxyBaseUrl = '',
+  signal,
 }: {
   restaurant: Restaurant;
   scanStartedAt: number;
   htmlProxyBaseUrl?: string;
+  signal?: AbortSignal;
 }): Promise<MenuScanResult | null> {
   if (!canUseBrowserMenuFallback(restaurant)) return null;
 
   const menuUrl = normalizeHttpUrl(restaurant.menuUrl);
   if (!menuUrl) return null;
 
-  const renderedText = await fetchRenderedMenuText(menuUrl, htmlProxyBaseUrl);
+  const renderedText = await fetchRenderedMenuText(menuUrl, htmlProxyBaseUrl, signal);
   const segments = renderedText ? htmlToTextSegments(renderedText) : [];
   const [gfMenu, rawMenuText] = await Promise.all([
     Promise.resolve(renderedText ? extractGfEvidence(segments) : []),
@@ -69,17 +71,19 @@ export async function scanRestaurantMenu({
   mapsApiKey,
   scanStartedAt,
   htmlProxyBaseUrl = '',
+  signal,
 }: {
   restaurant: Restaurant;
   mapsApiKey: string;
   scanStartedAt: number;
   htmlProxyBaseUrl?: string;
+  signal?: AbortSignal;
 }): Promise<MenuScanResult | null> {
   if (!mapsApiKey || !restaurant.placeId) return null;
 
   // Use existing menuUrl as a hint if available, otherwise fetch from Places API
   const websiteCandidate =
-    restaurant.menuUrl || (await fetchWebsiteForPlace(restaurant.placeId, mapsApiKey));
+    restaurant.menuUrl || (await fetchWebsiteForPlace(restaurant.placeId, mapsApiKey, signal));
   const initialUrl = normalizeHttpUrl(websiteCandidate);
 
   if (!initialUrl) {
@@ -105,13 +109,13 @@ export async function scanRestaurantMenu({
   }
 
   let menuUrl = initialUrl;
-  let html = await fetchHtml(initialUrl, htmlProxyBaseUrl);
+  let html = await fetchHtml(initialUrl, htmlProxyBaseUrl, signal);
 
   // If we found a specific menu link on the home page, try to fetch it for richer data
   if (html) {
     const menuLink = findMenuLink(html, initialUrl);
     if (menuLink && menuLink !== initialUrl) {
-      const menuHtml = await fetchHtml(menuLink, htmlProxyBaseUrl);
+      const menuHtml = await fetchHtml(menuLink, htmlProxyBaseUrl, signal);
       if (menuHtml) {
         html = menuHtml;
         menuUrl = menuLink;

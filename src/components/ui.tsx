@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { FontSize, FontWeight, Radius, Spacing, TouchTarget } from '../theme/colors';
@@ -94,7 +94,7 @@ export function StateMessage({
   loading?: boolean;
 }) {
   const { colors } = useTheme();
-  const stateStyles = React.useMemo(() => createStateStyles(colors), [colors]);
+  const stateStyles = useMemo(() => createStateStyles(colors), [colors]);
 
   return (
     <View style={stateStyles.container}>
@@ -131,7 +131,7 @@ export function IconButton({
   disabled?: boolean;
 }) {
   const { colors } = useTheme();
-  const themedStyles = React.useMemo(() => createStyles(colors), [colors]);
+  const themedStyles = useMemo(() => createStyles(colors), [colors]);
 
   return (
     <Pressable

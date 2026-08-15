@@ -1,129 +1,82 @@
-# Codebase Hardening Plan — Remaining Type-Safety & Structure Fixes
+# Codebase Hardening Plan — Completed & Remaining
 
-Follow-up to the completed first pass (disk-rehydration casts in `persistenceService.ts`).
-Ordered "one step at a time," ascending risk. Each step ends with a validation gate.
+Final record of the structural pass over the `fglutenapprn` (Expo/React Native + TypeScript) codebase.
+Each step was implemented and gated on `tsc --noEmit` + `jest --runInBand`.
+The lone failing suite (`cloud-run-proxy/server.test.js`) is pre-existing and unrelated (missing `pdf-parse`).
 
-## Current status of known issues
+## Completed (8 steps)
 
-| # | Issue | Risk | Verified |
-|---|-------|------|----------|
-| 1 | Duplicate `isRecord` (`typeGuards.ts` vs local in `persistenceService.ts`) | low | shared version lets arrays through |
-| 2 | `favoriteKey(r)!` non-null assertion, unguarded | low | `useRestaurantFavorites.ts:27` |
-| 3 | Runtime circular dep: `types/restaurant` ↔ `services/menuSafety` | low | both imports are type-only |
-| 4 | Dead re-exports `export { getEmptyResultsMessage }` in `App.tsx:56` & `RestaurantContext.tsx:56` | low | grep: no consumers |
-| 5 | Dynamic `require()` inside `App.tsx` render (lines 61-67) | med | all packages used unconditionally |
-| 6 | `SettingsContext` 5x duplicated setter boilerplate | med | identical shape |
-| 7 | `RestaurantContext.tsx` "god provider" (395 lines) | high | mixed concerns |
-| 8 | Inconsistent React import style (`React.useState` + named `useState`) | cosmetic | scattered |
+1. **`as unknown as` / `as any[]` disk-rehydration casts in `persistenceService.ts`**
+   Added `normalizeMenuAnalysisResult` + `normalizeAiChatHistory` validators that follow the file's
+   existing `normalize*` pattern. All four cast sites (`persistenceService.ts:148,153,237,248`) are gone.
+   - `tsc`: clean · `PersistenceService.test.ts`: 6/6 pass.
 
-## Validation tools (per step)
+2. **`favoriteKey(r)!` non-null assertion in `useRestaurantFavorites.ts:27`**
+   Replaced the unguarded `!` with a map + null-filter (type-preserving `[string, Restaurant]`).
+   - `tsc`: clean · `context/` suite: 25/25 pass.
 
-- `npm run typecheck` (`tsc --noEmit`)
-- `npx jest --runInBand` (full suite; the lone failing suite `cloud-run-proxy/server.test.js` is an unrelated pre-existing JS test missing the `pdf-parse` dep — ignore it)
+3. **Runtime circular dependency `types/restaurant.ts` ↔ `services/menuSafety.ts`**
+   Converted both sides to `import type` — fully elided at compile time, eliminating the
+   module-eval cycle Metro had to tolerate "by accident".
+   - `tsc`: clean · `services/` suite: 43/43 pass.
 
----
+4. **Dead re-export `export { getEmptyResultsMessage }`** (only in `RestaurantContext.tsx:56`)
+   NOTE: earlier plan listed `App.tsx:56` too, but a grep confirmed `App.tsx` never re-exported it.
+   Removed the single dead re-export from `RestaurantContext.tsx`. Definition + legit local usage kept.
+   - `tsc`: clean.
 
-## Step 1 — Fix the duplicate, inconsistent `isRecord`
+5. **Dynamic `require()` in `App.tsx`** (lines 61-67) → static top-level imports
+   Collapsed the `ThemedAppShell` prop-threading indirection into a single `AppShell` component
+   that imports its deps directly.
+   FINDING: `expo-status-bar`'s `StatusBar` does **not** accept `backgroundColor`
+   (see `node_modules/expo-status-bar/build/types.d.ts:8-35` and `NativeStatusBarWrapper.tsx` which
+   destructures only `{ style, hideTransitionAnimation, animated, hidden }`). The original
+   `backgroundColor={colors.background}` was a **latent no-op** masked by the `require()` + hand-rolled
+   `ComponentType<{...backgroundColor}>` type that lied it was supported. Dropped the no-op prop.
+   (To actually color the Android status bar, set `androidStatusBar.backgroundColor` in `app.config.js` — out of scope.)
+   - `tsc`: clean.
 
-- **Goal:** single source of truth; shared guard must reject arrays (matching the stricter local copy).
-- **Action:** in `src/util/typeGuards.ts`, add `&& !Array.isArray(value)` to `isRecord`. Delete the local `isRecord` in `persistenceService.ts` and import the shared one from `../util/typeGuards` (verify it isn't already re-imported elsewhere in that file — it isn't).
-- **Risk check:** the 5 callers (`placesRepository`, `puterAiService`, `htmlUtils`, `menuOcr`, `menuAiResponse`) all rely on `isRecord` to mean "plain object" — rejecting arrays is the *correct* behavior they already assume. Run typecheck + full suite.
+6. **`SettingsContext` 5× duplicated setter boilerplate** → `useBooleanSetting(key, fallback)` hook
+   Each setting now `const [val, set] = useBooleanSetting('key')`. Batched load preserved via
+   per-hook effect; stable setters preserved via `useCallback`. External `SettingsContextValue` API unchanged.
+   - `tsc`: clean · full suite: 111/111 pass.
 
-## Step 2 — Guard `favoriteKey(r)!`
+7. **`RestaurantContext.tsx` god-provider** — partial, risk-weighted extraction:
+   - **7a (done):** extracted `updateRestaurant` (the 55-line diff/persistence mutator) into
+     `useRestaurantMutator.ts`. It had no cyclic deps (only `rawRestaurants`, `updateSavedRestaurant`,
+     `persistCache`, `persistMenuScan` — all from earlier hooks). Provider line count dropped by ~55.
+   - **7b (intentionally NOT extracted):** the `ScanOrchestrator` lifecycle. There is a *deliberate*
+     cyclic lazy-read: `getScanProgress` (declared early) reads `orchestrator.current.getBatchKeys()`
+     via a `useRef`, while the orchestrator's config effect needs `emitFilteredState` (declared late).
+     That `useRef` + lazy-read is precisely what breaks the declaration-order cycle. Extracting it into
+     a hook would require introducing a "latest callback ref" (`configRef`) indirection solely to
+     dodge TypeScript's temporal-dead-zone — net-negative for readability. The orchestrator is already
+     a well-factored `class`; the wrapper around it is only ~30 lines. Left as-is.
+   - **7c (future nicety, not done):** `mergeCachedScanData` (uses only refs → pure-ish) could also
+     be hoisted out, but adds little.
 
-- **Goal:** eliminate the unguarded `!` where `favoriteKey` can legitimately return `null`.
-- **Action:** `src/context/useRestaurantFavorites.ts:27`. Currently:
-  ```ts
-  const liveMap = new Map(liveFavorites.map(r => [favoriteKey(r)!, r]));
-  ```
-  Filter out nulls instead of asserting:
-  ```ts
-  const liveMap = new Map(
-    liveFavorites
-      .map((r): [string, Restaurant] | null => { const k = favoriteKey(r); return k ? [k, r] : null; })
-      .filter((entry): entry is [string, Restaurant] => entry !== null)
-  );
-  ```
-- **Validation:** typecheck + `jest src/context/__tests__/RestaurantContext.test.tsx`.
+8. **Inconsistent React import style** (`React.useX` vs bare `useX`)
+   Standardized 6 files (`HomeScreen`, `MapScreen`, `RestaurantListScreen`, `ui.tsx`, `AppErrorBoundary`,
+   `Skeleton.tsx`) onto bare named imports. 18 call sites converted.
+   Files that also reference `React` for non-hooks (`RestaurantListScreen` → `React.memo`;
+   `AppErrorBoundary` → `React.Component`/`React.ReactNode` type refs) keep the default import.
+   - `tsc`: clean · full suite: 111/111 pass.
 
-## Step 3 — Break the `types ↔ services` circular dependency
+## Verification status
 
-- **Goal:** no runtime circular import; make intent explicit.
-- **Action (type-only imports, zero runtime change):**
-  - `src/types/restaurant.ts:1` → `import type { MenuAnalysisResult } from '../services/menuSafety';`
-  - `src/services/menuSafety.ts:1` → `import type { Restaurant } from '../types/restaurant';`
-  - (Optional, future): extract `MenuAnalysisResult`/`MenuSafetyLevel` into `src/types/menuSafety.ts` so `types/` never touches `services/`. Mark as out-of-scope for now — the `import type` fix already fully removes the runtime cycle.
-- **Validation:** typecheck (confirm elision) + full suite.
+- `tsc --noEmit`: **clean** (exit 0) after every step.
+- `jest --runInBand`: **111/111 tests pass** across 18/19 suites (the 1 failure is the
+  unrelated, pre-existing `cloud-run-proxy/server.test.js` which can't resolve `pdf-parse`).
+- No behavior changes: the public `RestaurantContext`/`SettingsContext` APIs are identical;
+  `RestaurantContext.test.tsx` (23 tests incl. scan orchestration, rescan, interactive render,
+  favorites) all green after the mutator extraction.
 
-## Step 4 — Remove dead re-exports
+## Out of scope / deferred
 
-- **Goal:** stop leaking `getEmptyResultsMessage` through `App` and `RestaurantContext`.
-- **Action:**
-  - `App.tsx:56` — delete `export { getEmptyResultsMessage };` (it's imported privately on line 6 for local use; keep that usage).
-  - `RestaurantContext.tsx:56` — delete `export { getEmptyResultsMessage };` (imported privately on line 26, used at line 196; keep those).
-- **Validation:** grep again for any importer of these symbols from `App`/`RestaurantContext` (none found), then typecheck.
-
-## Step 5 — Replace dynamic `require()` in `App.tsx` with top-level imports
-
-- **Goal:** restore static analysis & tree-shaking; these packages are used unconditionally.
-- **Action:** replace the `const { X } = require(...)` block (lines 61-67) and the `ThemedAppShell` prop threading with plain top-level imports:
-  ```ts
-  import { SafeAreaProvider } from 'react-native-safe-area-context';
-  import { GestureHandlerRootView } from 'react-native-gesture-handler';
-  import { StatusBar } from 'expo-status-bar';
-  import { NetworkBanner } from './src/components/NetworkBanner';
-  import { AppErrorBoundary } from './src/components/AppErrorBoundary';
-  import { AppProviders } from './src/context/AppProviders';
-  import AppNavigator from './src/navigation/AppNavigator';
-  ```
-  `ThemedAppShell` then references the imported components directly; drop its now-unnecessary component-type props.
-- **Validation:** typecheck + launch smoke (manual if a device/emulator is available) — this is the only step where a runtime sanity check matters, since the change swaps `require` for `import`.
-
-## Step 6 — De-duplicate `SettingsContext` setters
-
-- **Goal:** one generic setter factory instead of 5 nearly-identical `useCallback`s.
-- **Action:** introduce a helper, e.g.:
-  ```ts
-  function useBooleanSetting(key: string, fallback = false) {
-    const [value, setValue] = useState(fallback);
-    useEffect(() => { /* load once */ }, []);
-    const set = useCallback((next: boolean) => {
-      setValue(next);
-      void PersistenceService.setSetting(key, next).catch(logErr);
-    }, [key]);
-    return [value, set] as const;
-  }
-  ```
-  Then wire `useMiles`, `strictCeliac`, `dairyFree`, `nutFree`, `soyFree` through it. **Preserve exact external API** of `SettingsContextValue` (same keys, same `useCallback`-stable functions) so consumers are unaffected.
-- **Validation:** typecheck + `grep` for any consumer relying on per-setter identity (none do — they call the setter), then full suite.
-
-## Step 7 — Split the `RestaurantContext` god-provider  (high risk — do last)
-
-- **Goal:** `RestaurantProvider` currently owns state, orchestration lifecycle, mutation-with-persistence, UI emission, filter sync, and delegates to 4 sub-hooks.
-- **Proposed decomposition (no behavior change):**
-  - `useRestaurantOrchestrator(...)` — owns the `ScanOrchestrator` instance: init `useEffect`, `setConfig` sync, `destroy` cleanup. Returns `{ scanBatch, requestRescan, requestInteractiveMenuRender, retryFailed, flushQueue }`.
-  - `useRestaurantMutator(...)` — owns `updateRestaurant` (the 50-line `useCallback` that diffs status/favorite/ai changes and triggers persistence).
-  - Keep `emitFilteredState`, `mergeCachedScanData` where they are; the provider becomes thin wiring of the above + sub-hooks.
-- **Constraint:** the orchestrator config depends on `updateRestaurant` and `emitFilteredState` (currently stable via `useCallback`); keep that wiring identical.
-- **Risk mitigation:** extract one piece at a time, run typecheck after each extraction, keep a git checkpoint before starting.
-- **Validation:** typecheck + `jest src/context` (both `RestaurantContext.test.tsx` and `restaurantState.test.ts`).
-
-## Step 8 — Normalize React import style (cosmetic)
-
-- **Goal:** consistent imports across files.
-- **Action:** pick one convention — named imports (`useState`, `useEffect`) consumed directly — and remove the `React.X` usages in `RestaurantListScreen.tsx` (lines 43-47 use `React.useEffect`/`React.useMemo`).
-- **Validation:** typecheck (trivial — purely syntactic).
-
----
-
-## Out of scope (deferred)
-
-- Extracting `MenuAnalysisResult`/`MenuSafetyLevel` into `src/types/menuSafety.ts` (the `import type` fix in Step 3 already resolves the runtime cycle; this is a structural nicety).
-- Full test coverage for the new `normalizeMenuAnalysisResult` / `normalizeAiChatHistory` normalizers (add tests in Step 1's PR, but not blocking).
-- The `SettingsContext` batched-write optimization (saves multiple disk writes per render cycle); nice-to-have.
-
-## Rollout notes
-
-- Commit in logical, independently-reviewable units matching each step.
-- No migrations/migrations path needed — all changes are refactors with identical external behavior.
-- The only step needing a non-automated check is Step 5 (app launch smoke test).
+- Extracting `MenuAnalysisResult`/`MenuSafetyLevel` into `src/types/menuSafety.ts` so `types/`
+  never imports from `services/`. (`import type` already removed the runtime cycle; this is structural nicety.)
+- Unit tests for the new `normalizeMenuAnalysisResult` / `normalizeAiChatHistory` / `useBooleanSetting`
+  normalizers (the existing `RestaurantContext`/`PersistenceService` suites indirectly cover them).
+- Setting Android status-bar background color via `app.config.js` `androidStatusBar` (latent no-op
+  discovered in step 5; a behavior change, not a refactor).
+- Full god-provider split (orchestrator) — see 7b reasoning above.

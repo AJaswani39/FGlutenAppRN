@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useRef } from 'react';
+import React, { useEffect, useMemo, useState, useRef } from 'react';
 import {
   View,
   Text,
@@ -42,7 +42,7 @@ export default function MapScreen() {
 
   const lastAnimatedCoords = useRef<{ lat: number; lng: number } | null>(null);
 
-  React.useEffect(() => {
+  useEffect(() => {
     const lat = uiState.userLatitude;
     const lng = uiState.userLongitude;
     if (lat == null || lng == null || !mapRef.current) return;

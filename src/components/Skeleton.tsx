@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 import { View, StyleSheet, Animated, Easing, DimensionValue, StyleProp, ViewStyle } from 'react-native';
 import { ThemeColors, useTheme } from '../context/ThemeContext';
 
@@ -9,11 +9,11 @@ interface SkeletonProps {
 }
 
 export function Skeleton({ width, height, style }: SkeletonProps) {
-  const opacity = React.useRef(new Animated.Value(0.3)).current;
+  const opacity = useRef(new Animated.Value(0.3)).current;
   const { colors } = useTheme();
-  const styles = React.useMemo(() => createStyles(colors), [colors]);
+  const styles = useMemo(() => createStyles(colors), [colors]);
 
-  React.useEffect(() => {
+  useEffect(() => {
     const animation = Animated.loop(
       Animated.sequence([
         Animated.timing(opacity, {
@@ -47,7 +47,7 @@ export function Skeleton({ width, height, style }: SkeletonProps) {
 
 export function RestaurantCardSkeleton() {
   const { colors } = useTheme();
-  const cardStyles = React.useMemo(() => createCardStyles(colors), [colors]);
+  const cardStyles = useMemo(() => createCardStyles(colors), [colors]);
 
   return (
     <View style={cardStyles.container}>

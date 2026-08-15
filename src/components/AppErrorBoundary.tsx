@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { FontSize, FontWeight, Radius, Spacing } from '../theme/colors';
@@ -31,7 +31,7 @@ export class AppErrorBoundary extends React.Component<{ children: React.ReactNod
 
 function ThemedErrorFallback({ onRetry }: { onRetry: () => void }) {
   const { colors } = useTheme();
-  const styles = React.useMemo(() => createStyles(colors), [colors]);
+  const styles = useMemo(() => createStyles(colors), [colors]);
 
   return (
     <View style={styles.container}>

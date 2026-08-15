@@ -11,12 +11,10 @@ import { FavoriteStatus, MenuScanProgress, Restaurant, RestaurantUiState, AiChat
 import { PersistenceService } from '../services/persistenceService';
 
 import { MenuAnalysisResult } from '../services/menuSafety';
-import {
-  filterAndSortRestaurants,
-  isSameRestaurantIdentity,
-} from '../util/restaurantUtils';
+import { filterAndSortRestaurants } from '../util/restaurantUtils';
 import { useFilters } from './FiltersContext';
 import { useSettings } from './SettingsContext';
+import { useRestaurantMutator } from './useRestaurantMutator';
 import { ScanOrchestrator, ScanOrchestratorConfig } from '../services/scanOrchestrator';
 import {
   EmptyResultsReason,
@@ -112,63 +110,14 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
     userLng,
   });
 
-  // ── Restaurant mutation ───────────────────────────────────────
+  // ── Restaurant mutation (diffing + selective persistence) ────────────────
 
-  const updateRestaurant = useCallback(
-    (target: Restaurant, updater: (restaurant: Restaurant) => Restaurant) => {
-      let updated = false;
-      let worthPersisting = false;
-      let shouldPersistScanCache = false;
-      let scanCacheRestaurant: Restaurant | null = null;
-
-      rawRestaurants.current = rawRestaurants.current.map((restaurant) => {
-        if (!isSameRestaurantIdentity(restaurant, target)) {
-          return restaurant;
-        }
-
-        const nextRestaurant = updater(restaurant);
-        if (nextRestaurant !== restaurant) {
-          updated = true;
-
-          // Determine if this change is worth a disk save (terminal states or data changes)
-          const statusChangedToTerminal =
-            nextRestaurant.menuScanStatus !== restaurant.menuScanStatus &&
-            ['SUCCESS', 'NO_MENU_CONTENT', 'FAILED', 'NO_WEBSITE', 'JS_ONLY'].includes(nextRestaurant.menuScanStatus);
-
-          const favoriteChanged = nextRestaurant.favoriteStatus !== restaurant.favoriteStatus;
-          const aiChanged =
-            nextRestaurant.aiAnalysisResult !== restaurant.aiAnalysisResult ||
-            nextRestaurant.aiChatHistory !== restaurant.aiChatHistory ||
-            nextRestaurant.aiDeepAnalysis !== restaurant.aiDeepAnalysis;
-
-          if (statusChangedToTerminal || favoriteChanged || aiChanged) {
-            worthPersisting = true;
-          }
-
-          if (statusChangedToTerminal || aiChanged) {
-            shouldPersistScanCache = true;
-            scanCacheRestaurant = nextRestaurant;
-          }
-        }
-
-        return nextRestaurant;
-      });
-
-      // Keep the persistent favorites database perfectly synced
-      updateSavedRestaurant(target, updater);
-
-      if (worthPersisting) {
-        persistCache();
-      }
-
-      if (shouldPersistScanCache && scanCacheRestaurant) {
-        persistMenuScan(scanCacheRestaurant);
-      }
-
-      return updated;
-    },
-    [persistCache, persistMenuScan, updateSavedRestaurant]
-  );
+  const updateRestaurant = useRestaurantMutator({
+    rawRestaurants,
+    updateSavedRestaurant,
+    persistCache,
+    persistMenuScan,
+  });
 
   const getScanProgress = useCallback((): MenuScanProgress | null => {
     return getScanProgressForRestaurants(rawRestaurants.current, orchestrator.current?.getBatchKeys() ?? []);

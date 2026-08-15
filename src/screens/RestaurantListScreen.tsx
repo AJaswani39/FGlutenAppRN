@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -40,11 +40,11 @@ export default function RestaurantListScreen() {
   const searchInputRef = useRef<TextInput>(null);
   const isMounted = useRef(true);
 
-  React.useEffect(() => {
+  useEffect(() => {
     setSearchInputText(filters.searchQuery);
   }, [filters.searchQuery]);
 
-  React.useEffect(() => {
+  useEffect(() => {
     return () => {
       isMounted.current = false;
     };

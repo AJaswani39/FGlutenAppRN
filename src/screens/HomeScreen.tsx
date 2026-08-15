@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -29,8 +29,8 @@ export default function HomeScreen() {
   const { uiState, loadNearbyRestaurants, savedRestaurants } = useRestaurants();
   const { useMiles, strictCeliac } = useSettings();
   const { colors } = useTheme();
-  const styles = React.useMemo(() => createStyles(colors), [colors]);
-  const [selectedRestaurant, setSelectedRestaurant] = React.useState<Restaurant | null>(null);
+  const styles = useMemo(() => createStyles(colors), [colors]);
+  const [selectedRestaurant, setSelectedRestaurant] = useState<Restaurant | null>(null);
 
   const cached = uiState.restaurants;
   const hasData = cached.length > 0;
@@ -39,19 +39,19 @@ export default function HomeScreen() {
     Boolean(uiState.message) &&
     (uiState.status === 'error' || uiState.status === 'permission_required' || !hasData);
 
-  const handleFindRestaurants = React.useCallback(() => {
+  const handleFindRestaurants = useCallback(() => {
     navigation.dispatch(TabActions.jumpTo('Restaurants'));
     void loadNearbyRestaurants();
   }, [loadNearbyRestaurants, navigation]);
 
-  const handleOpenSettings = React.useCallback(() => {
+  const handleOpenSettings = useCallback(() => {
     void Linking.openSettings().catch((error: unknown) => {
       const message = error instanceof Error ? error.message : String(error);
       logger.error(`Failed to open app settings: ${message}`);
     });
   }, []);
 
-  const stats = React.useMemo(() => {
+  const stats = useMemo(() => {
     let scans = 0;
     let latestScan = 0;
     for (const r of cached) {
@@ -61,7 +61,7 @@ export default function HomeScreen() {
     return { scans, latestScan };
   }, [cached]);
 
-  const safePicks = React.useMemo(
+  const safePicks = useMemo(
     () => getSafeRestaurantPicks(cached, { strictCeliac, limit: 3 }),
     [cached, strictCeliac]
   );
@@ -206,7 +206,7 @@ function SafePickCard({
   onPress: () => void;
 }) {
   const { colors } = useTheme();
-  const styles = React.useMemo(() => createStyles(colors), [colors]);
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const dist = formatDistance(pick.restaurant.distanceMeters, useMiles);
 
   const scoreTone = pick.safetyScore.level === 'safe' ? colors.success : colors.warning;
@@ -253,7 +253,7 @@ function SafePickCard({
 
 function StatCard({ icon, label, value }: { icon: 'location' | 'heart' | 'scan'; label: string; value: string }) {
   const { colors } = useTheme();
-  const styles = React.useMemo(() => createStyles(colors), [colors]);
+  const styles = useMemo(() => createStyles(colors), [colors]);
 
   return (
     <View style={styles.statCard}>

@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { FavoriteStatus, RestaurantFilters, SortMode, Restaurant, AiChatMessage } from '../types/restaurant';
-import { MenuAnalysisResult } from './menuSafety';
+import { MenuAnalysisResult, MenuSafetyLevel } from './menuSafety';
 import { logger } from '../util/logger';
 
 export interface CachePayload {
@@ -142,20 +142,10 @@ export function normalizeRestaurant(value: unknown): Restaurant | null {
   const gfMenu = normalizeStringArray(value.gfMenu, 15);
   const menuUrl = normalizeString(value.menuUrl).trim() || null;
   const rawMenuText = normalizeString(value.rawMenuText).trim() || null;
-  // aiAnalysisResult is opaque data from disk — cast to MenuAnalysisResult since we
-  // cannot revalidate every field without a full schema. Nulled if not a plain object.
-  const aiAnalysisResult = isRecord(value.aiAnalysisResult)
-    ? (value.aiAnalysisResult as unknown as MenuAnalysisResult)
-    : null;
+  const aiAnalysisResult = normalizeMenuAnalysisResult(value.aiAnalysisResult);
   const aiDeepAnalysis = normalizeNullableString(value.aiDeepAnalysis, 20000);
 
-  const aiChatHistory: AiChatMessage[] | undefined = Array.isArray(value.aiChatHistory)
-    ? (value.aiChatHistory as any[]).map((msg): AiChatMessage => ({
-        role: msg.role === 'user' ? 'user' : 'model',
-        text: normalizeString(msg.text),
-        timestamp: normalizeFiniteNumber(msg.timestamp, Date.now()),
-      }))
-    : undefined;
+  const aiChatHistory = normalizeAiChatHistory(value.aiChatHistory, Date.now());
 
   const menuScanStatus = MENU_SCAN_STATUSES.has(value.menuScanStatus as Restaurant['menuScanStatus'])
     ? (value.menuScanStatus as Restaurant['menuScanStatus'])
@@ -233,24 +223,14 @@ export function normalizeMenuScanCache(
     const menuScanTimestamp = Math.max(0, normalizeFiniteNumber(entry.menuScanTimestamp, 0));
     if (menuScanTimestamp <= 0 || now - menuScanTimestamp > maxAgeMs) continue;
 
-    const aiAnalysisResult = isRecord(entry.aiAnalysisResult)
-      ? (entry.aiAnalysisResult as unknown as MenuAnalysisResult)
-      : null;
-
     normalized[placeId] = {
       placeId,
       gfMenu: normalizeStringArray(entry.gfMenu, 15),
       rawMenuText: normalizeNullableString(entry.rawMenuText, 20000),
       menuScanStatus,
       menuScanTimestamp,
-      aiAnalysisResult,
-      aiChatHistory: Array.isArray(entry.aiChatHistory)
-        ? (entry.aiChatHistory as any[]).map((msg): AiChatMessage => ({
-            role: msg.role === 'user' ? 'user' : 'model',
-            text: normalizeString(msg.text),
-            timestamp: normalizeFiniteNumber(msg.timestamp, now),
-          }))
-        : undefined,
+      aiAnalysisResult: normalizeMenuAnalysisResult(entry.aiAnalysisResult),
+      aiChatHistory: normalizeAiChatHistory(entry.aiChatHistory, now),
       aiDeepAnalysis: normalizeNullableString(entry.aiDeepAnalysis, 20000),
     };
   }
@@ -272,6 +252,73 @@ export function getMenuScanCacheEntry(restaurant: Restaurant): MenuScanCacheEntr
     aiChatHistory: restaurant.aiChatHistory,
     aiDeepAnalysis: normalizeNullableString(restaurant.aiDeepAnalysis, 20000),
   };
+}
+
+function normalizeMenuSafetyLevel(value: unknown): MenuSafetyLevel | undefined {
+  if (typeof value !== 'string') return undefined;
+  const normalized = value.toLowerCase();
+  return normalized === 'safe' || normalized === 'caution' || normalized === 'unknown' || normalized === 'unsafe'
+    ? normalized
+    : undefined;
+}
+
+function normalizeRiskFactor(value: unknown): { factor: string; severity: number; description: string } | null {
+  if (!isRecord(value)) return null;
+  const factor = normalizeString(value.factor);
+  const severity = normalizeFiniteNumber(value.severity, 0);
+  const description = normalizeString(value.description);
+  if (!factor) return null;
+  return { factor, severity, description };
+}
+
+export function normalizeMenuAnalysisResult(value: unknown): MenuAnalysisResult | null {
+  if (!isRecord(value)) return null;
+
+  const overallSafety = normalizeMenuSafetyLevel(value.overallSafety);
+  const score = normalizeFiniteNumber(value.score, 0);
+  const glutenFreeItems = normalizeStringArray(value.glutenFreeItems, 50);
+  const warnings = normalizeStringArray(value.warnings, 50);
+  const crossContamRisk = normalizeString(value.crossContamRisk);
+  const summary = normalizeString(value.summary);
+
+  if (overallSafety === undefined) return null;
+
+  return {
+    overallSafety,
+    score: Math.min(100, Math.max(0, score)),
+    glutenFreeItems,
+    warnings,
+    crossContamRisk,
+    summary,
+    riskFactors: Array.isArray(value.riskFactors)
+      ? value.riskFactors
+          .map(normalizeRiskFactor)
+          .filter((entry): entry is NonNullable<MenuAnalysisResult['riskFactors']>[number] => entry !== null)
+      : undefined,
+    safeItems: normalizeStringArray(value.safeItems, 50),
+    cautionItems: normalizeStringArray(value.cautionItems, 50),
+    unsafeItems: normalizeStringArray(value.unsafeItems, 50),
+  };
+}
+
+export function normalizeAiChatHistory(
+  value: unknown,
+  fallbackTimestamp: number
+): AiChatMessage[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+
+  const messages = value
+    .map((msg): AiChatMessage => {
+      const role = typeof msg === 'object' && msg !== null && (msg as { role?: unknown }).role === 'user' ? 'user' : 'model';
+      return {
+        role,
+        text: normalizeString(msg?.text),
+        timestamp: normalizeFiniteNumber(msg?.timestamp, fallbackTimestamp),
+      };
+    })
+    .filter((msg) => msg.text.length > 0);
+
+  return messages.length === value.length ? messages : undefined;
 }
 
 // ─── Persistence Service ───────────────────────────────────────

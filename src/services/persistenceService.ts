@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { FavoriteStatus, RestaurantFilters, SortMode, Restaurant, AiChatMessage } from '../types/restaurant';
 import { MenuAnalysisResult, MenuSafetyLevel } from './menuSafety';
 import { logger } from '../util/logger';
+import { isRecord } from '../util/typeGuards';
 
 export interface CachePayload {
   restaurants: Restaurant[];
@@ -52,10 +53,6 @@ const MENU_SCAN_STATUSES = new Set<Restaurant['menuScanStatus']>([
 const FAVORITE_STATUSES = new Set<Exclude<FavoriteStatus, null>>(['safe', 'try', 'avoid']);
 
 // ─── Normalization Helpers ─────────────────────────────────────
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
 
 function normalizeBoolean(value: unknown, fallback = false): boolean {
   return typeof value === 'boolean' ? value : fallback;

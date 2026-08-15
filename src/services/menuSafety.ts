@@ -1,4 +1,4 @@
-import { Restaurant } from '../types/restaurant';
+import type { Restaurant } from '../types/restaurant';
 import { getGfConfidenceLevel } from '../util/restaurantUtils';
 
 export type MenuSafetyLevel = 'safe' | 'caution' | 'unknown' | 'unsafe';

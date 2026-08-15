@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { PersistenceService } from '../services/persistenceService';
 import { logger } from '../util/logger';
 
@@ -23,88 +23,55 @@ export function useSettings(): SettingsContextValue {
   return ctx;
 }
 
-export function SettingsProvider({ children }: { children: React.ReactNode }) {
-  const [useMiles, setUseMilesState] = useState(false);
-  const [strictCeliac, setStrictCeliacState] = useState(false);
-  const [dairyFree, setDairyFreeState] = useState(false);
-  const [nutFree, setNutFreeState] = useState(false);
-  const [soyFree, setSoyFreeState] = useState(false);
+/**
+ * Manages a single boolean preference: loads it from AsyncStorage once on
+ * mount and persists every write. Replaces the per-setting `useState` +
+ * hand-rolled `useCallback` boilerplate that used to be duplicated five times.
+ */
+function useBooleanSetting(
+  key: string,
+  fallback = false
+): [boolean, (val: boolean) => void] {
+  const [value, setValue] = useState(fallback);
 
   useEffect(() => {
-    let isMounted = true;
+    let cancelled = false;
 
     (async () => {
       try {
-        const [
-          savedUseMiles,
-          savedStrictCeliac,
-          savedDairy,
-          savedNut,
-          savedSoy,
-        ] = await Promise.all([
-          PersistenceService.getSetting('use_miles'),
-          PersistenceService.getSetting('strict_celiac'),
-          PersistenceService.getSetting('dairy_free'),
-          PersistenceService.getSetting('nut_free'),
-          PersistenceService.getSetting('soy_free'),
-        ]);
-
-        if (!isMounted) return;
-        setUseMilesState(savedUseMiles);
-        setStrictCeliacState(savedStrictCeliac);
-        setDairyFreeState(savedDairy);
-        setNutFreeState(savedNut);
-        setSoyFreeState(savedSoy);
+        const saved = await PersistenceService.getSetting(key);
+        if (!cancelled) setValue(saved);
       } catch (error: unknown) {
         const message = error instanceof Error ? error.message : String(error);
-        logger.error(`Failed to load settings: ${message}`);
+        logger.error(`Failed to load setting '${key}': ${message}`);
       }
     })();
 
     return () => {
-      isMounted = false;
+      cancelled = true;
     };
-  }, []);
+  }, [key]);
 
-  const setUseMiles = useCallback((val: boolean) => {
-    setUseMilesState(val);
-    void PersistenceService.setSetting('use_miles', val).catch((error: unknown) => {
-      const message = error instanceof Error ? error.message : String(error);
-      logger.error(`Failed to save distance unit setting: ${message}`);
-    });
-  }, []);
+  const set = useCallback(
+    (val: boolean) => {
+      setValue(val);
+      void PersistenceService.setSetting(key, val).catch((error: unknown) => {
+        const message = error instanceof Error ? error.message : String(error);
+        logger.error(`Failed to save setting '${key}': ${message}`);
+      });
+    },
+    [key]
+  );
 
-  const setStrictCeliac = useCallback((val: boolean) => {
-    setStrictCeliacState(val);
-    void PersistenceService.setSetting('strict_celiac', val).catch((error: unknown) => {
-      const message = error instanceof Error ? error.message : String(error);
-      logger.error(`Failed to save strict celiac setting: ${message}`);
-    });
-  }, []);
+  return useMemo(() => [value, set] as const, [value, set]);
+}
 
-  const setDairyFree = useCallback((val: boolean) => {
-    setDairyFreeState(val);
-    void PersistenceService.setSetting('dairy_free', val).catch((error: unknown) => {
-      const message = error instanceof Error ? error.message : String(error);
-      logger.error(`Failed to save dairy-free setting: ${message}`);
-    });
-  }, []);
-
-  const setNutFree = useCallback((val: boolean) => {
-    setNutFreeState(val);
-    void PersistenceService.setSetting('nut_free', val).catch((error: unknown) => {
-      const message = error instanceof Error ? error.message : String(error);
-      logger.error(`Failed to save nut-free setting: ${message}`);
-    });
-  }, []);
-
-  const setSoyFree = useCallback((val: boolean) => {
-    setSoyFreeState(val);
-    void PersistenceService.setSetting('soy_free', val).catch((error: unknown) => {
-      const message = error instanceof Error ? error.message : String(error);
-      logger.error(`Failed to save soy-free setting: ${message}`);
-    });
-  }, []);
+export function SettingsProvider({ children }: { children: React.ReactNode }) {
+  const [useMiles, setUseMiles] = useBooleanSetting('use_miles');
+  const [strictCeliac, setStrictCeliac] = useBooleanSetting('strict_celiac');
+  const [dairyFree, setDairyFree] = useBooleanSetting('dairy_free');
+  const [nutFree, setNutFree] = useBooleanSetting('nut_free');
+  const [soyFree, setSoyFree] = useBooleanSetting('soy_free');
 
   return (
     <SettingsContext.Provider

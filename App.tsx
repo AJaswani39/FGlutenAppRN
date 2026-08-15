@@ -1,10 +1,17 @@
 import 'react-native-gesture-handler';
 import React, { useState, useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { StatusBar } from 'expo-status-bar';
 import * as SplashScreen from 'expo-splash-screen';
 import { applyTheme } from './src/theme/colors';
 import { getMapsApiKey } from './src/context/restaurantState';
 import { CustomSplashScreen } from './src/components/CustomSplashScreen';
+import { NetworkBanner } from './src/components/NetworkBanner';
+import { AppErrorBoundary } from './src/components/AppErrorBoundary';
+import { AppProviders } from './src/context/AppProviders';
+import AppNavigator from './src/navigation/AppNavigator';
 import { ThemeProvider, getInitialThemePreference, useTheme } from './src/context/ThemeContext';
 
 // Keep splash screen visible while we load theme from storage
@@ -58,50 +65,21 @@ export default function App() {
     return <CustomSplashScreen isDark={initialIsDark} onFinish={() => setBootStage('ready')} />;
   }
 
-  const { SafeAreaProvider } = require('react-native-safe-area-context');
-  const { GestureHandlerRootView } = require('react-native-gesture-handler');
-  const { StatusBar } = require('expo-status-bar');
-  const { NetworkBanner } = require('./src/components/NetworkBanner');
-  const { AppErrorBoundary } = require('./src/components/AppErrorBoundary');
-  const { AppProviders } = require('./src/context/AppProviders');
-  const AppNavigator = require('./src/navigation/AppNavigator').default;
-
   return (
     <ThemeProvider initialIsDark={initialIsDark}>
       <SafeAreaProvider>
-        <ThemedAppShell
-          GestureHandlerRootView={GestureHandlerRootView}
-          StatusBar={StatusBar}
-          NetworkBanner={NetworkBanner}
-          AppErrorBoundary={AppErrorBoundary}
-          AppProviders={AppProviders}
-          AppNavigator={AppNavigator}
-        />
+        <AppShell />
       </SafeAreaProvider>
     </ThemeProvider>
   );
 }
 
-function ThemedAppShell({
-  GestureHandlerRootView,
-  StatusBar,
-  NetworkBanner,
-  AppErrorBoundary,
-  AppProviders,
-  AppNavigator,
-}: {
-  GestureHandlerRootView: React.ComponentType<{ style: object; children: React.ReactNode }>;
-  StatusBar: React.ComponentType<{ style: 'light' | 'dark'; backgroundColor: string }>;
-  NetworkBanner: React.ComponentType;
-  AppErrorBoundary: React.ComponentType<{ children: React.ReactNode }>;
-  AppProviders: React.ComponentType<{ children: React.ReactNode }>;
-  AppNavigator: React.ComponentType;
-}) {
+function AppShell() {
   const { colors, isDark } = useTheme();
 
   return (
     <GestureHandlerRootView style={{ flex: 1, backgroundColor: colors.background }}>
-      <StatusBar style={isDark ? 'light' : 'dark'} backgroundColor={colors.background} />
+      <StatusBar style={isDark ? 'light' : 'dark'} />
       <NetworkBanner />
       <AppErrorBoundary>
         <AppProviders>

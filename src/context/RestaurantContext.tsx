@@ -53,7 +53,6 @@ interface RestaurantContextValue {
 }
 
 const RestaurantContext = createContext<RestaurantContextValue | null>(null);
-export { getEmptyResultsMessage };
 
 export function useRestaurants(): RestaurantContextValue {
   const context = useContext(RestaurantContext);

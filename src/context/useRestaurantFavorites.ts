@@ -24,7 +24,14 @@ export function useRestaurantFavorites(rawRestaurants: MutableRefObject<Restaura
     const liveFavorites = getSavedRestaurants(rawRestaurants.current);
     
     // 2. Merge with historical DB (prefer live data as it has updated distance/scans)
-    const liveMap = new Map(liveFavorites.map(r => [favoriteKey(r)!, r]));
+    const liveMap = new Map(
+      liveFavorites
+        .map((r): [string, Restaurant] | null => {
+          const key = favoriteKey(r);
+          return key ? [key, r] : null;
+        })
+        .filter((entry): entry is [string, Restaurant] => entry !== null)
+    );
     
     const historicalToAdd = savedDb.current.filter(r => {
       const key = favoriteKey(r);

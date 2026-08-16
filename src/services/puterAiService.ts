@@ -204,6 +204,9 @@ export class PuterAiService {
 
       if (!response.ok) {
         const errText = await response.text();
+        if (response.status === 402) {
+          throw new Error('AI service is currently unavailable due to payment required. Please try again later or check your API key quota.');
+        }
         throw new Error(`Puter API error (${response.status}): ${errText}`);
       }
 

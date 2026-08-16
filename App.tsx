@@ -14,6 +14,10 @@ import { AppProviders } from './src/context/AppProviders';
 import AppNavigator from './src/navigation/AppNavigator';
 import { ThemeProvider, getInitialThemePreference, useTheme } from './src/context/ThemeContext';
 
+import { PuterAiService } from './src/services/puterAiService';
+import { getRuntimeConfig } from './src/config/runtimeConfig';
+
+
 // Keep splash screen visible while we load theme from storage
 void SplashScreen.preventAutoHideAsync().catch((error: unknown) => {
   if (__DEV__) {
@@ -38,6 +42,16 @@ export default function App() {
         const isDark = getInitialThemePreference(savedTheme);
         setInitialIsDark(isDark);
         applyTheme(isDark);
+        // Initialize Puter AI service with configuration from environment
+        const config = getRuntimeConfig();
+        if (config.puterApiKey) {
+          PuterAiService.init(config.puterApiKey, config.aiProxyBaseUrl);
+          console.log('[FGluten] Puter AI service initialized');
+        } else {
+          console.warn('[FGluten] PUTER_API_KEY is missing. AI features will be disabled.');
+        }
+
+
       } catch (err) {
         // Fallback to dark
         applyTheme(true);

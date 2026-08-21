@@ -30,6 +30,7 @@ import { useRestaurantFavorites } from './useRestaurantFavorites';
 import { useRestaurantPersistence } from './useRestaurantPersistence';
 import { useRestaurantCacheHydration } from './useRestaurantCacheHydration';
 import { useRestaurantLoader } from './useRestaurantLoader';
+import { useRestaurantCollectionState } from './useRestaurantCollectionState';
 
 interface EmitFilteredStateOptions {
   emptyReason?: EmptyResultsReason;
@@ -124,46 +125,17 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
     return getScanProgressForRestaurants(rawRestaurants.current, orchestrator.current?.getBatchKeys() ?? []);
   }, []);
 
-  const emitFilteredState = useCallback(
-    (options: EmitFilteredStateOptions = {}) => {
-      syncSavedRestaurants();
-      setUiState(
-        resolveFilteredRestaurantUiState({
-          restaurants: rawRestaurants.current,
-          filters: filtersRef.current,
-          strictCeliac,
-          currentStatus: uiStateRef.current.status,
-          emptyReason: options.emptyReason ?? getCollectionReason(rawRestaurants.current.length),
-          message: options.message,
-          status: options.status,
-          userLatitude: userLat.current,
-          userLongitude: userLng.current,
-          scanProgress: getScanProgress(),
-        })
-      );
-    },
-    [getScanProgress, strictCeliac, syncSavedRestaurants]
-  );
-
-  const refreshCollectionState = useCallback(
-    (overrides: EmitFilteredStateOptions = {}) => {
-      emitFilteredState({
-        emptyReason: getCollectionReason(rawRestaurants.current.length),
-        message: uiStateRef.current.message,
-        status: uiStateRef.current.status,
-        ...overrides,
-      });
-    },
-    [emitFilteredState]
-  );
-
-  useEffect(() => {
-    if (rawRestaurants.current.length === 0 && uiStateRef.current.status === 'idle') {
-      return;
-    }
-
-    refreshCollectionState();
-  }, [emitFilteredState, filters, refreshCollectionState, strictCeliac]);
+  const { emitFilteredState, refreshCollectionState } = useRestaurantCollectionState({
+    rawRestaurants,
+    filters: filtersRef.current,
+    strictCeliac,
+    userLat,
+    userLng,
+    uiStateRef,
+    getScanProgress,
+    syncSavedRestaurants,
+    setUiState,
+  });
 
   const mergeCachedScanData = useCallback((freshRestaurants: Restaurant[]) => {
     const cachedByKey = new Map<string, Restaurant>();

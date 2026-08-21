@@ -50,6 +50,36 @@ export function useRestaurantLoader({
     isMounted.current && requestIdRef.current === requestId
   ), [isMounted]);
 
+  const showCachedFallbackOrError = useCallback((options: {
+    message: string;
+    emptyReason?: 'filters' | 'nearby';
+    status?: RestaurantUiState['status'];
+    userLatitude?: number | null;
+    userLongitude?: number | null;
+  }) => {
+    const {
+      message,
+      emptyReason = 'filters',
+      status = 'error',
+      userLatitude = null,
+      userLongitude = null,
+    } = options;
+
+    if (rawRestaurants.current.length > 0) {
+      emitFilteredState({ emptyReason, message });
+      return;
+    }
+
+    setUiState({
+      status,
+      restaurants: [],
+      message,
+      userLatitude,
+      userLongitude,
+      scanProgress: getScanProgress(),
+    });
+  }, [emitFilteredState, getScanProgress, rawRestaurants, setUiState]);
+
   const loadNearbyRestaurants = useCallback(async (overrideCoords?: Coordinates) => {
     if (uiStateRef.current.status === 'loading') return;
 
@@ -64,22 +94,22 @@ export function useRestaurantLoader({
         if (!isActiveRequest(requestId)) return;
         const message = error instanceof Error ? error.message : String(error);
         logger.warn(`Could not determine network status: ${message}`);
-        if (rawRestaurants.current.length > 0) {
-          emitFilteredState({ message: 'Could not check the internet connection. Showing cached results.' });
-        } else {
-          setUiState({ status: 'error', restaurants: [], message: 'Could not check the internet connection. Please try again.', userLatitude: null, userLongitude: null, scanProgress: null });
-        }
+        showCachedFallbackOrError({
+          message: 'Could not check the internet connection. Showing cached results.',
+          emptyReason: 'filters',
+          status: 'error',
+        });
         return;
       }
 
       if (!isActiveRequest(requestId)) return;
       const isOnline = netInfo.isConnected === true && netInfo.isInternetReachable !== false;
       if (!isOnline) {
-        if (rawRestaurants.current.length > 0) {
-          emitFilteredState({ message: 'No internet connection. Showing last cached results.' });
-        } else {
-          setUiState({ status: 'error', restaurants: [], message: 'No internet connection. Please check your network and try again.', userLatitude: null, userLongitude: null, scanProgress: null });
-        }
+        showCachedFallbackOrError({
+          message: 'No internet connection. Showing last cached results.',
+          emptyReason: 'filters',
+          status: 'error',
+        });
         return;
       }
 
@@ -89,11 +119,13 @@ export function useRestaurantLoader({
       if (!isActiveRequest(requestId)) return;
 
       if (!mapsApiKey) {
-        if (rawRestaurants.current.length > 0) {
-          emitFilteredState({ emptyReason: 'filters', message: 'Showing cached results — Maps API key is missing. Live refresh is unavailable.' });
-        } else {
-          setUiState({ status: 'error', restaurants: [], message: 'Maps API key is missing. Please configure MAPS_API_KEY.', userLatitude: null, userLongitude: null, scanProgress: getScanProgress() });
-        }
+        showCachedFallbackOrError({
+          message: 'Showing cached results — Maps API key is missing. Live refresh is unavailable.',
+          emptyReason: 'filters',
+          status: 'error',
+          userLatitude: null,
+          userLongitude: null,
+        });
         return;
       }
 
@@ -112,11 +144,11 @@ export function useRestaurantLoader({
         const { status } = await Location.requestForegroundPermissionsAsync();
         if (!isActiveRequest(requestId)) return;
         if (status !== 'granted') {
-          if (rawRestaurants.current.length > 0) {
-            emitFilteredState({ emptyReason: 'filters', message: 'Showing cached results — location permission is needed to refresh nearby restaurants.' });
-          } else {
-            setUiState({ status: 'permission_required', restaurants: [], message: 'Location permission is needed to find nearby restaurants.', userLatitude: null, userLongitude: null, scanProgress: getScanProgress() });
-          }
+          showCachedFallbackOrError({
+            message: 'Showing cached results — location permission is needed to refresh nearby restaurants.',
+            emptyReason: 'filters',
+            status: 'permission_required',
+          });
           return;
         }
 
@@ -161,14 +193,23 @@ export function useRestaurantLoader({
       const errorMessage = error instanceof Error ? error.message : String(error);
       const message = `Could not load restaurants: ${errorMessage}`;
       if (/permission|denied|allowed/i.test(errorMessage)) {
-        setUiState({ status: 'permission_required', restaurants: rawRestaurants.current.length > 0 ? uiStateRef.current.restaurants : [], message: 'Location permission or services are required to refresh results.', userLatitude: userLat.current, userLongitude: userLng.current, scanProgress: getScanProgress() });
-      } else if (rawRestaurants.current.length > 0) {
-        emitFilteredState({ emptyReason: 'filters', message: `Showing cached results — ${message}` });
+        setUiState({
+          status: 'permission_required',
+          restaurants: rawRestaurants.current.length > 0 ? uiStateRef.current.restaurants : [],
+          message: 'Location permission or services are required to refresh results.',
+          userLatitude: userLat.current,
+          userLongitude: userLng.current,
+          scanProgress: getScanProgress(),
+        });
       } else {
-        setUiState({ status: 'error', restaurants: [], message, userLatitude: null, userLongitude: null, scanProgress: getScanProgress() });
+        showCachedFallbackOrError({
+          message: `Showing cached results — ${message}`,
+          emptyReason: 'filters',
+          status: 'error',
+        });
       }
     }
-  }, [applyFavorites, emitFilteredState, filtersRef, flushQueue, getScanProgress, isActiveRequest, loadCachedIfAvailable, mergeCachedScanData, persistCache, rawRestaurants, setUiState, startScans, uiStateRef, userLat, userLng]);
+  }, [applyFavorites, emitFilteredState, filtersRef, flushQueue, getScanProgress, isActiveRequest, loadCachedIfAvailable, mergeCachedScanData, persistCache, rawRestaurants, setUiState, showCachedFallbackOrError, startScans, uiStateRef, userLat, userLng]);
 
   return { loadNearbyRestaurants, invalidateLoads: () => { requestIdRef.current += 1; } };
 }

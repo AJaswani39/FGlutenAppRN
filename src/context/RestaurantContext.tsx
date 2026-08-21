@@ -36,6 +36,10 @@ interface EmitFilteredStateOptions {
   status?: RestaurantUiState['status'];
 }
 
+function getCollectionReason(restaurantCount: number): EmptyResultsReason {
+  return restaurantCount === 0 ? 'nearby' : 'filters';
+}
+
 interface RestaurantContextValue {
   uiState: RestaurantUiState;
   savedRestaurants: Restaurant[];
@@ -127,13 +131,12 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
     (options: EmitFilteredStateOptions = {}) => {
       const raw = rawRestaurants.current;
       const filtered = filterAndSortRestaurants(raw, filtersRef.current, strictCeliac);
-      
+
       // Preserve 'loading' status if background tasks trigger a notification
       // unless we are explicitly trying to set a new status.
       const currentStatus = uiStateRef.current.status;
       const status = options.status ?? (currentStatus === 'loading' ? 'loading' : 'success');
-      
-      const emptyReason = options.emptyReason ?? (raw.length === 0 ? 'nearby' : 'filters');
+      const emptyReason = options.emptyReason ?? getCollectionReason(raw.length);
 
       syncSavedRestaurants();
       setUiState({
@@ -151,17 +154,25 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
     [getScanProgress, strictCeliac, syncSavedRestaurants]
   );
 
+  const refreshCollectionState = useCallback(
+    (overrides: EmitFilteredStateOptions = {}) => {
+      emitFilteredState({
+        emptyReason: getCollectionReason(rawRestaurants.current.length),
+        message: uiStateRef.current.message,
+        status: uiStateRef.current.status,
+        ...overrides,
+      });
+    },
+    [emitFilteredState]
+  );
+
   useEffect(() => {
     if (rawRestaurants.current.length === 0 && uiStateRef.current.status === 'idle') {
       return;
     }
 
-    emitFilteredState({
-      emptyReason: rawRestaurants.current.length === 0 ? 'nearby' : 'filters',
-      message: uiStateRef.current.message,
-      status: uiStateRef.current.status,
-    });
-  }, [emitFilteredState, filters, strictCeliac]);
+    refreshCollectionState();
+  }, [emitFilteredState, filters, refreshCollectionState, strictCeliac]);
 
   const mergeCachedScanData = useCallback((freshRestaurants: Restaurant[]) => {
     const cachedByKey = new Map<string, Restaurant>();
@@ -283,13 +294,9 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
         favoriteStatus: status,
       }));
 
-      emitFilteredState({
-        emptyReason: rawRestaurants.current.length === 0 ? 'nearby' : 'filters',
-        message: uiStateRef.current.message,
-        status: uiStateRef.current.status,
-      });
+      refreshCollectionState();
     },
-    [emitFilteredState, setFavoriteMapStatus, updateRestaurant]
+    [refreshCollectionState, setFavoriteMapStatus, updateRestaurant]
   );
   const requestMenuRescan = useCallback(
     (restaurant: Restaurant) => {

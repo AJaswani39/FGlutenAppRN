@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { PersistenceService } from '../services/persistenceService';
 import { Restaurant } from '../types/restaurant';
-import { MENU_SCAN_TTL_MS, getCachedResultsMessage } from './restaurantState';
+import { MENU_SCAN_TTL_MS, getCachedResultsMessage, prepareCachedRestaurants } from './restaurantState';
 
 interface Options {
   rawRestaurants: React.MutableRefObject<Restaurant[]>;
@@ -44,12 +44,7 @@ export function useRestaurantCacheHydration({
 
     if (!cached?.restaurants?.length) return;
 
-    const sanitized = cached.restaurants.map((restaurant) => (
-      restaurant.menuScanStatus === 'FETCHING'
-        ? { ...restaurant, menuScanStatus: 'NOT_STARTED' as const }
-        : restaurant
-    ));
-
+    const sanitized = prepareCachedRestaurants(cached.restaurants);
     rawRestaurants.current = applyFavorites(sanitized);
     userLat.current = cached.lat;
     userLng.current = cached.lng;

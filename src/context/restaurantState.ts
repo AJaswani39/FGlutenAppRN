@@ -66,6 +66,41 @@ export function getSavedRestaurants(restaurants: Restaurant[]): Restaurant[] {
     });
 }
 
+export function mergeSavedRestaurants({
+  liveRestaurants,
+  historicalRestaurants,
+  favoriteMap,
+}: {
+  liveRestaurants: Restaurant[];
+  historicalRestaurants: Restaurant[];
+  favoriteMap: Record<string, string>;
+}): Restaurant[] {
+  const liveMap = new Map<string, Restaurant>();
+
+  for (const restaurant of liveRestaurants) {
+    const key = getRestaurantIdentityKey(restaurant);
+    if (key) {
+      liveMap.set(key, restaurant);
+    }
+  }
+
+  const historicalToAdd = historicalRestaurants.filter((restaurant) => {
+    const key = getRestaurantIdentityKey(restaurant);
+    return key !== null && !liveMap.has(key) && !!favoriteMap[key];
+  });
+
+  const merged = [...liveRestaurants, ...historicalToAdd];
+  return getSavedRestaurants(applyFavoritesToRestaurants(merged, favoriteMap));
+}
+
+export function prepareCachedRestaurants(restaurants: Restaurant[]): Restaurant[] {
+  return restaurants.map((restaurant) => (
+    restaurant.menuScanStatus === 'FETCHING'
+      ? { ...restaurant, menuScanStatus: 'NOT_STARTED' as const }
+      : restaurant
+  ));
+}
+
 export function getScanProgressForRestaurants(
   restaurants: Restaurant[],
   scanBatchKeys: string[]

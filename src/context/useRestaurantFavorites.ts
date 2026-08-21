@@ -4,7 +4,7 @@ import { PersistenceService } from '../services/persistenceService';
 
 import { getRestaurantIdentityKey } from '../util/restaurantUtils';
 import { logger } from '../util/logger';
-import { applyFavoritesToRestaurants, getSavedRestaurants } from './restaurantState';
+import { applyFavoritesToRestaurants, getSavedRestaurants, mergeSavedRestaurants } from './restaurantState';
 
 export function useRestaurantFavorites(rawRestaurants: MutableRefObject<Restaurant[]>) {
   const favoriteMap = useRef<Record<string, string>>({});
@@ -20,30 +20,15 @@ export function useRestaurantFavorites(rawRestaurants: MutableRefObject<Restaura
   }, []);
 
   const syncSavedRestaurants = useCallback(() => {
-    // 1. Get the currently tracked favorites from the live nearby cache
     const liveFavorites = getSavedRestaurants(rawRestaurants.current);
-    
-    // 2. Merge with historical DB (prefer live data as it has updated distance/scans)
-    const liveMap = new Map(
-      liveFavorites
-        .map((r): [string, Restaurant] | null => {
-          const key = favoriteKey(r);
-          return key ? [key, r] : null;
-        })
-        .filter((entry): entry is [string, Restaurant] => entry !== null)
-    );
-    
-    const historicalToAdd = savedDb.current.filter(r => {
-      const key = favoriteKey(r);
-      return key && !liveMap.has(key) && favoriteMap.current[key];
+    const synced = mergeSavedRestaurants({
+      liveRestaurants: liveFavorites,
+      historicalRestaurants: savedDb.current,
+      favoriteMap: favoriteMap.current,
     });
 
-    const merged = [...liveFavorites, ...historicalToAdd];
-    
-    // Re-apply favorites status just in case
-    const synced = getSavedRestaurants(applyFavoritesToRestaurants(merged, favoriteMap.current));
     setSavedRestaurants(synced);
-  }, [rawRestaurants, favoriteKey]);
+  }, [rawRestaurants]);
 
   const loadFavorites = useCallback(async () => {
     const [favorites, historicalDb] = await Promise.all([

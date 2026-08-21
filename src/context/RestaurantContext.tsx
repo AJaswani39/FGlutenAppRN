@@ -21,9 +21,10 @@ import {
   MENU_SCAN_TTL_MS,
   getAiProxyBaseUrl,
   getCachedResultsMessage,
-  getEmptyResultsMessage,
+  getCollectionReason,
   getMapsApiKey,
   getScanProgressForRestaurants,
+  resolveFilteredRestaurantUiState,
 } from './restaurantState';
 import { useRestaurantFavorites } from './useRestaurantFavorites';
 import { useRestaurantPersistence } from './useRestaurantPersistence';
@@ -34,10 +35,6 @@ interface EmitFilteredStateOptions {
   emptyReason?: EmptyResultsReason;
   message?: string | null;
   status?: RestaurantUiState['status'];
-}
-
-function getCollectionReason(restaurantCount: number): EmptyResultsReason {
-  return restaurantCount === 0 ? 'nearby' : 'filters';
 }
 
 interface RestaurantContextValue {
@@ -129,27 +126,21 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
 
   const emitFilteredState = useCallback(
     (options: EmitFilteredStateOptions = {}) => {
-      const raw = rawRestaurants.current;
-      const filtered = filterAndSortRestaurants(raw, filtersRef.current, strictCeliac);
-
-      // Preserve 'loading' status if background tasks trigger a notification
-      // unless we are explicitly trying to set a new status.
-      const currentStatus = uiStateRef.current.status;
-      const status = options.status ?? (currentStatus === 'loading' ? 'loading' : 'success');
-      const emptyReason = options.emptyReason ?? getCollectionReason(raw.length);
-
       syncSavedRestaurants();
-      setUiState({
-        status,
-        restaurants: filtered,
-        message:
-          filtered.length === 0
-            ? options.message ?? getEmptyResultsMessage(emptyReason)
-            : options.message ?? null,
-        userLatitude: userLat.current,
-        userLongitude: userLng.current,
-        scanProgress: getScanProgress(),
-      });
+      setUiState(
+        resolveFilteredRestaurantUiState({
+          restaurants: rawRestaurants.current,
+          filters: filtersRef.current,
+          strictCeliac,
+          currentStatus: uiStateRef.current.status,
+          emptyReason: options.emptyReason ?? getCollectionReason(rawRestaurants.current.length),
+          message: options.message,
+          status: options.status,
+          userLatitude: userLat.current,
+          userLongitude: userLng.current,
+          scanProgress: getScanProgress(),
+        })
+      );
     },
     [getScanProgress, strictCeliac, syncSavedRestaurants]
   );

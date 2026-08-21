@@ -1,6 +1,6 @@
 import { Platform } from 'react-native';
-import { FavoriteStatus, MenuScanProgress, Restaurant } from '../types/restaurant';
-import { getRestaurantIdentityKey } from '../util/restaurantUtils';
+import { FavoriteStatus, MenuScanProgress, Restaurant, RestaurantFilters, RestaurantUiState } from '../types/restaurant';
+import { filterAndSortRestaurants, getRestaurantIdentityKey } from '../util/restaurantUtils';
 import { getRuntimeConfig } from '../config/runtimeConfig';
 
 const MENU_SCAN_TTL_DAYS = 14;
@@ -26,12 +26,56 @@ export function getAiProxyBaseUrl(): string {
   return getRuntimeConfig().aiProxyBaseUrl;
 }
 
+export function getCollectionReason(restaurantCount: number): EmptyResultsReason {
+  return restaurantCount === 0 ? 'nearby' : 'filters';
+}
+
 export function getEmptyResultsMessage(reason: EmptyResultsReason): string {
   if (reason === 'filters') {
     return 'No restaurants match your current filters.';
   }
 
   return 'No nearby restaurants found. Try expanding your distance or refreshing your search.';
+}
+
+export function resolveFilteredRestaurantUiState({
+  restaurants,
+  filters,
+  strictCeliac,
+  currentStatus,
+  emptyReason,
+  message,
+  status,
+  userLatitude,
+  userLongitude,
+  scanProgress,
+}: {
+  restaurants: Restaurant[];
+  filters: RestaurantFilters;
+  strictCeliac: boolean;
+  currentStatus: RestaurantUiState['status'];
+  emptyReason?: EmptyResultsReason;
+  message?: string | null;
+  status?: RestaurantUiState['status'];
+  userLatitude: number | null;
+  userLongitude: number | null;
+  scanProgress: RestaurantUiState['scanProgress'];
+}): RestaurantUiState {
+  const filtered = filterAndSortRestaurants(restaurants, filters, strictCeliac);
+  const resolvedReason = emptyReason ?? getCollectionReason(restaurants.length);
+  const resolvedStatus = status ?? (currentStatus === 'loading' ? 'loading' : 'success');
+
+  return {
+    status: resolvedStatus,
+    restaurants: filtered,
+    message:
+      filtered.length === 0
+        ? message ?? getEmptyResultsMessage(resolvedReason)
+        : message ?? null,
+    userLatitude,
+    userLongitude,
+    scanProgress,
+  };
 }
 
 export function applyFavoritesToRestaurants(

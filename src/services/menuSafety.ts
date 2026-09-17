@@ -265,6 +265,21 @@ export function capScoreForSafetyLevel(score: number, level: MenuSafetyLevel): n
   return clamped;
 }
 
+/**
+ * Resolves overallSafety from score + optional AI/analysis ceiling, then caps the
+ * numeric score so both fields always describe the same band.
+ */
+export function alignScoreWithSafetyLevel(
+  score: number,
+  analysisLevel?: MenuSafetyLevel
+): { overallSafety: MenuSafetyLevel; score: number } {
+  const overallSafety = getLevelForScore(score, analysisLevel);
+  return {
+    overallSafety,
+    score: capScoreForSafetyLevel(score, overallSafety),
+  };
+}
+
 function getSafetyTitle(level: MenuSafetyLevel): string {
   if (level === 'safe') return 'Strong GF signal';
   if (level === 'caution') return 'Use caution';

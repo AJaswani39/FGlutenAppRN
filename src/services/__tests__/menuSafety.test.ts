@@ -1,5 +1,6 @@
 import { Restaurant } from '../../types/restaurant';
 import {
+  alignScoreWithSafetyLevel,
   analyseMenuText,
   capScoreForSafetyLevel,
   getLevelForScore,
@@ -128,6 +129,21 @@ describe('menuSafety', () => {
     expect(capScoreForSafetyLevel(85, 'unknown')).toBe(49);
     expect(capScoreForSafetyLevel(85, 'caution')).toBe(74);
     expect(capScoreForSafetyLevel(85, 'safe')).toBe(85);
+  });
+
+  it('aligns score and overallSafety so AI optimism cannot outrun a weak local score', () => {
+    expect(alignScoreWithSafetyLevel(40, 'safe')).toEqual({
+      overallSafety: 'unknown',
+      score: 40,
+    });
+    expect(alignScoreWithSafetyLevel(85, 'unsafe')).toEqual({
+      overallSafety: 'unsafe',
+      score: 34,
+    });
+    expect(alignScoreWithSafetyLevel(90, 'safe')).toEqual({
+      overallSafety: 'safe',
+      score: 90,
+    });
   });
 
   it('keeps restaurant scorecards unsafe when AI analysis says unsafe despite high boosts', () => {

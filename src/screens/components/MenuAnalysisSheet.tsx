@@ -15,8 +15,8 @@ import {
 } from 'react-native';
 import { Colors, Spacing, Radius, FontSize, FontWeight, TouchTarget } from '../../theme/colors';
 import {
+  alignScoreWithSafetyLevel,
   analyseMenuText,
-  capScoreForSafetyLevel,
   MenuAnalysisResult,
 } from '../../services/menuSafety';
 import { extractMenuTextFromImage } from '../../services/menuOcr';
@@ -148,12 +148,14 @@ export default function MenuAnalysisSheet({ restaurant, onClose }: Props) {
           // Merge deep results into analysisResult for UI rendering
           setAnalysisResult((prev) => {
             const base = prev ?? localResult;
-            const overallSafety = parsed.overallSafety ?? base.overallSafety;
+            const aligned = alignScoreWithSafetyLevel(
+              base.score,
+              parsed.overallSafety ?? base.overallSafety
+            );
             return {
               ...base,
-              overallSafety,
-              // Cap the local heuristic score so it cannot contradict AI overallSafety.
-              score: capScoreForSafetyLevel(base.score, overallSafety),
+              overallSafety: aligned.overallSafety,
+              score: aligned.score,
               summary: parsed.summary ?? base.summary,
               crossContamRisk: parsed.crossContamRisk ?? base.crossContamRisk,
               safeItems: parsed.safeItems ?? base.safeItems ?? [],

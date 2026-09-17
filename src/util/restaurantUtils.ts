@@ -86,7 +86,8 @@ export function filterAndSortRestaurants(
     if (needsGfEvidence) {
       const hasGfItems = restaurant.gfMenu.length > 0;
       if (strictCeliac) {
-        if (!hasGfItems && !(restaurant.hasGFMenu && (restaurant.rating ?? 0) >= 4.0)) return false;
+        // Strict mode: only restaurants with scanned GF menu items.
+        if (!hasGfItems) return false;
       } else if (filters.gfOnly && !(restaurant.hasGFMenu || hasGfItems)) {
         return false;
       }

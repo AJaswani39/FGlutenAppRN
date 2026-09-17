@@ -62,7 +62,7 @@ export default function SettingsScreen() {
           label="Strict Celiac Mode"
           value={strictCeliac}
           onToggle={() => setStrictCeliac(!strictCeliac)}
-          description="Only show restaurants with confirmed GF evidence or highly rated options"
+          description="Only show restaurants with scanned gluten-free menu items"
         />
       </View>
 

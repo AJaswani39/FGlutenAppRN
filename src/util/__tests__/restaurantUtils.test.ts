@@ -55,6 +55,51 @@ describe('restaurantUtils', () => {
     expect(isSameRestaurantIdentity(left, different)).toBe(false);
   });
 
+  it('requires scanned GF menu items in strict celiac mode, not name or rating', () => {
+    const confirmed = restaurant({
+      placeId: 'confirmed',
+      gfMenu: ['Gluten-free pasta'],
+    });
+    const nameAndRatingOnly = restaurant({
+      placeId: 'name-rated',
+      hasGFMenu: true,
+      rating: 4.8,
+      gfMenu: [],
+    });
+    const nameOnly = restaurant({
+      placeId: 'name-only',
+      hasGFMenu: true,
+      rating: 3.2,
+      gfMenu: [],
+    });
+
+    const baseFilters = {
+      gfOnly: false,
+      openNowOnly: false,
+      sortMode: 'name' as const,
+      maxDistanceMeters: 0,
+      minRating: 0,
+      searchQuery: '',
+    };
+
+    expect(
+      filterAndSortRestaurants(
+        [confirmed, nameAndRatingOnly, nameOnly],
+        baseFilters,
+        true
+      ).map((item) => item.placeId)
+    ).toEqual(['confirmed']);
+
+    // Non-strict GF-only still allows name matches without menu items.
+    expect(
+      filterAndSortRestaurants(
+        [confirmed, nameAndRatingOnly, nameOnly],
+        { ...baseFilters, gfOnly: true },
+        false
+      ).map((item) => item.placeId)
+    ).toEqual(['confirmed', 'name-rated', 'name-only']);
+  });
+
   it('sorts non-finite distances last and filters them out when max distance is active', () => {
     const nearby = restaurant({ placeId: 'nearby', distanceMeters: 100 });
     const far = restaurant({ placeId: 'far', distanceMeters: 1000 });

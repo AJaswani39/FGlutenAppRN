@@ -8,6 +8,7 @@ describe('parseMenuAiResponse', () => {
       summary: undefined,
       cautionItems: undefined,
       warningItems: undefined,
+      crossContamRisk: undefined,
       riskBreakdown: undefined,
     });
   });
@@ -19,6 +20,7 @@ describe('parseMenuAiResponse', () => {
       safeItems: undefined,
       cautionItems: undefined,
       warningItems: undefined,
+      crossContamRisk: undefined,
       riskBreakdown: undefined,
     });
   });
@@ -30,8 +32,25 @@ describe('parseMenuAiResponse', () => {
       safeItems: undefined,
       cautionItems: undefined,
       warningItems: undefined,
+      crossContamRisk: undefined,
       riskBreakdown: undefined,
     });
     expect(parseMenuAiResponse('not json')).toBeNull();
+  });
+
+  it('parses crossContamRisk when present', () => {
+    expect(
+      parseMenuAiResponse(
+        '{"overallSafety":"UNSAFE","crossContamRisk":"Shared fryer with breaded items.","warningItems":["Fried chicken"]}'
+      )
+    ).toEqual({
+      overallSafety: 'unsafe',
+      summary: undefined,
+      safeItems: undefined,
+      cautionItems: undefined,
+      warningItems: ['Fried chicken'],
+      crossContamRisk: 'Shared fryer with breaded items.',
+      riskBreakdown: undefined,
+    });
   });
 });

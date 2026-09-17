@@ -221,20 +221,48 @@ export function getRestaurantSafetyScore(
 
   return {
     level,
-    score: clampedScore,
+    // Keep the numeric score inside the band for the final level so a high
+    // local/favorite-boosted score cannot contradict an AI "unsafe"/"caution" label.
+    score: capScoreForSafetyLevel(clampedScore, level),
     title: getSafetyTitle(level),
     summary: analysis?.summary ?? getFallbackSummary(restaurant),
     reasons: reasons.slice(0, 4),
   };
 }
 
-function getLevelForScore(score: number, analysisLevel?: MenuSafetyLevel): MenuSafetyLevel {
-  if (analysisLevel === 'unsafe' && score < 55) return 'unsafe';
-  if (analysisLevel === 'unknown' && score < 60) return 'unknown';
-  if (score >= 75) return 'safe';
-  if (score >= 50) return 'caution';
-  if (score >= 35) return 'unknown';
-  return 'unsafe';
+/** Lower rank = more cautious. Used so analysis overallSafety can never be "upgraded" by score. */
+const SAFETY_LEVEL_RANK: Record<MenuSafetyLevel, number> = {
+  unsafe: 0,
+  unknown: 1,
+  caution: 2,
+  safe: 3,
+};
+
+/**
+ * Maps a numeric score to a safety level, treating analysisLevel as a ceiling.
+ * Example: AI says "unsafe" with local score 85 → still "unsafe".
+ */
+export function getLevelForScore(score: number, analysisLevel?: MenuSafetyLevel): MenuSafetyLevel {
+  let levelFromScore: MenuSafetyLevel;
+  if (score >= 75) levelFromScore = 'safe';
+  else if (score >= 50) levelFromScore = 'caution';
+  else if (score >= 35) levelFromScore = 'unknown';
+  else levelFromScore = 'unsafe';
+
+  if (!analysisLevel) return levelFromScore;
+
+  return SAFETY_LEVEL_RANK[levelFromScore] > SAFETY_LEVEL_RANK[analysisLevel]
+    ? analysisLevel
+    : levelFromScore;
+}
+
+/** Caps a score so it cannot sit in a safer band than the resolved level. */
+export function capScoreForSafetyLevel(score: number, level: MenuSafetyLevel): number {
+  const clamped = Math.max(0, Math.min(100, Math.round(score)));
+  if (level === 'unsafe') return Math.min(clamped, 34);
+  if (level === 'unknown') return Math.min(clamped, 49);
+  if (level === 'caution') return Math.min(clamped, 74);
+  return clamped;
 }
 
 function getSafetyTitle(level: MenuSafetyLevel): string {

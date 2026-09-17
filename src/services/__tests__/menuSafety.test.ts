@@ -1,5 +1,10 @@
 import { Restaurant } from '../../types/restaurant';
-import { analyseMenuText, getRestaurantSafetyScore } from '../menuSafety';
+import {
+  analyseMenuText,
+  capScoreForSafetyLevel,
+  getLevelForScore,
+  getRestaurantSafetyScore,
+} from '../menuSafety';
 
 function restaurant(overrides: Partial<Restaurant> = {}): Restaurant {
   return {
@@ -108,5 +113,44 @@ describe('menuSafety', () => {
     expect(result.level).toBe('unknown');
     expect(result.score).toBeNull();
     expect(result.summary).toBe('The page loaded, but no menu content was found.');
+  });
+
+  it('does not promote AI unsafe/caution levels to safe based on a high local score', () => {
+    expect(getLevelForScore(85, 'unsafe')).toBe('unsafe');
+    expect(getLevelForScore(90, 'caution')).toBe('caution');
+    expect(getLevelForScore(80, 'unknown')).toBe('unknown');
+    expect(getLevelForScore(80, 'safe')).toBe('safe');
+    expect(getLevelForScore(40, 'safe')).toBe('unknown');
+  });
+
+  it('caps scores so they stay inside the resolved safety band', () => {
+    expect(capScoreForSafetyLevel(85, 'unsafe')).toBe(34);
+    expect(capScoreForSafetyLevel(85, 'unknown')).toBe(49);
+    expect(capScoreForSafetyLevel(85, 'caution')).toBe(74);
+    expect(capScoreForSafetyLevel(85, 'safe')).toBe(85);
+  });
+
+  it('keeps restaurant scorecards unsafe when AI analysis says unsafe despite high boosts', () => {
+    const result = getRestaurantSafetyScore(
+      restaurant({
+        rawMenuText: 'Gluten-free pasta\nGluten-free salad\nGluten-free tacos',
+        gfMenu: ['Gluten-free pasta', 'Gluten-free salad', 'Gluten-free tacos'],
+        favoriteStatus: 'safe',
+        rating: 4.9,
+        menuScanStatus: 'SUCCESS',
+        aiAnalysisResult: {
+          overallSafety: 'unsafe',
+          score: 82,
+          glutenFreeItems: ['Gluten-free pasta'],
+          warnings: [],
+          crossContamRisk: 'Shared fryer',
+          summary: 'AI found high cross-contact risk.',
+        },
+      }),
+    );
+
+    expect(result.level).toBe('unsafe');
+    expect(result.score).toBeLessThanOrEqual(34);
+    expect(result.title).toBe('High risk');
   });
 });

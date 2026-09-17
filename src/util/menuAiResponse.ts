@@ -13,6 +13,7 @@ export interface MenuAiResponse {
   safeItems?: string[];
   cautionItems?: string[];
   warningItems?: string[];
+  crossContamRisk?: string;
   riskBreakdown?: MenuAiRiskFactor[];
 }
 
@@ -62,6 +63,8 @@ export function parseMenuAiResponse(raw: string): MenuAiResponse | null {
       safeItems: parseStringArray(parsed.safeItems),
       cautionItems: parseStringArray(parsed.cautionItems),
       warningItems: parseStringArray(parsed.warningItems),
+      crossContamRisk:
+        typeof parsed.crossContamRisk === 'string' ? parsed.crossContamRisk.trim() || undefined : undefined,
       riskBreakdown: parseRiskBreakdown(parsed.riskBreakdown),
     };
   } catch {

@@ -14,7 +14,11 @@ import {
   Platform,
 } from 'react-native';
 import { Colors, Spacing, Radius, FontSize, FontWeight, TouchTarget } from '../../theme/colors';
-import { analyseMenuText, MenuAnalysisResult } from '../../services/menuSafety';
+import {
+  analyseMenuText,
+  capScoreForSafetyLevel,
+  MenuAnalysisResult,
+} from '../../services/menuSafety';
 import { extractMenuTextFromImage } from '../../services/menuOcr';
 import { PuterAiService } from '../../services/puterAiService';
 import { Ionicons } from '@expo/vector-icons';
@@ -143,15 +147,19 @@ export default function MenuAnalysisSheet({ restaurant, onClose }: Props) {
         } else {
           // Merge deep results into analysisResult for UI rendering
           setAnalysisResult((prev) => {
-            if (!prev) return localResult;
+            const base = prev ?? localResult;
+            const overallSafety = parsed.overallSafety ?? base.overallSafety;
             return {
-              ...prev,
-              overallSafety: parsed.overallSafety ?? prev.overallSafety,
-              summary: parsed.summary ?? prev.summary,
-              safeItems: parsed.safeItems ?? prev.safeItems ?? [],
-              cautionItems: parsed.cautionItems ?? prev.cautionItems ?? [],
-              unsafeItems: parsed.warningItems ?? prev.unsafeItems ?? [],
-              riskFactors: parsed.riskBreakdown ?? prev.riskFactors ?? [],
+              ...base,
+              overallSafety,
+              // Cap the local heuristic score so it cannot contradict AI overallSafety.
+              score: capScoreForSafetyLevel(base.score, overallSafety),
+              summary: parsed.summary ?? base.summary,
+              crossContamRisk: parsed.crossContamRisk ?? base.crossContamRisk,
+              safeItems: parsed.safeItems ?? base.safeItems ?? [],
+              cautionItems: parsed.cautionItems ?? base.cautionItems ?? [],
+              unsafeItems: parsed.warningItems ?? base.unsafeItems ?? [],
+              riskFactors: parsed.riskBreakdown ?? base.riskFactors ?? [],
             };
           });
           setDeepAnalysisMarkdown(null); // No longer needed as markdown if we have JSON

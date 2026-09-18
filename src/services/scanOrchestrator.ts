@@ -36,6 +36,7 @@ export class ScanOrchestrator {
     this.isDestroyed = true;
     for (const controller of this.scanControllers.values()) controller.abort();
     this.scanControllers.clear();
+    this.activeScans.clear();
     this.scanQueue = [];
     this.currentBatchKeys = [];
   }
@@ -183,8 +184,11 @@ export class ScanOrchestrator {
       }));
       this.config.onNotifyUI();
     } finally {
-      this.activeScans.delete(id);
-      if (this.scanControllers.get(id) === controller) this.scanControllers.delete(id);
+      // Only clear bookkeeping if this render still owns the slot.
+      if (this.scanControllers.get(id) === controller) {
+        this.scanControllers.delete(id);
+        this.activeScans.delete(id);
+      }
       this.clearBatchTrackingIfIdle();
       this.config.onNotifyUI();
     }
@@ -313,8 +317,12 @@ export class ScanOrchestrator {
       }));
       this.config.onNotifyUI();
     } finally {
-      this.activeScans.delete(id);
-      if (this.scanControllers.get(id) === controller) this.scanControllers.delete(id);
+      // Only clear bookkeeping if this scan still owns the slot. An aborted
+      // scan's finally must not remove a newer scan/rescan for the same placeId.
+      if (this.scanControllers.get(id) === controller) {
+        this.scanControllers.delete(id);
+        this.activeScans.delete(id);
+      }
     }
   }
 }

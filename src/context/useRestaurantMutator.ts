@@ -1,8 +1,14 @@
 import { useCallback, MutableRefObject } from 'react';
-import { Restaurant } from '../types/restaurant';
+import { MenuScanStatus, Restaurant } from '../types/restaurant';
 import { isSameRestaurantIdentity } from '../util/restaurantUtils';
 
-const TERMINAL_SCAN_STATUSES = ['SUCCESS', 'NO_MENU_CONTENT', 'FAILED', 'NO_WEBSITE', 'JS_ONLY'];
+const TERMINAL_SCAN_STATUSES = new Set<MenuScanStatus>([
+  'SUCCESS',
+  'NO_MENU_CONTENT',
+  'FAILED',
+  'NO_WEBSITE',
+  'JS_ONLY',
+]);
 
 interface UseRestaurantMutatorDeps {
   rawRestaurants: MutableRefObject<Restaurant[]>;
@@ -43,7 +49,7 @@ export function useRestaurantMutator({
 
           const statusChangedToTerminal =
             nextRestaurant.menuScanStatus !== restaurant.menuScanStatus &&
-            TERMINAL_SCAN_STATUSES.includes(nextRestaurant.menuScanStatus);
+            TERMINAL_SCAN_STATUSES.has(nextRestaurant.menuScanStatus);
 
           const favoriteChanged = nextRestaurant.favoriteStatus !== restaurant.favoriteStatus;
           const aiChanged =

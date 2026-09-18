@@ -32,6 +32,7 @@ import ViewShot, { captureRef } from 'react-native-view-shot';
 import * as Sharing from 'expo-sharing';
 import SafetyScorecard from './SafetyScorecard';
 import { getRuntimeConfig } from '../../config/runtimeConfig';
+import type { IconName } from '../../components/ui';
 
 interface Props {
   restaurant: Restaurant;
@@ -167,7 +168,7 @@ export default function MenuAnalysisSheet({ restaurant, onClose }: Props) {
           setDeepAnalysisMarkdown(null); // No longer needed as markdown if we have JSON
         }
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       const isCancelled = err instanceof Error && err.name === 'AbortError';
       if (isCancelled) return;
       if (!isMounted.current) return;
@@ -240,9 +241,13 @@ export default function MenuAnalysisSheet({ restaurant, onClose }: Props) {
       const combinedText = editableText ? `${editableText}\n\n${text}` : text;
       setEditableText(combinedText);
       void runAnalysis(combinedText);
-    } catch (err: any) {
+    } catch (err: unknown) {
       if (isMounted.current) {
-        setError(err.message || 'Failed to extract text from photo.');
+        setError(
+          err instanceof Error && err.message
+            ? err.message
+            : 'Failed to extract text from photo.'
+        );
       }
     } finally {
       if (isMounted.current) {
@@ -268,7 +273,7 @@ export default function MenuAnalysisSheet({ restaurant, onClose }: Props) {
         dialogTitle: `Share ${restaurant.name} Safety Card`,
         UTI: 'public.jpeg',
       });
-    } catch (err: any) {
+    } catch {
       if (isMounted.current) {
         setError('Could not generate sharing card.');
       }
@@ -496,7 +501,17 @@ export default function MenuAnalysisSheet({ restaurant, onClose }: Props) {
   );
 }
 
-function ResultSection({ title, icon, color, children }: { title: string; icon: any; color: string; children: React.ReactNode }) {
+function ResultSection({
+  title,
+  icon,
+  color,
+  children,
+}: {
+  title: string;
+  icon: IconName;
+  color: string;
+  children: React.ReactNode;
+}) {
   return (
     <View style={resultStyles.section}>
       <View style={resultStyles.header}>

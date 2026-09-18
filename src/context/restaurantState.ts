@@ -171,7 +171,7 @@ export function getScanProgressForRestaurants(
     } else if (restaurant.menuScanStatus === 'FAILED') {
       failed += 1;
     } else if (restaurant.menuScanStatus !== 'NOT_STARTED') {
-      // SUCCESS, NO_WEBSITE, JS_ONLY all count as completed
+      // SUCCESS, NO_MENU_CONTENT, NO_WEBSITE, JS_ONLY (and any other non-pending status)
       completed += 1;
     }
   }

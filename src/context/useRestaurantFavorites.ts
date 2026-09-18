@@ -1,5 +1,5 @@
 import { MutableRefObject, useCallback, useMemo, useRef, useState } from 'react';
-import { FavoriteStatus, Restaurant } from '../types/restaurant';
+import { FavoriteMap, FavoriteStatus, Restaurant } from '../types/restaurant';
 import { PersistenceService } from '../services/persistenceService';
 
 import { getRestaurantIdentityKey } from '../util/restaurantUtils';
@@ -7,7 +7,7 @@ import { logger } from '../util/logger';
 import { applyFavoritesToRestaurants, getSavedRestaurants, mergeSavedRestaurants } from './restaurantState';
 
 export function useRestaurantFavorites(rawRestaurants: MutableRefObject<Restaurant[]>) {
-  const favoriteMap = useRef<Record<string, string>>({});
+  const favoriteMap = useRef<FavoriteMap>({});
   const savedDb = useRef<Restaurant[]>([]);
   const [savedRestaurants, setSavedRestaurants] = useState<Restaurant[]>([]);
 

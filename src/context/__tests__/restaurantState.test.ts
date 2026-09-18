@@ -5,7 +5,7 @@ import {
   applyFavoritesToRestaurants,
   getSavedRestaurants,
 } from '../restaurantState';
-import { Restaurant } from '../../types/restaurant';
+import { FavoriteMap, Restaurant } from '../../types/restaurant';
 
 function restaurant(overrides: Partial<Restaurant> = {}): Restaurant {
   return {
@@ -70,7 +70,7 @@ describe('restaurantState', () => {
       favoriteStatus: 'safe',
     });
 
-    const favoriteMap = {
+    const favoriteMap: FavoriteMap = {
       'pid:live-1': 'try',
       'pid:historical-1': 'safe',
     };
@@ -93,7 +93,7 @@ describe('restaurantState', () => {
       {
         'pid:sample-1': 'safe',
         'pid:sample-2': 'avoid',
-      }
+      } satisfies FavoriteMap
     );
 
     expect(getSavedRestaurants(withStatusApplied).map((entry) => entry.placeId)).toEqual([

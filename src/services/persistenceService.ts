@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { FavoriteStatus, RestaurantFilters, SortMode, Restaurant, AiChatMessage } from '../types/restaurant';
+import { FavoriteMap, FavoriteStatus, FavoriteStatusValue, RestaurantFilters, SortMode, Restaurant, AiChatMessage } from '../types/restaurant';
 import { MenuAnalysisResult, MenuSafetyLevel } from './menuSafety';
 import { logger } from '../util/logger';
 import { isRecord } from '../util/typeGuards';
@@ -50,7 +50,7 @@ const MENU_SCAN_STATUSES = new Set<Restaurant['menuScanStatus']>([
   'JS_ONLY',
 ]);
 
-const FAVORITE_STATUSES = new Set<Exclude<FavoriteStatus, null>>(['safe', 'try', 'avoid']);
+const FAVORITE_STATUSES = new Set<FavoriteStatusValue>(['safe', 'try', 'avoid']);
 
 // ─── Normalization Helpers ─────────────────────────────────────
 
@@ -81,10 +81,12 @@ function normalizeSortMode(value: unknown): SortMode {
   return value === 'distance' || value === 'name' ? value : 'distance';
 }
 
+function isFavoriteStatusValue(value: unknown): value is FavoriteStatusValue {
+  return typeof value === 'string' && FAVORITE_STATUSES.has(value as FavoriteStatusValue);
+}
+
 function normalizeFavoriteStatus(value: unknown): FavoriteStatus {
-  return typeof value === 'string' && FAVORITE_STATUSES.has(value as Exclude<FavoriteStatus, null>)
-    ? (value as Exclude<FavoriteStatus, null>)
-    : null;
+  return isFavoriteStatusValue(value) ? value : null;
 }
 
 function normalizeStringArray(value: unknown, maxLength?: number): string[] {
@@ -108,12 +110,12 @@ export function normalizeFilters(value: unknown): RestaurantFilters {
   };
 }
 
-export function normalizeFavoriteMap(value: unknown): Record<string, string> {
+export function normalizeFavoriteMap(value: unknown): FavoriteMap {
   if (!isRecord(value)) return {};
-  const normalized: Record<string, string> = {};
+  const normalized: FavoriteMap = {};
   for (const [key, status] of Object.entries(value)) {
     if (!key.trim()) continue;
-    if (typeof status === 'string' && FAVORITE_STATUSES.has(status as Exclude<FavoriteStatus, null>)) {
+    if (isFavoriteStatusValue(status)) {
       normalized[key] = status;
     }
   }
@@ -344,7 +346,7 @@ export const PersistenceService = {
     await AsyncStorage.setItem(KEYS.FILTERS, JSON.stringify(normalizeFilters(filters)));
   },
 
-  async loadFavorites(): Promise<Record<string, string>> {
+  async loadFavorites(): Promise<FavoriteMap> {
     try {
       const raw = await AsyncStorage.getItem(KEYS.FAVORITES);
       if (raw) return normalizeFavoriteMap(JSON.parse(raw));
@@ -354,7 +356,7 @@ export const PersistenceService = {
     return {};
   },
 
-  async saveFavorites(map: Record<string, string>): Promise<void> {
+  async saveFavorites(map: FavoriteMap): Promise<void> {
     await AsyncStorage.setItem(KEYS.FAVORITES, JSON.stringify(normalizeFavoriteMap(map)));
   },
 

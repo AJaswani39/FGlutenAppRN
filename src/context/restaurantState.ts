@@ -1,5 +1,5 @@
 import { Platform } from 'react-native';
-import { FavoriteStatus, MenuScanProgress, Restaurant, RestaurantFilters, RestaurantUiState } from '../types/restaurant';
+import { FavoriteMap, FavoriteStatus, MenuScanProgress, Restaurant, RestaurantFilters, RestaurantUiState } from '../types/restaurant';
 import { filterAndSortRestaurants, getRestaurantIdentityKey } from '../util/restaurantUtils';
 import { getRuntimeConfig } from '../config/runtimeConfig';
 
@@ -80,13 +80,13 @@ export function resolveFilteredRestaurantUiState({
 
 export function applyFavoritesToRestaurants(
   restaurants: Restaurant[],
-  favoriteMap: Record<string, string>
+  favoriteMap: FavoriteMap
 ): Restaurant[] {
   return restaurants.map((restaurant) => {
     const key = getRestaurantIdentityKey(restaurant);
     if (!key) return restaurant;
 
-    const favoriteStatus = favoriteMap[key] as FavoriteStatus | undefined;
+    const favoriteStatus = favoriteMap[key];
     if (!favoriteStatus) return restaurant;
 
     return { ...restaurant, favoriteStatus };
@@ -117,7 +117,7 @@ export function mergeSavedRestaurants({
 }: {
   liveRestaurants: Restaurant[];
   historicalRestaurants: Restaurant[];
-  favoriteMap: Record<string, string>;
+  favoriteMap: FavoriteMap;
 }): Restaurant[] {
   const liveMap = new Map<string, Restaurant>();
 

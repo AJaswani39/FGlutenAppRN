@@ -5,7 +5,6 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { StatusBar } from 'expo-status-bar';
 import * as SplashScreen from 'expo-splash-screen';
-import { applyTheme } from './src/theme/colors';
 import { getMapsApiKey } from './src/context/restaurantState';
 import { CustomSplashScreen } from './src/components/CustomSplashScreen';
 import { NetworkBanner } from './src/components/NetworkBanner';
@@ -41,7 +40,6 @@ export default function App() {
         const savedTheme = await AsyncStorage.getItem('@fgluten_theme');
         const isDark = getInitialThemePreference(savedTheme);
         setInitialIsDark(isDark);
-        applyTheme(isDark);
         // Initialize Puter AI service with configuration from environment
         const config = getRuntimeConfig();
         if (config.puterApiKey) {
@@ -54,7 +52,6 @@ export default function App() {
 
       } catch (err) {
         // Fallback to dark
-        applyTheme(true);
         setInitialIsDark(true);
       } finally {
         // Theme is loaded, proceed to custom JS splash animation

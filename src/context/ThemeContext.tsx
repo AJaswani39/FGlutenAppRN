@@ -1,7 +1,7 @@
 import React, { createContext, useCallback, useContext, useMemo, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Appearance } from 'react-native';
-import { DarkColors, LightColors, applyTheme } from '../theme/colors';
+import { DarkColors, LightColors } from '../theme/colors';
 
 const THEME_STORAGE_KEY = '@fgluten_theme';
 
@@ -33,7 +33,6 @@ export function ThemeProvider({
 
   const setTheme = useCallback(async (nextIsDark: boolean) => {
     await AsyncStorage.setItem(THEME_STORAGE_KEY, nextIsDark ? 'dark' : 'light');
-    applyTheme(nextIsDark);
     setIsDark(nextIsDark);
   }, []);
 

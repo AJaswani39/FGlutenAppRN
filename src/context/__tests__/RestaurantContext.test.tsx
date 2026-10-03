@@ -182,7 +182,7 @@ describe('RestaurantContext', () => {
     });
 
     expect(getApi().restaurants.uiState.status).toBe('error');
-    expect(getApi().restaurants.uiState.message).toContain('MAPS_API_KEY');
+    expect(getApi().restaurants.uiState.message).toContain('Maps API key is missing');
   });
 
   it('returns the permission-required state when location access is denied', async () => {
@@ -668,6 +668,48 @@ describe('RestaurantContext', () => {
     expect(getApi().settings.strictCeliac).toBe(false);
 
     errorSpy.mockRestore();
+  });
+
+  it('does not overwrite a filter changed while saved filters are still loading', async () => {
+    const savedFilters = createDeferred<string | null>();
+    asyncStorageMock.getItem.mockImplementation(async (key: string) => {
+      if (key === 'restaurant_filters') return savedFilters.promise;
+      return null;
+    });
+
+    const { getApi } = await renderHarness();
+
+    act(() => {
+      getApi().filters.setFilters({ gfOnly: true });
+    });
+    await act(async () => {
+      savedFilters.resolve(JSON.stringify({ gfOnly: false }));
+      await savedFilters.promise;
+    });
+    await flushAsync();
+
+    expect(getApi().filters.filters.gfOnly).toBe(true);
+  });
+
+  it('does not overwrite a setting changed while its saved value is still loading', async () => {
+    const savedSetting = createDeferred<string | null>();
+    asyncStorageMock.getItem.mockImplementation(async (key: string) => {
+      if (key === 'fg_settings:strict_celiac') return savedSetting.promise;
+      return null;
+    });
+
+    const { getApi } = await renderHarness();
+
+    act(() => {
+      getApi().settings.setStrictCeliac(true);
+    });
+    await act(async () => {
+      savedSetting.resolve('false');
+      await savedSetting.promise;
+    });
+    await flushAsync();
+
+    expect(getApi().settings.strictCeliac).toBe(true);
   });
 
   it('keeps loaded restaurants visible when cache persistence rejects', async () => {

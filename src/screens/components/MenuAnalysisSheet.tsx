@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
 import {
@@ -13,7 +13,8 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
-import { Colors, Spacing, Radius, FontSize, FontWeight, TouchTarget } from '../../theme/colors';
+import { Spacing, Radius, FontSize, FontWeight, TouchTarget } from '../../theme/colors';
+import { ThemeColors, useTheme } from '../../context/ThemeContext';
 import {
   alignScoreWithSafetyLevel,
   analyseMenuText,
@@ -41,9 +42,11 @@ interface Props {
 
 // Bypasses the infamous Android nested Modal bug by using an absolute overlay on Android
 const ModalWrapper = ({ children, onClose }: { children: React.ReactNode; onClose: () => void }) => {
+  const { colors } = useTheme();
+
   if (Platform.OS === 'android') {
     return (
-      <View style={[StyleSheet.absoluteFill, { backgroundColor: Colors.background, zIndex: 100, elevation: 10 }]}>
+      <View style={[StyleSheet.absoluteFill, { backgroundColor: colors.background, zIndex: 100, elevation: 10 }]}>
         {children}
       </View>
     );
@@ -57,6 +60,8 @@ const ModalWrapper = ({ children, onClose }: { children: React.ReactNode; onClos
 
 export default function MenuAnalysisSheet({ restaurant, onClose }: Props) {
   const { updateAiSession } = useRestaurants();
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   
   // Initialize state from persistent restaurant session if available
   const [editableText, setEditableText] = useState(restaurant.rawMenuText || '');
@@ -286,21 +291,21 @@ export default function MenuAnalysisSheet({ restaurant, onClose }: Props) {
 
   const safetyColor =
     analysisResult?.overallSafety === 'safe'
-      ? Colors.success
+      ? colors.success
       : analysisResult?.overallSafety === 'caution'
-      ? Colors.warning
+      ? colors.warning
       : analysisResult?.overallSafety === 'unsafe'
-      ? Colors.error
-      : Colors.textSecondary;
+      ? colors.error
+      : colors.textSecondary;
 
   const safetyBg =
     analysisResult?.overallSafety === 'safe'
-      ? Colors.successBg
+      ? colors.successBg
       : analysisResult?.overallSafety === 'caution'
-      ? Colors.warningBg
+      ? colors.warningBg
       : analysisResult?.overallSafety === 'unsafe'
-      ? Colors.errorBg
-      : Colors.surfaceElevated;
+      ? colors.errorBg
+      : colors.surfaceElevated;
 
   const safetyEmoji =
     analysisResult?.overallSafety === 'safe'
@@ -323,7 +328,7 @@ export default function MenuAnalysisSheet({ restaurant, onClose }: Props) {
             <View>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                 <Text style={styles.headerTitle}>🤖 AI Menu Analysis</Text>
-                <Text style={{ fontSize: 10, color: Colors.textMuted, fontWeight: 'bold' }}>
+                <Text style={{ fontSize: 10, color: colors.textMuted, fontWeight: 'bold' }}>
                   v{getRuntimeConfig().appVersion}
                 </Text>
               </View>
@@ -351,7 +356,7 @@ export default function MenuAnalysisSheet({ restaurant, onClose }: Props) {
               value={editableText}
               onChangeText={setEditableText}
               placeholder="Paste menu text here…"
-              placeholderTextColor={Colors.textMuted}
+              placeholderTextColor={colors.textMuted}
               textAlignVertical="top"
             />
           </View>
@@ -364,10 +369,10 @@ export default function MenuAnalysisSheet({ restaurant, onClose }: Props) {
             accessibilityLabel="Choose menu photo to scan"
           >
             {isExtractingPhotoText ? (
-              <ActivityIndicator color={Colors.primary} />
+              <ActivityIndicator color={colors.primary} />
             ) : (
               <>
-                <Ionicons name="camera" size={20} color={Colors.primary} />
+                <Ionicons name="camera" size={20} color={colors.primary} />
                 <Text style={styles.photoBtnText}>Scan Menu Photo</Text>
               </>
             )}
@@ -379,7 +384,7 @@ export default function MenuAnalysisSheet({ restaurant, onClose }: Props) {
             disabled={isAnalyzing || isExtractingPhotoText}
           >
             {isAnalyzing ? (
-              <ActivityIndicator color={Colors.textInverse} />
+              <ActivityIndicator color={colors.textInverse} />
             ) : (
               <Text style={styles.analyseBtnText}>Run AI Safety Check</Text>
             )}
@@ -387,7 +392,7 @@ export default function MenuAnalysisSheet({ restaurant, onClose }: Props) {
 
           {(dairyFree || nutFree || soyFree) && (
             <View style={styles.allergenBanner}>
-              <Ionicons name="sparkles" size={16} color={Colors.warning} />
+              <Ionicons name="sparkles" size={16} color={colors.warning} />
               <Text style={styles.allergenBannerText}>
                 Deep Scan active for: {[dairyFree && 'Dairy', nutFree && 'Nuts', soyFree && 'Soy'].filter(Boolean).join(', ')}
               </Text>
@@ -407,10 +412,10 @@ export default function MenuAnalysisSheet({ restaurant, onClose }: Props) {
               disabled={isSharing}
             >
               {isSharing ? (
-                <ActivityIndicator color={Colors.primary} />
+                <ActivityIndicator color={colors.primary} />
               ) : (
                 <>
-                  <Ionicons name="share-social" size={20} color={Colors.primary} />
+                  <Ionicons name="share-social" size={20} color={colors.primary} />
                   <Text style={styles.shareBtnText}>Share Safety Card</Text>
                 </>
               )}
@@ -426,7 +431,7 @@ export default function MenuAnalysisSheet({ restaurant, onClose }: Props) {
                 <Text style={styles.safetySummary}>{analysisResult.summary}</Text>
               </View>
 
-              <ResultSection title="SAFE OPTIONS (GF)" icon="checkmark-circle" color={Colors.success}>
+              <ResultSection title="SAFE OPTIONS (GF)" icon="checkmark-circle" color={colors.success}>
                 {(analysisResult.safeItems?.length ?? 0) > 0 ? (
                   (analysisResult.safeItems ?? []).map((item, i) => (
                     <Text key={i} style={styles.listItem}>• {item}</Text>
@@ -436,7 +441,7 @@ export default function MenuAnalysisSheet({ restaurant, onClose }: Props) {
                 )}
               </ResultSection>
 
-              <ResultSection title="PROBABLY SAFE (CAUTION)" icon="warning" color={Colors.warning}>
+              <ResultSection title="PROBABLY SAFE (CAUTION)" icon="warning" color={colors.warning}>
                 {(analysisResult.cautionItems?.length ?? 0) > 0 ? (
                   (analysisResult.cautionItems ?? []).map((item, i) => (
                     <Text key={i} style={styles.listItem}>• {item}</Text>
@@ -446,7 +451,7 @@ export default function MenuAnalysisSheet({ restaurant, onClose }: Props) {
                 )}
               </ResultSection>
 
-              <ResultSection title="AVOID (GLUTEN)" icon="close-circle" color={Colors.error}>
+              <ResultSection title="AVOID (GLUTEN)" icon="close-circle" color={colors.error}>
                 {(analysisResult.unsafeItems?.length ?? 0) > 0 ? (
                   (analysisResult.unsafeItems ?? []).map((item, i) => (
                     <Text key={i} style={styles.listItem}>• {item}</Text>
@@ -524,7 +529,9 @@ function ResultSection({
 }
 
 function RiskMeter({ factor, severity, description }: { factor: string; severity: number; description: string }) {
-  const color = severity > 0.7 ? Colors.error : severity > 0.3 ? Colors.warning : Colors.success;
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
+  const color = severity > 0.7 ? colors.error : severity > 0.3 ? colors.warning : colors.success;
   
   return (
     <View style={styles.riskItem}>
@@ -542,18 +549,19 @@ function RiskMeter({ factor, severity, description }: { factor: string; severity
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.background },
+function createStyles(colors: ThemeColors) {
+  return StyleSheet.create({
+  container: { flex: 1, backgroundColor: colors.background },
   header: {
     paddingTop: Spacing.md,
     borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
-    backgroundColor: Colors.surface,
+    borderBottomColor: colors.border,
+    backgroundColor: colors.surface,
   },
   handle: {
     width: 40,
     height: 4,
-    backgroundColor: Colors.border,
+    backgroundColor: colors.border,
     borderRadius: Radius.full,
     alignSelf: 'center',
     marginBottom: Spacing.sm,
@@ -565,35 +573,35 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.md,
     paddingBottom: Spacing.md,
   },
-  headerTitle: { fontSize: FontSize.lg, fontWeight: FontWeight.bold, color: Colors.textPrimary },
-  headerSub: { fontSize: FontSize.xs, color: Colors.textSecondary, marginTop: 2 },
+  headerTitle: { fontSize: FontSize.lg, fontWeight: FontWeight.bold, color: colors.textPrimary },
+  headerSub: { fontSize: FontSize.xs, color: colors.textSecondary, marginTop: 2 },
   closeBtn: {
     width: TouchTarget.minimum,
     height: TouchTarget.minimum,
     borderRadius: Radius.full,
-    backgroundColor: Colors.surfaceElevated,
+    backgroundColor: colors.surfaceElevated,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  closeBtnText: { fontSize: 14, color: Colors.textSecondary },
+  closeBtnText: { fontSize: 14, color: colors.textSecondary },
   content: { padding: Spacing.md, paddingBottom: 100 },
   sectionLabel: {
     fontSize: FontSize.xs,
     fontWeight: FontWeight.bold,
-    color: Colors.textMuted,
+    color: colors.textMuted,
     marginBottom: Spacing.xs,
     letterSpacing: 1,
   },
   textArea: {
-    backgroundColor: Colors.surfaceElevated,
+    backgroundColor: colors.surfaceElevated,
     borderRadius: Radius.md,
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: colors.border,
     marginBottom: Spacing.md,
   },
   textInput: {
     padding: Spacing.md,
-    color: Colors.textPrimary,
+    color: colors.textPrimary,
     fontSize: FontSize.sm,
     height: 120,
   },
@@ -605,38 +613,38 @@ const styles = StyleSheet.create({
     padding: Spacing.md,
     borderRadius: Radius.md,
     borderWidth: 1,
-    borderColor: Colors.primary,
+    borderColor: colors.primary,
     marginBottom: Spacing.sm,
   },
-  photoBtnText: { color: Colors.primary, fontWeight: FontWeight.semiBold, fontSize: FontSize.sm },
+  photoBtnText: { color: colors.primary, fontWeight: FontWeight.semiBold, fontSize: FontSize.sm },
   analyseBtn: {
-    backgroundColor: Colors.primary,
+    backgroundColor: colors.primary,
     padding: Spacing.md,
     borderRadius: Radius.md,
     alignItems: 'center',
     marginBottom: Spacing.lg,
   },
-  analyseBtnText: { color: Colors.textInverse, fontWeight: FontWeight.bold, fontSize: FontSize.md },
+  analyseBtnText: { color: colors.textInverse, fontWeight: FontWeight.bold, fontSize: FontSize.md },
   analyseBtnDisabled: { opacity: 0.5 },
   errorBanner: {
-    backgroundColor: Colors.errorBg,
+    backgroundColor: colors.errorBg,
     padding: Spacing.md,
     borderRadius: Radius.md,
     marginBottom: Spacing.lg,
   },
-  errorText: { color: Colors.error, fontSize: FontSize.sm, fontWeight: FontWeight.medium },
+  errorText: { color: colors.error, fontSize: FontSize.sm, fontWeight: FontWeight.medium },
   resultContainer: { gap: Spacing.lg },
   overallSafety: { padding: Spacing.md, borderRadius: Radius.md, gap: Spacing.xs },
   safetyValue: { fontSize: FontSize.lg, fontWeight: FontWeight.extraBold },
-  safetySummary: { color: Colors.textPrimary, fontSize: FontSize.sm, lineHeight: 20 },
-  listItem: { color: Colors.textSecondary, fontSize: FontSize.sm, lineHeight: 22 },
-  emptyList: { color: Colors.textMuted, fontSize: FontSize.sm, fontStyle: 'italic' },
+  safetySummary: { color: colors.textPrimary, fontSize: FontSize.sm, lineHeight: 20 },
+  listItem: { color: colors.textSecondary, fontSize: FontSize.sm, lineHeight: 22 },
+  emptyList: { color: colors.textMuted, fontSize: FontSize.sm, fontStyle: 'italic' },
   disclaimer: {
-    color: Colors.textMuted,
+    color: colors.textMuted,
     fontSize: FontSize.xs,
     lineHeight: 17,
     borderTopWidth: 1,
-    borderTopColor: Colors.border,
+    borderTopColor: colors.border,
     paddingTop: Spacing.md,
     marginTop: Spacing.sm,
   },
@@ -644,15 +652,15 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.xs,
-    backgroundColor: Colors.warningBg,
+    backgroundColor: colors.warningBg,
     padding: Spacing.sm,
     borderRadius: Radius.sm,
     marginBottom: Spacing.md,
     borderWidth: 1,
-    borderColor: Colors.warning,
+    borderColor: colors.warning,
   },
   allergenBannerText: {
-    color: Colors.warning,
+    color: colors.warning,
     fontSize: FontSize.xs,
     fontWeight: FontWeight.bold,
   },
@@ -660,14 +668,14 @@ const styles = StyleSheet.create({
     marginTop: Spacing.md,
   },
   deepAnalysisBox: {
-    backgroundColor: Colors.surfaceElevated,
+    backgroundColor: colors.surfaceElevated,
     padding: Spacing.md,
     borderRadius: Radius.md,
     borderLeftWidth: 4,
-    borderLeftColor: Colors.warning,
+    borderLeftColor: colors.warning,
   },
   deepAnalysisText: {
-    color: Colors.textPrimary,
+    color: colors.textPrimary,
     fontSize: FontSize.sm,
     lineHeight: 20,
     fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
@@ -680,12 +688,12 @@ const styles = StyleSheet.create({
     padding: Spacing.md,
     borderRadius: Radius.md,
     borderWidth: 1,
-    borderColor: Colors.primary,
+    borderColor: colors.primary,
     marginBottom: Spacing.lg,
-    backgroundColor: Colors.surface,
+    backgroundColor: colors.surface,
   },
   shareBtnText: {
-    color: Colors.primary,
+    color: colors.primary,
     fontWeight: FontWeight.bold,
     fontSize: FontSize.sm,
   },
@@ -696,11 +704,11 @@ const styles = StyleSheet.create({
   },
   riskMeterSection: {
     marginTop: Spacing.md,
-    backgroundColor: Colors.surface,
+    backgroundColor: colors.surface,
     padding: Spacing.md,
     borderRadius: Radius.md,
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: colors.border,
   },
   riskGrid: {
     gap: Spacing.md,
@@ -715,7 +723,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   riskFactorName: {
-    color: Colors.textPrimary,
+    color: colors.textPrimary,
     fontSize: FontSize.sm,
     fontWeight: FontWeight.bold,
   },
@@ -725,7 +733,7 @@ const styles = StyleSheet.create({
   },
   progressBarBg: {
     height: 8,
-    backgroundColor: Colors.border,
+    backgroundColor: colors.border,
     borderRadius: Radius.full,
     overflow: 'hidden',
   },
@@ -734,12 +742,13 @@ const styles = StyleSheet.create({
     borderRadius: Radius.full,
   },
   riskDescription: {
-    color: Colors.textSecondary,
+    color: colors.textSecondary,
     fontSize: FontSize.xs,
     lineHeight: 16,
     marginTop: 2,
   },
-});
+  });
+}
 
 const resultStyles = StyleSheet.create({
   section: { gap: Spacing.xs },

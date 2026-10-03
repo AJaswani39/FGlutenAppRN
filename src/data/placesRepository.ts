@@ -17,6 +17,7 @@ interface NearbyCacheEntry {
 
 interface NearbySearchOptions {
   forceRefresh?: boolean;
+  signal?: AbortSignal;
 }
 
 const nearbySessionCache = new Map<string, NearbyCacheEntry>();
@@ -124,6 +125,11 @@ export async function fetchNearbyRestaurants(
   if (!isValidLatitude(lat) || !isValidLongitude(lng)) {
     throw new Error('Invalid search coordinates.');
   }
+  if (options.signal?.aborted) {
+    const abortError = new Error('Nearby search cancelled.');
+    abortError.name = 'AbortError';
+    throw abortError;
+  }
 
   const searchRadiusMeters = normalizeSearchRadiusMeters(radiusMeters);
   const cacheKey = getNearbySessionCacheKey(lat, lng, searchRadiusMeters);
@@ -152,6 +158,7 @@ export async function fetchNearbyRestaurants(
         'places.id,places.displayName,places.formattedAddress,places.rating,places.currentOpeningHours,places.location',
     },
     body: JSON.stringify(body),
+    signal: options.signal,
   });
 
   if (!response.ok) {

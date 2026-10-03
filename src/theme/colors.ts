@@ -67,13 +67,6 @@ export const LightColors: typeof DarkColors = {
   shimmer2: '#D0D7DE',
 };
 
-// Mutable runtime object. Starts as Dark.
-export const Colors = { ...DarkColors };
-
-export function applyTheme(isDark: boolean) {
-  Object.assign(Colors, isDark ? DarkColors : LightColors);
-}
-
 export const Spacing = {
   xs: 4,
   sm: 8,

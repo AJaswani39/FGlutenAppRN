@@ -1,4 +1,4 @@
-import { useCallback, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import * as Location from 'expo-location';
 import NetInfo from '@react-native-community/netinfo';
 import { fetchNearbyRestaurants } from '../data/placesRepository';
@@ -46,6 +46,15 @@ export function useRestaurantLoader({
   startScans,
 }: Options) {
   const requestIdRef = useRef(0);
+  const loadAbortControllerRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    return () => {
+      requestIdRef.current += 1;
+      loadAbortControllerRef.current?.abort();
+      loadAbortControllerRef.current = null;
+    };
+  }, []);
 
   const isActiveRequest = useCallback((requestId: number) => (
     isMounted.current && requestIdRef.current === requestId
@@ -87,6 +96,9 @@ export function useRestaurantLoader({
   ) => {
     if (uiStateRef.current.status === 'loading') return;
 
+    loadAbortControllerRef.current?.abort();
+    const loadController = new AbortController();
+    loadAbortControllerRef.current = loadController;
     const requestId = requestIdRef.current + 1;
     requestIdRef.current = requestId;
 
@@ -99,7 +111,9 @@ export function useRestaurantLoader({
         const message = error instanceof Error ? error.message : String(error);
         logger.warn(`Could not determine network status: ${message}`);
         showCachedFallbackOrError({
-          message: 'Could not check the internet connection. Showing cached results.',
+          message: rawRestaurants.current.length > 0
+            ? 'Could not check the internet connection. Showing cached results.'
+            : 'Could not check the internet connection. Please try again.',
           emptyReason: 'filters',
           status: 'error',
         });
@@ -124,7 +138,9 @@ export function useRestaurantLoader({
 
       if (!mapsApiKey) {
         showCachedFallbackOrError({
-          message: 'Showing cached results — Maps API key is missing. Live refresh is unavailable.',
+          message: rawRestaurants.current.length > 0
+            ? 'Showing cached results — Maps API key is missing. Live refresh is unavailable.'
+            : 'Maps API key is missing. Live refresh is unavailable.',
           emptyReason: 'filters',
           status: 'error',
           userLatitude: null,
@@ -184,7 +200,7 @@ export function useRestaurantLoader({
         longitude,
         mapsApiKey,
         searchRadiusMeters,
-        { forceRefresh: options.forceRefresh }
+        { forceRefresh: options.forceRefresh, signal: loadController.signal }
       );
       if (!isActiveRequest(requestId)) return;
 
@@ -199,6 +215,7 @@ export function useRestaurantLoader({
       persistCache();
       startScans(restaurantsWithDistance);
     } catch (error: unknown) {
+      if (loadController.signal.aborted) return;
       if (!isActiveRequest(requestId)) return;
       const errorMessage = error instanceof Error ? error.message : String(error);
       const message = `Could not load restaurants: ${errorMessage}`;
@@ -218,8 +235,19 @@ export function useRestaurantLoader({
           status: 'error',
         });
       }
+    } finally {
+      if (loadAbortControllerRef.current === loadController) {
+        loadAbortControllerRef.current = null;
+      }
     }
   }, [applyFavorites, emitFilteredState, filtersRef, flushQueue, getScanProgress, isActiveRequest, loadCachedIfAvailable, mergeCachedScanData, persistCache, rawRestaurants, setUiState, showCachedFallbackOrError, startScans, uiStateRef, userLat, userLng]);
 
-  return { loadNearbyRestaurants, invalidateLoads: () => { requestIdRef.current += 1; } };
+  return {
+    loadNearbyRestaurants,
+    invalidateLoads: () => {
+      requestIdRef.current += 1;
+      loadAbortControllerRef.current?.abort();
+      loadAbortControllerRef.current = null;
+    },
+  };
 }

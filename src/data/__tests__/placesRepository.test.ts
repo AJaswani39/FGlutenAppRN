@@ -99,6 +99,30 @@ describe('placesRepository', () => {
     expect(global.fetch).toHaveBeenCalledTimes(2);
   });
 
+  it('forwards caller cancellation to the nearby Places request', async () => {
+    (global.fetch as jest.Mock).mockImplementation((_, init: RequestInit) => (
+      new Promise((_, reject) => {
+        init.signal?.addEventListener('abort', () => {
+          const abortError = new Error('cancelled');
+          abortError.name = 'AbortError';
+          reject(abortError);
+        });
+      })
+    ));
+    const controller = new AbortController();
+
+    const request = fetchNearbyRestaurants(
+      40.7128,
+      -74.006,
+      'maps-key',
+      5000,
+      { forceRefresh: true, signal: controller.signal }
+    );
+    controller.abort();
+
+    await expect(request).rejects.toMatchObject({ name: 'AbortError' });
+  });
+
   it('uses the HTML proxy when configured and skips direct website fetch', async () => {
     (global.fetch as jest.Mock).mockResolvedValueOnce({
       ok: true,

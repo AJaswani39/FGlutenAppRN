@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -14,7 +14,8 @@ import {
 import * as ExpoClipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
-import { Colors, FontSize, FontWeight, Radius, Spacing, TouchTarget } from '../../theme/colors';
+import { FontSize, FontWeight, Radius, Spacing, TouchTarget } from '../../theme/colors';
+import { ThemeColors, useTheme } from '../../context/ThemeContext';
 import { AiChatMessage, Restaurant } from '../../types/restaurant';
 import { PuterAiService } from '../../services/puterAiService';
 import { buildMenuAiContext } from '../../util/menuAiContext';
@@ -58,6 +59,8 @@ export default function MenuChatSheet({
   onHistoryChange,
   onClose,
 }: Props) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const [chatHistory, setChatHistory] = useState(initialHistory);
   const [userQuestion, setUserQuestion] = useState('');
   const [isAsking, setIsAsking] = useState(false);
@@ -170,7 +173,7 @@ export default function MenuChatSheet({
         >
           {chatHistory.length === 0 && (
             <View style={styles.emptyState}>
-              <Ionicons name="chatbubble-ellipses-outline" size={30} color={Colors.primary} />
+              <Ionicons name="chatbubble-ellipses-outline" size={30} color={colors.primary} />
               <Text style={styles.emptyTitle}>Ask about this menu</Text>
               <Text style={styles.emptyText}>Answers are based only on the menu evidence available here.</Text>
               <View style={styles.suggestions}>
@@ -194,7 +197,7 @@ export default function MenuChatSheet({
                 <Text style={[styles.message, message.role === 'user' ? styles.userText : styles.modelText]}>{message.text}</Text>
                 {message.role === 'model' && message.text !== '...' && (
                   <Pressable onPress={() => copyToClipboard(message.text)} accessibilityRole="button" accessibilityLabel="Copy response">
-                    <Ionicons name="copy-outline" size={15} color={Colors.textMuted} />
+                    <Ionicons name="copy-outline" size={15} color={colors.textMuted} />
                   </Pressable>
                 )}
               </Pressable>
@@ -210,7 +213,7 @@ export default function MenuChatSheet({
             value={userQuestion}
             onChangeText={setUserQuestion}
             placeholder="Ask about an ingredient or dish..."
-            placeholderTextColor={Colors.textMuted}
+            placeholderTextColor={colors.textMuted}
             returnKeyType="send"
             onSubmitEditing={() => void askAi()}
             editable={!isAsking}
@@ -222,7 +225,7 @@ export default function MenuChatSheet({
             accessibilityRole="button"
             accessibilityLabel="Send question"
           >
-            {isAsking ? <ActivityIndicator size="small" color={Colors.textInverse} /> : <Ionicons name="send" size={18} color={Colors.textInverse} />}
+            {isAsking ? <ActivityIndicator size="small" color={colors.textInverse} /> : <Ionicons name="send" size={18} color={colors.textInverse} />}
           </Pressable>
         </View>
         {chatHistory.length > 0 && (
@@ -235,34 +238,36 @@ export default function MenuChatSheet({
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.background },
-  header: { paddingTop: Spacing.md, backgroundColor: Colors.surface, borderBottomWidth: 1, borderBottomColor: Colors.border },
-  handle: { width: 40, height: 4, borderRadius: Radius.full, backgroundColor: Colors.border, alignSelf: 'center', marginBottom: Spacing.sm },
+function createStyles(colors: ThemeColors) {
+  return StyleSheet.create({
+  container: { flex: 1, backgroundColor: colors.background },
+  header: { paddingTop: Spacing.md, backgroundColor: colors.surface, borderBottomWidth: 1, borderBottomColor: colors.border },
+  handle: { width: 40, height: 4, borderRadius: Radius.full, backgroundColor: colors.border, alignSelf: 'center', marginBottom: Spacing.sm },
   headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: Spacing.md },
-  title: { color: Colors.textPrimary, fontSize: FontSize.lg, fontWeight: FontWeight.bold },
-  subtitle: { color: Colors.textSecondary, fontSize: FontSize.xs, marginTop: 2, maxWidth: 260 },
-  closeButton: { width: TouchTarget.minimum, height: TouchTarget.minimum, borderRadius: Radius.full, backgroundColor: Colors.surfaceElevated, alignItems: 'center', justifyContent: 'center' },
-  closeText: { color: Colors.textSecondary, fontSize: 14 },
+  title: { color: colors.textPrimary, fontSize: FontSize.lg, fontWeight: FontWeight.bold },
+  subtitle: { color: colors.textSecondary, fontSize: FontSize.xs, marginTop: 2, maxWidth: 260 },
+  closeButton: { width: TouchTarget.minimum, height: TouchTarget.minimum, borderRadius: Radius.full, backgroundColor: colors.surfaceElevated, alignItems: 'center', justifyContent: 'center' },
+  closeText: { color: colors.textSecondary, fontSize: 14 },
   content: { padding: Spacing.md, paddingBottom: Spacing.lg },
   emptyState: { alignItems: 'center', paddingVertical: Spacing.xl, gap: Spacing.sm },
-  emptyTitle: { color: Colors.textPrimary, fontSize: FontSize.md, fontWeight: FontWeight.bold },
-  emptyText: { color: Colors.textSecondary, fontSize: FontSize.sm, textAlign: 'center' },
+  emptyTitle: { color: colors.textPrimary, fontSize: FontSize.md, fontWeight: FontWeight.bold },
+  emptyText: { color: colors.textSecondary, fontSize: FontSize.sm, textAlign: 'center' },
   suggestions: { width: '100%', gap: Spacing.sm, marginTop: Spacing.md },
-  suggestion: { borderWidth: 1, borderColor: Colors.border, borderRadius: Radius.md, padding: Spacing.md, backgroundColor: Colors.surface },
-  suggestionText: { color: Colors.primary, fontSize: FontSize.sm },
+  suggestion: { borderWidth: 1, borderColor: colors.border, borderRadius: Radius.md, padding: Spacing.md, backgroundColor: colors.surface },
+  suggestionText: { color: colors.primary, fontSize: FontSize.sm },
   history: { gap: Spacing.sm },
   bubble: { maxWidth: '88%', padding: Spacing.md, borderRadius: Radius.md, gap: Spacing.xs },
-  userBubble: { alignSelf: 'flex-end', backgroundColor: Colors.primaryLight, borderBottomRightRadius: 2 },
-  modelBubble: { alignSelf: 'flex-start', backgroundColor: Colors.surfaceElevated, borderBottomLeftRadius: 2, borderLeftWidth: 4, borderLeftColor: Colors.primary },
+  userBubble: { alignSelf: 'flex-end', backgroundColor: colors.primaryLight, borderBottomRightRadius: 2 },
+  modelBubble: { alignSelf: 'flex-start', backgroundColor: colors.surfaceElevated, borderBottomLeftRadius: 2, borderLeftWidth: 4, borderLeftColor: colors.primary },
   message: { fontSize: FontSize.sm, lineHeight: 20 },
-  userText: { color: Colors.primary, fontWeight: FontWeight.medium },
-  modelText: { color: Colors.textPrimary },
-  error: { color: Colors.error, backgroundColor: Colors.errorBg, padding: Spacing.md, borderRadius: Radius.md, marginTop: Spacing.md },
-  inputArea: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, padding: Spacing.md, borderTopWidth: 1, borderTopColor: Colors.border, backgroundColor: Colors.surface },
-  input: { flex: 1, minHeight: 44, maxHeight: 110, backgroundColor: Colors.surfaceElevated, borderRadius: Radius.md, borderWidth: 1, borderColor: Colors.border, paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm, color: Colors.textPrimary, fontSize: FontSize.sm },
-  sendButton: { width: 44, height: 44, borderRadius: Radius.full, backgroundColor: Colors.primary, alignItems: 'center', justifyContent: 'center' },
+  userText: { color: colors.primary, fontWeight: FontWeight.medium },
+  modelText: { color: colors.textPrimary },
+  error: { color: colors.error, backgroundColor: colors.errorBg, padding: Spacing.md, borderRadius: Radius.md, marginTop: Spacing.md },
+  inputArea: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, padding: Spacing.md, borderTopWidth: 1, borderTopColor: colors.border, backgroundColor: colors.surface },
+  input: { flex: 1, minHeight: 44, maxHeight: 110, backgroundColor: colors.surfaceElevated, borderRadius: Radius.md, borderWidth: 1, borderColor: colors.border, paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm, color: colors.textPrimary, fontSize: FontSize.sm },
+  sendButton: { width: 44, height: 44, borderRadius: Radius.full, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
   disabled: { opacity: 0.5 },
   clearButton: { alignSelf: 'center', paddingBottom: Spacing.md },
-  clearText: { color: Colors.textMuted, fontSize: FontSize.xs, fontWeight: FontWeight.medium },
-});
+  clearText: { color: colors.textMuted, fontSize: FontSize.xs, fontWeight: FontWeight.medium },
+  });
+}

@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { RestaurantFilters } from '../types/restaurant';
 import { DEFAULT_FILTERS, PersistenceService } from '../services/persistenceService';
 
@@ -20,15 +20,17 @@ export function useFilters(): FiltersContextValue {
 
 export function FiltersProvider({ children }: { children: React.ReactNode }) {
   const [filters, setFiltersState] = useState<RestaurantFilters>(DEFAULT_FILTERS);
+  const mutationVersion = useRef(0);
 
   useEffect(() => {
     let isMounted = true;
+    const hydrationVersion = mutationVersion.current;
 
     (async () => {
       try {
         const savedFilters = await PersistenceService.loadFilters();
 
-        if (!isMounted) return;
+        if (!isMounted || mutationVersion.current !== hydrationVersion) return;
         setFiltersState(savedFilters);
       } catch (error: unknown) {
         const message = error instanceof Error ? error.message : String(error);
@@ -42,6 +44,7 @@ export function FiltersProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const setFilters = useCallback((partial: Partial<RestaurantFilters>) => {
+    mutationVersion.current += 1;
     setFiltersState((prev) => {
       const next = { ...prev, ...partial };
       void PersistenceService.saveFilters(next).catch((error: unknown) => {
@@ -54,6 +57,7 @@ export function FiltersProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const resetFilters = useCallback(() => {
+    mutationVersion.current += 1;
     setFiltersState(DEFAULT_FILTERS);
     void PersistenceService.saveFilters(DEFAULT_FILTERS).catch((error: unknown) => {
 

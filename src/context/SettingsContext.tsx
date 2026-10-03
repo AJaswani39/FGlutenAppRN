@@ -1,4 +1,4 @@
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { PersistenceService } from '../services/persistenceService';
 import { logger } from '../util/logger';
 
@@ -33,14 +33,18 @@ function useBooleanSetting(
   fallback = false
 ): [boolean, (val: boolean) => void] {
   const [value, setValue] = useState(fallback);
+  const mutationVersion = useRef(0);
 
   useEffect(() => {
     let cancelled = false;
+    const hydrationVersion = mutationVersion.current;
 
     (async () => {
       try {
         const saved = await PersistenceService.getSetting(key);
-        if (!cancelled) setValue(saved);
+        if (!cancelled && mutationVersion.current === hydrationVersion) {
+          setValue(saved);
+        }
       } catch (error: unknown) {
         const message = error instanceof Error ? error.message : String(error);
         logger.error(`Failed to load setting '${key}': ${message}`);
@@ -54,6 +58,7 @@ function useBooleanSetting(
 
   const set = useCallback(
     (val: boolean) => {
+      mutationVersion.current += 1;
       setValue(val);
       void PersistenceService.setSetting(key, val).catch((error: unknown) => {
         const message = error instanceof Error ? error.message : String(error);

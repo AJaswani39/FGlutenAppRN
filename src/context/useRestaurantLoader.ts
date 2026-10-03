@@ -8,6 +8,7 @@ import { logger } from '../util/logger';
 import { getMapsApiKey } from './restaurantState';
 
 type Coordinates = { latitude: number; longitude: number };
+type LoadNearbyOptions = { forceRefresh?: boolean };
 
 interface Options {
   rawRestaurants: React.MutableRefObject<Restaurant[]>;
@@ -80,7 +81,10 @@ export function useRestaurantLoader({
     });
   }, [emitFilteredState, getScanProgress, rawRestaurants, setUiState]);
 
-  const loadNearbyRestaurants = useCallback(async (overrideCoords?: Coordinates) => {
+  const loadNearbyRestaurants = useCallback(async (
+    overrideCoords?: Coordinates,
+    options: LoadNearbyOptions = {}
+  ) => {
     if (uiStateRef.current.status === 'loading') return;
 
     const requestId = requestIdRef.current + 1;
@@ -175,7 +179,13 @@ export function useRestaurantLoader({
       }
 
       const searchRadiusMeters = filtersRef.current.maxDistanceMeters > 0 ? filtersRef.current.maxDistanceMeters : undefined;
-      const restaurants = await fetchNearbyRestaurants(latitude, longitude, mapsApiKey, searchRadiusMeters);
+      const restaurants = await fetchNearbyRestaurants(
+        latitude,
+        longitude,
+        mapsApiKey,
+        searchRadiusMeters,
+        { forceRefresh: options.forceRefresh }
+      );
       if (!isActiveRequest(requestId)) return;
 
       const restaurantsWithDistance = applyFavorites(mergeCachedScanData(restaurants)).map((restaurant) => ({

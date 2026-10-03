@@ -1,4 +1,10 @@
-import { clearNearbySessionCache, fetchHtml, fetchNearbyRestaurants, fetchRenderedMenuText } from '../placesRepository';
+import {
+  clearNearbySessionCache,
+  fetchHtml,
+  fetchNearbyRestaurants,
+  fetchRenderedMenuText,
+  NEARBY_CACHE_TTL_MS,
+} from '../placesRepository';
 
 describe('placesRepository', () => {
   beforeEach(() => {
@@ -34,6 +40,63 @@ describe('placesRepository', () => {
       name: 'Cached Cafe',
       gfMenu: [],
     });
+  });
+
+  it('bypasses the nearby cache when a refresh is explicitly requested', async () => {
+    (global.fetch as jest.Mock)
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ places: [] }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ places: [] }) });
+
+    await fetchNearbyRestaurants(40.7128, -74.006, 'maps-key', 5000);
+    await fetchNearbyRestaurants(40.7128, -74.006, 'maps-key', 5000, { forceRefresh: true });
+
+    expect(global.fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps the last good nearby cache entry when a forced refresh fails', async () => {
+    (global.fetch as jest.Mock)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          places: [
+            {
+              id: 'last-good-place',
+              displayName: { text: 'Last Good Cafe' },
+              formattedAddress: '123 Main',
+              location: { latitude: 40.7128, longitude: -74.006 },
+            },
+          ],
+        }),
+      })
+      .mockRejectedValueOnce(new Error('network unavailable'));
+
+    await fetchNearbyRestaurants(40.7128, -74.006, 'maps-key', 5000);
+    await expect(
+      fetchNearbyRestaurants(40.7128, -74.006, 'maps-key', 5000, { forceRefresh: true })
+    ).rejects.toThrow('network unavailable');
+
+    const fallback = await fetchNearbyRestaurants(40.7128, -74.006, 'maps-key', 5000);
+
+    expect(global.fetch).toHaveBeenCalledTimes(2);
+    expect(fallback[0].placeId).toBe('last-good-place');
+  });
+
+  it('refetches nearby results after the cache TTL expires', async () => {
+    let now = 1_000;
+    const nowSpy = jest.spyOn(Date, 'now').mockImplementation(() => now);
+    (global.fetch as jest.Mock)
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ places: [] }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ places: [] }) });
+
+    try {
+      await fetchNearbyRestaurants(40.7128, -74.006, 'maps-key', 5000);
+      now += NEARBY_CACHE_TTL_MS + 1;
+      await fetchNearbyRestaurants(40.7128, -74.006, 'maps-key', 5000);
+    } finally {
+      nowSpy.mockRestore();
+    }
+
+    expect(global.fetch).toHaveBeenCalledTimes(2);
   });
 
   it('uses the HTML proxy when configured and skips direct website fetch', async () => {

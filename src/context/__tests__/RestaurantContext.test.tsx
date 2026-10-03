@@ -734,6 +734,27 @@ describe('RestaurantContext', () => {
     expect(JSON.parse(String(nearbyCall[1]?.body)).locationRestriction.circle.radius).toBe(12000);
   });
 
+  it('bypasses cached nearby results when a forced refresh is requested', async () => {
+    fetchMock().mockResolvedValue({
+      ok: true,
+      json: async () => ({ places: [] }),
+    });
+
+    const { getApi } = await renderHarness();
+
+    await act(async () => {
+      await getApi().restaurants.loadNearbyRestaurants();
+    });
+    await act(async () => {
+      await getApi().restaurants.loadNearbyRestaurants(undefined, { forceRefresh: true });
+    });
+
+    const nearbyCalls = fetchMock().mock.calls.filter(([url]) =>
+      String(url).includes('searchNearby')
+    );
+    expect(nearbyCalls).toHaveLength(2);
+  });
+
   it('keeps saved restaurants independent from active filters', async () => {
     fetchMock().mockResolvedValue({
       ok: true,

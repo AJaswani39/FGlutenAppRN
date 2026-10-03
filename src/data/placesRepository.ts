@@ -8,7 +8,18 @@ import { isRecord } from '../util/typeGuards';
 const DEFAULT_SEARCH_RADIUS_METERS = 5000;
 const MAX_SEARCH_RADIUS_METERS = 20000;
 const NEARBY_CACHE_COORD_DECIMALS = 4;
-const nearbySessionCache = new Map<string, Restaurant[]>();
+export const NEARBY_CACHE_TTL_MS = 2 * 60_000;
+
+interface NearbyCacheEntry {
+  restaurants: Restaurant[];
+  cachedAt: number;
+}
+
+interface NearbySearchOptions {
+  forceRefresh?: boolean;
+}
+
+const nearbySessionCache = new Map<string, NearbyCacheEntry>();
 
 export function clearNearbySessionCache(): void {
   nearbySessionCache.clear();
@@ -107,7 +118,8 @@ export async function fetchNearbyRestaurants(
   lat: number,
   lng: number,
   apiKey: string,
-  radiusMeters = DEFAULT_SEARCH_RADIUS_METERS
+  radiusMeters = DEFAULT_SEARCH_RADIUS_METERS,
+  options: NearbySearchOptions = {}
 ): Promise<Restaurant[]> {
   if (!isValidLatitude(lat) || !isValidLongitude(lng)) {
     throw new Error('Invalid search coordinates.');
@@ -116,8 +128,8 @@ export async function fetchNearbyRestaurants(
   const searchRadiusMeters = normalizeSearchRadiusMeters(radiusMeters);
   const cacheKey = getNearbySessionCacheKey(lat, lng, searchRadiusMeters);
   const cached = nearbySessionCache.get(cacheKey);
-  if (cached) {
-    return cloneRestaurants(cached);
+  if (!options.forceRefresh && cached && Date.now() - cached.cachedAt < NEARBY_CACHE_TTL_MS) {
+    return cloneRestaurants(cached.restaurants);
   }
 
   const body = {
@@ -153,7 +165,10 @@ export async function fetchNearbyRestaurants(
     .map((place) => normalizeNearbyRestaurant(place))
     .filter((restaurant): restaurant is Restaurant => restaurant !== null);
 
-  nearbySessionCache.set(cacheKey, cloneRestaurants(restaurants));
+  nearbySessionCache.set(cacheKey, {
+    restaurants: cloneRestaurants(restaurants),
+    cachedAt: Date.now(),
+  });
   return cloneRestaurants(restaurants);
 }
 

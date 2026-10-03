@@ -41,7 +41,10 @@ interface EmitFilteredStateOptions {
 interface RestaurantContextValue {
   uiState: RestaurantUiState;
   savedRestaurants: Restaurant[];
-  loadNearbyRestaurants: (overrideCoords?: { latitude: number; longitude: number }) => Promise<void>;
+  loadNearbyRestaurants: (
+    overrideCoords?: { latitude: number; longitude: number },
+    options?: { forceRefresh?: boolean }
+  ) => Promise<void>;
   setFavoriteStatus: (restaurant: Restaurant, status: FavoriteStatus) => void;
   requestMenuRescan: (restaurant: Restaurant) => void;
   requestInteractiveMenuRender: (restaurant: Restaurant) => void;
@@ -127,7 +130,7 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
 
   const { emitFilteredState, refreshCollectionState } = useRestaurantCollectionState({
     rawRestaurants,
-    filters: filtersRef.current,
+    filters,
     strictCeliac,
     userLat,
     userLng,

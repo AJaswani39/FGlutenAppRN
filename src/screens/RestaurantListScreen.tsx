@@ -58,16 +58,21 @@ export default function RestaurantListScreen() {
   const hasResults = restaurants.length > 0;
   const isLoading = status === 'loading';
 
+  const refreshNearbyRestaurants = useCallback(
+    () => loadNearbyRestaurants(undefined, { forceRefresh: true }),
+    [loadNearbyRestaurants]
+  );
+
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
-      await loadNearbyRestaurants();
+      await refreshNearbyRestaurants();
     } finally {
       if (isMounted.current) {
         setRefreshing(false);
       }
     }
-  }, [loadNearbyRestaurants]);
+  }, [refreshNearbyRestaurants]);
 
   const handleRestaurantPress = useCallback((restaurant: Restaurant) => {
     Keyboard.dismiss();
@@ -129,7 +134,7 @@ export default function RestaurantListScreen() {
           <IconButton
             icon="refresh"
             label="Refresh nearby restaurants"
-            onPress={loadNearbyRestaurants}
+            onPress={refreshNearbyRestaurants}
             disabled={isLoading}
           />
         </View>
@@ -175,7 +180,7 @@ export default function RestaurantListScreen() {
               ? 'Refresh Results'
               : 'Find Restaurants'
           }
-          onAction={loadNearbyRestaurants}
+          onAction={refreshNearbyRestaurants}
         />
       ) : null}
 

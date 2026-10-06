@@ -242,12 +242,5 @@ export function useRestaurantLoader({
     }
   }, [applyFavorites, emitFilteredState, filtersRef, flushQueue, getScanProgress, isActiveRequest, loadCachedIfAvailable, mergeCachedScanData, persistCache, rawRestaurants, setUiState, showCachedFallbackOrError, startScans, uiStateRef, userLat, userLng]);
 
-  return {
-    loadNearbyRestaurants,
-    invalidateLoads: () => {
-      requestIdRef.current += 1;
-      loadAbortControllerRef.current?.abort();
-      loadAbortControllerRef.current = null;
-    },
-  };
+  return { loadNearbyRestaurants };
 }

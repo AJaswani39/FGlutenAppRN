@@ -109,10 +109,14 @@ export default function MenuAnalysisSheet({ restaurant, onClose }: Props) {
 
   useEffect(() => {
     return () => {
-      // Flush the latest state back to the context on unmount
-      updateAiSession(restaurant, sessionDataRef.current);
+      // Flush the latest state back to the context on unmount,
+      // but skip if an analysis is in flight — it will be aborted
+      // and we don't want to persist its stale partial state.
+      if (!isAnalyzing) {
+        updateAiSession(restaurant, sessionDataRef.current);
+      }
     };
-  }, [restaurant, updateAiSession]);
+  }, [restaurant, updateAiSession, isAnalyzing]);
 
 
   const runAnalysis = useCallback(async (text: string) => {

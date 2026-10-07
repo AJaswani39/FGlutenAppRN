@@ -30,6 +30,11 @@ export interface RestaurantSafetyScore {
 
 const GF_POSITIVE_REGEX = /gluten[\s-]?free|\bgf\b|celiac[\s-]?friendly|coeliac[\s-]?friendly|no[\s-]?gluten/i;
 
+const LINE_SPLIT_REGEX = /[\n\r]+/;
+const TAG_STRIP_REGEX = /<[^>]*>/g;
+const WHITESPACE_REGEX = /\s+/g;
+const COMMA_SPLIT_REGEX = /[,;]/;
+
 const GLUTEN_SOURCES = [
   'wheat',
   'barley',
@@ -66,8 +71,51 @@ const CC_PATTERNS = [
   /processed in a facility/gi,
 ];
 
+// Bounded memoization cache for getRestaurantSafetyScore.
+//
+// The detail modal re-renders frequently (scan progress, favorites, AI session
+// updates all flow through the context), and the score computation runs several
+// regex passes over the menu text each time. Restaurant objects are spread
+// copies, so we key on content rather than reference identity.
+const SAFETY_SCORE_CACHE_LIMIT = 64;
+const safetyScoreCache = new Map<string, RestaurantSafetyScore>();
+
+function safetyScoreCacheKey(
+  restaurant: Restaurant,
+  strictCeliac: boolean
+): string {
+  // Only fields that affect the computed score are included.
+  return [
+    restaurant.placeId || '',
+    restaurant.rawMenuText || '',
+    restaurant.gfMenu.join('\u0000'),
+    restaurant.aiAnalysisResult ? '1' : '0',
+    restaurant.favoriteStatus || '',
+    restaurant.rating ?? '',
+    restaurant.openNow ?? '',
+    restaurant.hasGFMenu ? '1' : '0',
+    restaurant.menuScanStatus,
+    strictCeliac ? '1' : '0',
+  ].join('\u0001');
+}
+
+function trimSafetyScoreCache() {
+  while (safetyScoreCache.size > SAFETY_SCORE_CACHE_LIMIT) {
+    // Map preserves insertion order; drop the oldest entry.
+    const firstKey = safetyScoreCache.keys().next().value;
+    if (firstKey === undefined) break;
+    safetyScoreCache.delete(firstKey);
+  }
+}
+
+/** Clears the safety-score memoization cache. Callers that mutate menu data
+ * outside of the normal scan pipeline (e.g. direct edits) should invoke this. */
+export function clearSafetyScoreCache() {
+  safetyScoreCache.clear();
+}
+
 export function analyseMenuText(text: string): MenuAnalysisResult {
-  const lines = text.split(/[\n\r]+/);
+  const lines = text.split(LINE_SPLIT_REGEX);
   const glutenFreeItems: string[] = [];
   const foundGlutenSources = new Set<string>();
 
@@ -155,6 +203,21 @@ export function getRestaurantSafetyScore(
   restaurant: Restaurant,
   options: { strictCeliac?: boolean } = {}
 ): RestaurantSafetyScore {
+  const strictCeliac = options.strictCeliac === true;
+  const cacheKey = safetyScoreCacheKey(restaurant, strictCeliac);
+  const cached = safetyScoreCache.get(cacheKey);
+  if (cached) return cached;
+
+  const result = computeRestaurantSafetyScore(restaurant, strictCeliac);
+  safetyScoreCache.set(cacheKey, result);
+  trimSafetyScoreCache();
+  return result;
+}
+
+function computeRestaurantSafetyScore(
+  restaurant: Restaurant,
+  strictCeliac: boolean
+): RestaurantSafetyScore {
   const text = restaurant.rawMenuText?.trim() || restaurant.gfMenu.join('\n');
   const analysis = restaurant.aiAnalysisResult || (text.length > 0 ? analyseMenuText(text) : null);
   const reasons: string[] = [];
@@ -206,7 +269,7 @@ export function getRestaurantSafetyScore(
     reasons.push('Currently closed');
   }
 
-  if (options.strictCeliac && analysis?.crossContamRisk) {
+  if (strictCeliac && analysis?.crossContamRisk) {
     score -= 12;
     reasons.push('Strict mode: cross-contact language detected');
   }
@@ -298,10 +361,10 @@ function getFallbackSummary(restaurant: Restaurant): string {
 
 
 function extractGfItem(line: string): string {
-  let cleaned = line.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
+  let cleaned = line.replace(TAG_STRIP_REGEX, '').replace(WHITESPACE_REGEX, ' ').trim();
 
   if (cleaned.length > 80) {
-    const parts = cleaned.split(/[,;]/);
+    const parts = cleaned.split(COMMA_SPLIT_REGEX);
     for (const part of parts) {
       const trimmed = part.trim();
       if (trimmed.length > 10 && trimmed.length < 60) {

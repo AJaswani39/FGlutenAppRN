@@ -63,13 +63,28 @@ export function getComparableDistanceMeters(restaurant: Pick<Restaurant, 'distan
   return Math.max(0, restaurant.distanceMeters);
 }
 
+// Cache the search-query regex across calls — filterAndSortRestaurants runs on
+// every state emit and every debounced keystroke, so avoiding re-compilation
+// of the escaped query regex is a clear win for near-zero cost.
+let cachedSearchQuery = '';
+let cachedQueryRegex: RegExp | null = null;
+
+function getQueryRegex(query: string): RegExp | null {
+  if (query === cachedSearchQuery) return cachedQueryRegex;
+  cachedSearchQuery = query;
+  cachedQueryRegex = query
+    ? new RegExp(query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i')
+    : null;
+  return cachedQueryRegex;
+}
+
 export function filterAndSortRestaurants(
   restaurants: Restaurant[],
   filters: RestaurantFilters,
   strictCeliac: boolean
 ): Restaurant[] {
   const query = filters.searchQuery.trim();
-  const queryRegex = query ? new RegExp(query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i') : null;
+  const queryRegex = getQueryRegex(query);
   
   const needsGfEvidence = filters.gfOnly || strictCeliac;
   const minRating = filters.minRating;

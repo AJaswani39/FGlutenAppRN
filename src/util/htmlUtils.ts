@@ -194,16 +194,19 @@ function decodeHtmlEntity(entity: string): string {
     : entity;
 }
 
+const CSS_CLASS_TOKEN_REGEX = /\.[A-Za-z_-][\w-]*/g;
+const CSS_PROPERTY_TOKEN_REGEX = /\b(?:display|position|font-family|background-color|padding|margin)\s*:/gi;
+const CSS_KEYWORD_TOKEN_REGEX = /\b(?:font-family|background-color|justify-content|align-items|flex-direction)\b/gi;
+const UTILITY_COPY_REGEX = /^(?:download|get|install|join|sign\s+up|follow|book|reserve|view|learn)\b.*\b(?:app|application|newsletter|rewards?|gift cards?|careers?|jobs?|reservations?)\b/i;
+const MARKETING_COPY_REGEX = /^(?:welcome|visit\s+us|find\s+us|contact\s+us|our\s+locations?|hours?|learn\s+more|subscribe)\b|\b(?:limited[- ]time|special\s+offer|now\s+available|join\s+our)\b/i;
+const CSS_SYNTAX_REGEX = /^(?:var\(|@media\b|@font-face\b|from\s+['"]|import\s+)/i;
+
 function isLikelyNonMenuNoise(segment: string): boolean {
-  const cssClassTokens = segment.match(/\.[A-Za-z_-][\w-]*/g) || [];
-  const cssPropertyTokens = segment.match(/\b(?:display|position|font-family|background-color|padding|margin)\s*:/gi) || [];
-  const cssKeywordTokens = segment.match(/\b(?:font-family|background-color|justify-content|align-items|flex-direction)\b/gi) || [];
-  const utilityCopy = /^(?:download|get|install|join|sign\s+up|follow|book|reserve|view|learn)\b.*\b(?:app|application|newsletter|rewards?|gift cards?|careers?|jobs?|reservations?)\b/i.test(
-    segment,
-  );
-  const marketingCopy = /^(?:welcome|visit\s+us|find\s+us|contact\s+us|our\s+locations?|hours?|learn\s+more|subscribe)\b|\b(?:limited[- ]time|special\s+offer|now\s+available|join\s+our)\b/i.test(
-    segment,
-  );
+  const cssClassTokens = segment.match(CSS_CLASS_TOKEN_REGEX) || [];
+  const cssPropertyTokens = segment.match(CSS_PROPERTY_TOKEN_REGEX) || [];
+  const cssKeywordTokens = segment.match(CSS_KEYWORD_TOKEN_REGEX) || [];
+  const utilityCopy = UTILITY_COPY_REGEX.test(segment);
+  const marketingCopy = MARKETING_COPY_REGEX.test(segment);
 
   return (
     cssClassTokens.length >= 2 ||
@@ -211,17 +214,18 @@ function isLikelyNonMenuNoise(segment: string): boolean {
     cssKeywordTokens.length >= 1 ||
     utilityCopy ||
     marketingCopy ||
-    /^(?:var\(|@media\b|@font-face\b|from\s+['"]|import\s+)/i.test(segment)
+    CSS_SYNTAX_REGEX.test(segment)
   );
 }
 
 /**
  * Attempts to find a potential menu link within an HTML string.
  */
+const MENU_PATTERN = /href=["']([^"']*(?:menu|food|eat|dining)[^"']*)["']/gi;
+const EXCLUDED_EXTENSIONS = /\.(?:pdf|jpg|jpeg|png|gif|svg|css|js|zip|mp4|webp)$/i;
+const EXCLUDED_PATHS = /(?:catering|private[-_ ]?dining|events?|reservations?|privacy|account|login|order[-_ ]?online|delivery)/i;
+
 export function findMenuLink(html: string, baseUrl: string): string | null {
-  const menuPattern = /href=["']([^"']*(?:menu|food|eat|dining)[^"']*)["']/gi;
-  const EXCLUDED_EXTENSIONS = /\.(?:pdf|jpg|jpeg|png|gif|svg|css|js|zip|mp4|webp)$/i;
-  const EXCLUDED_PATHS = /(?:catering|private[-_ ]?dining|events?|reservations?|privacy|account|login|order[-_ ]?online|delivery)/i;
   const seen = new Set<string>();
   const candidates: Array<{ url: string; score: number }> = [];
 
@@ -233,7 +237,7 @@ export function findMenuLink(html: string, baseUrl: string): string | null {
     return null;
   }
 
-  for (const match of html.matchAll(menuPattern)) {
+  for (const match of html.matchAll(MENU_PATTERN)) {
     const href = match[1]?.trim();
     if (!href) continue;
     
@@ -294,13 +298,18 @@ export function normalizeHttpUrl(value: string | null | undefined): string | nul
 /**
  * Cleans a menu line, removing tags and truncating long fragments.
  */
+const CLEAN_MENU_GLF_REGEX = /gluten[\s-]?free|\bgf\b|celiac|coeliac/i;
+const TAG_STRIP_REGEX = /<[^>]*>/g;
+const WHITESPACE_REGEX = /\s+/g;
+const COMMA_SPLIT_REGEX = /[,;]/;
+
 export function cleanMenuLine(line: string): string {
-  let cleaned = line.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
+  let cleaned = line.replace(TAG_STRIP_REGEX, '').replace(WHITESPACE_REGEX, ' ').trim();
   if (cleaned.length > 100) {
-    const fragments = cleaned.split(/[.!?]/);
+    const fragments = cleaned.split(FRAGMENT_SPLIT_REGEX);
     for (const fragment of fragments) {
       if (
-        /gluten[\s-]?free|\bgf\b|celiac|coeliac/i.test(fragment) &&
+        CLEAN_MENU_GLF_REGEX.test(fragment) &&
         fragment.trim().length > 15
       ) {
         cleaned = fragment.trim();
@@ -315,14 +324,19 @@ export function cleanMenuLine(line: string): string {
 /**
  * Searches for indicators of a menu section in text segments.
  */
-export function findMainContent(segments: string[]): string {
-  const menuIndicators = ['menu', 'food', 'dining', 'entree', 'appetizer', 'dessert'];
+const MENU_INDICATORS = ['menu', 'food', 'dining', 'entree', 'appetizer', 'dessert'];
+const MENU_WORD_REGEX = /\bmenu\b/i;
+// Precompiled heading regexes — these are fixed strings, no need to recompile per call.
+const MENU_HEADING_PATTERNS = MENU_INDICATORS.slice(1).map(
+  (indicator) => new RegExp(`^${indicator}s?\\b`, 'i')
+);
 
+export function findMainContent(segments: string[]): string {
   for (let index = 0; index < segments.length; index += 1) {
     const lower = segments[index].toLowerCase();
     const isMenuHeading =
-      /\bmenu\b/i.test(lower) ||
-      menuIndicators.slice(1).some((indicator) => new RegExp(`^${indicator}s?\\b`, 'i').test(lower));
+      MENU_WORD_REGEX.test(lower) ||
+      MENU_HEADING_PATTERNS.some((pattern) => pattern.test(lower));
 
     if (isMenuHeading && segments[index].length < 60) {
       const block = segments.slice(index, Math.min(index + 80, segments.length));
@@ -337,12 +351,18 @@ export function findMainContent(segments: string[]): string {
   return '';
 }
 
+const ITEM_PRICE_REGEX = /(?:\$\s?\d+(?:\.\d{1,2})?|\b\d+(?:\.\d{1,2})?\s?(?:usd|dollars?)\b)/i;
+const ITEM_CATEGORY_REGEX = /^(?:appetizers?|entrees?|mains?|desserts?|drinks?|beverages?|sides?)\b/i;
+const ITEM_GLF_REGEX = /gluten[\s-]?free|\bgf\b|celiac|coeliac/i;
+const ITEM_CAPITALIZED_REGEX = /^[A-Z][\w'&-]*(?:\s+[A-Z][\w'&-]*){1,5}(?:\s|$)/;
+const DESCRIPTION_KEYWORD_REGEX = /\b(?:with|served|topped|made|contains|includes|choice|sauce|dressing|allergen|wheat|milk|egg|soy|nuts?)\b/i;
+
 function isLikelyMenuItem(segment: string): boolean {
   if (segment.length < 4 || segment.length > 160) return false;
-  if (/(?:\$\s?\d+(?:\.\d{1,2})?|\b\d+(?:\.\d{1,2})?\s?(?:usd|dollars?)\b)/i.test(segment)) return true;
-  if (/^(?:appetizers?|entrees?|mains?|desserts?|drinks?|beverages?|sides?)\b/i.test(segment)) return true;
-  if (/gluten[\s-]?free|\bgf\b|celiac|coeliac/i.test(segment)) return true;
-  return /^[A-Z][\w'&-]*(?:\s+[A-Z][\w'&-]*){1,5}(?:\s|$)/.test(segment);
+  if (ITEM_PRICE_REGEX.test(segment)) return true;
+  if (ITEM_CATEGORY_REGEX.test(segment)) return true;
+  if (ITEM_GLF_REGEX.test(segment)) return true;
+  return ITEM_CAPITALIZED_REGEX.test(segment);
 }
 
 function includeMenuDescriptions(block: string[]): string[] {
@@ -368,24 +388,32 @@ function isLikelyMenuDescription(segment: string): boolean {
     segment.length >= 20 &&
     segment.length <= 140 &&
     !isLikelyMenuItem(segment) &&
-    /\b(?:with|served|topped|made|contains|includes|choice|sauce|dressing|allergen|wheat|milk|egg|soy|nuts?)\b/i.test(segment)
+    DESCRIPTION_KEYWORD_REGEX.test(segment)
   );
 }
 
 /**
  * Extracts snippets of gluten-free evidence from HTML or text segments.
  */
+const GF_EVIDENCE_REGEX = /gluten[\s-]?free|\bgf\b|celiac|coeliac/i;
+const NON_MENU_HEADING_REGEX = /\bmenu\b|\b(?:food|dining|entrees?|appetizers?|desserts?)\b/i;
+const NON_MENU_PREFIX_REGEX = /^(?:welcome|about|contact|hours|location|catering|private events)\b/i;
+const MENU_PRICE_REGEX = /(?:\$\s?\d+(?:\.\d{1,2})?|\b\d+(?:\.\d{1,2})?\s?(?:usd|dollars?)\b)/i;
+const MENU_CATEGORY_REGEX = /^(?:appetizers?|entrees?|mains?|desserts?|drinks?|beverages?|sides?)\b/i;
+const NORMALIZE_WHITESPACE_REGEX = /[\s-]+/g;
+const FRAGMENT_SPLIT_REGEX = /[.!?]/;
+
 export function extractGfEvidence(htmlOrSegments: string | string[]): string[] {
   const segments = typeof htmlOrSegments === 'string' ? htmlToTextSegments(htmlOrSegments) : htmlOrSegments;
   const evidence: string[] = [];
   const seen = new Set<string>();
 
   for (const segment of segments) {
-    if (!/gluten[\s-]?free|\bgf\b|celiac|coeliac/i.test(segment)) continue;
+    if (!GF_EVIDENCE_REGEX.test(segment)) continue;
     if (segment.length <= 10 || segment.length >= 250) continue;
 
     const cleaned = cleanMenuLine(segment);
-    const normalized = cleaned.toLowerCase().replace(/[\s-]+/g, ' ').trim();
+    const normalized = cleaned.toLowerCase().replace(NORMALIZE_WHITESPACE_REGEX, ' ').trim();
     if (!cleaned || seen.has(normalized)) continue;
 
     seen.add(normalized);
@@ -410,12 +438,12 @@ export function extractRawMenuText(htmlOrSegments: string | string[]): string {
 export function hasLikelyMenuContent(segments: string[]): boolean {
   const itemLikeSegments = segments.filter((segment) => {
     if (segment.length < 4 || segment.length > 160) return false;
-    if (/\bmenu\b|\b(?:food|dining|entrees?|appetizers?|desserts?)\b/i.test(segment)) return false;
-    return !/^(?:welcome|about|contact|hours|location|catering|private events)\b/i.test(segment);
+    if (NON_MENU_HEADING_REGEX.test(segment)) return false;
+    return !NON_MENU_PREFIX_REGEX.test(segment);
   });
-  const priceLines = segments.filter((segment) => /(?:\$\s?\d+(?:\.\d{1,2})?|\b\d+(?:\.\d{1,2})?\s?(?:usd|dollars?)\b)/i.test(segment));
-  const categoryHeadings = segments.filter((segment) => /^(?:appetizers?|entrees?|mains?|desserts?|drinks?|beverages?|sides?)\b/i.test(segment));
-  const gfEvidence = segments.filter((segment) => /gluten[\s-]?free|\bgf\b|celiac|coeliac/i.test(segment));
+  const priceLines = segments.filter((segment) => MENU_PRICE_REGEX.test(segment));
+  const categoryHeadings = segments.filter((segment) => MENU_CATEGORY_REGEX.test(segment));
+  const gfEvidence = segments.filter((segment) => GF_EVIDENCE_REGEX.test(segment));
 
   return (
     (itemLikeSegments.length >= 2 && (priceLines.length > 0 || categoryHeadings.length > 0 || gfEvidence.length > 0)) ||

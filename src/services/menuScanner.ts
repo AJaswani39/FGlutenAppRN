@@ -21,6 +21,9 @@ export interface MenuScanResult {
   menuScanTimestamp: number;
 }
 
+// Module-level: these are pure data lookups, no need to recompile per scan.
+const JS_PROVIDERS = /toasttab\.com|chownow\.com|bentobox\.com|singleplatform\.com|doordash\.com|ubereats\.com|grubhub\.com/i;
+
 export function canUseBrowserMenuFallback(
   restaurant: Pick<Restaurant, 'menuScanStatus' | 'menuUrl'>
 ): boolean {
@@ -50,10 +53,8 @@ export async function scanRestaurantMenuWithBrowser({
 
   const renderedText = await fetchRenderedMenuText(menuUrl, htmlProxyBaseUrl, signal);
   const segments = renderedText ? htmlToTextSegments(renderedText) : [];
-  const [gfMenu, rawMenuText] = await Promise.all([
-    Promise.resolve(renderedText ? extractGfEvidence(segments) : []),
-    Promise.resolve(renderedText ? extractRawMenuText(segments) : null),
-  ]);
+  const gfMenu = renderedText ? extractGfEvidence(segments) : [];
+  const rawMenuText = renderedText ? extractRawMenuText(segments) : null;
   const hasMenuContent = renderedText ? hasLikelyMenuContent(segments) : false;
   const usableMenuText = hasMenuContent ? rawMenuText : null;
 
@@ -97,7 +98,6 @@ export async function scanRestaurantMenu({
   }
 
   // Detect JS-heavy providers that we can't scan with static HTML
-  const JS_PROVIDERS = /toasttab\.com|chownow\.com|bentobox\.com|singleplatform\.com|doordash\.com|ubereats\.com|grubhub\.com/i;
   if (JS_PROVIDERS.test(initialUrl)) {
     return {
       menuUrl: initialUrl,

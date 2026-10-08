@@ -35,6 +35,7 @@ export default function RestaurantListScreen() {
 
   const [selectedRestaurant, setSelectedRestaurant] = useState<Restaurant | null>(null);
   const [showFilters, setShowFilters] = useState(false);
+  const [shareTarget, setShareTarget] = useState<Restaurant | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [searchInputText, setSearchInputText] = useState(filters.searchQuery);
   const searchInputRef = useRef<TextInput>(null);
@@ -79,6 +80,11 @@ export default function RestaurantListScreen() {
     setSelectedRestaurant(restaurant);
   }, []);
 
+  const handleShare = useCallback((restaurant: Restaurant) => {
+    Keyboard.dismiss();
+    setShareTarget(restaurant);
+  }, []);
+
   const renderItem = useCallback(
     ({ item }: { item: Restaurant }) => (
       <RestaurantSummaryCard
@@ -86,9 +92,10 @@ export default function RestaurantListScreen() {
         useMiles={useMiles}
         onPress={() => handleRestaurantPress(item)}
         onRescan={() => requestMenuRescan(item)}
+        onShare={() => handleShare(item)}
       />
     ),
-    [useMiles, handleRestaurantPress, requestMenuRescan]
+    [useMiles, handleRestaurantPress, handleShare, requestMenuRescan]
   );
 
   return (
@@ -209,6 +216,15 @@ export default function RestaurantListScreen() {
           onClose={() => setSelectedRestaurant(null)}
         />
       ) : null}
+
+      {shareTarget ? (
+        <RestaurantDetailModal
+          restaurant={shareTarget}
+          useMiles={useMiles}
+          shareShortcut
+          onClose={() => setShareTarget(null)}
+        />
+      ) : null}
     </View>
   );
 }
@@ -232,16 +248,25 @@ const FilterPanel = React.memo(function FilterPanel({
       <View style={filterStyles.row}>
         <FilterChip label="GF Only" active={filters.gfOnly} onToggle={() => setFilters({ gfOnly: !filters.gfOnly })} />
         <FilterChip
-          label="Open Now"
-          active={filters.openNowOnly}
-          onToggle={() => setFilters({ openNowOnly: !filters.openNowOnly })}
+          label="GF Evidence"
+          active={filters.gfEvidenceOnly}
+          onToggle={() => setFilters({ gfEvidenceOnly: !filters.gfEvidenceOnly })}
         />
+        <FilterChip label="Open Now" active={filters.openNowOnly} onToggle={() => setFilters({ openNowOnly: !filters.openNowOnly })} />
+      </View>
+
+      <View style={filterStyles.row}>
         <FilterChip
           label="Distance"
           active={filters.sortMode === 'distance'}
           onToggle={() => setFilters({ sortMode: 'distance' })}
         />
         <FilterChip label="Name" active={filters.sortMode === 'name'} onToggle={() => setFilters({ sortMode: 'name' })} />
+        <FilterChip
+          label="Safety"
+          active={filters.sortMode === 'safety'}
+          onToggle={() => setFilters({ sortMode: 'safety' })}
+        />
       </View>
 
       <StepperRow

@@ -75,6 +75,7 @@ describe('restaurantUtils', () => {
 
     const baseFilters = {
       gfOnly: false,
+      gfEvidenceOnly: false,
       openNowOnly: false,
       sortMode: 'name' as const,
       maxDistanceMeters: 0,
@@ -110,6 +111,7 @@ describe('restaurantUtils', () => {
         [invalidDistance, far, nearby],
         {
           gfOnly: false,
+          gfEvidenceOnly: false,
           openNowOnly: false,
           sortMode: 'distance',
           maxDistanceMeters: 0,
@@ -125,6 +127,7 @@ describe('restaurantUtils', () => {
         [invalidDistance, far, nearby],
         {
           gfOnly: false,
+          gfEvidenceOnly: false,
           openNowOnly: false,
           sortMode: 'distance',
           maxDistanceMeters: 500,
@@ -134,5 +137,73 @@ describe('restaurantUtils', () => {
         false
       ).map((item) => item.placeId)
     ).toEqual(['nearby']);
+  });
+
+  it('sorts by safety score when sortMode is safety, falling back to distance', () => {
+    const weak = restaurant({
+      placeId: 'weak',
+      name: 'Weak Cafe',
+      gfMenu: [],
+      hasGFMenu: false,
+      menuScanStatus: 'SUCCESS',
+      distanceMeters: 100,
+    });
+    const strong = restaurant({
+      placeId: 'strong',
+      name: 'Strong Cafe',
+      gfMenu: ['Gluten-free pasta', 'Gluten-free salad'],
+      rawMenuText: 'Gluten-free pasta\nGluten-free salad',
+      distanceMeters: 500,
+    });
+
+    const sorted = filterAndSortRestaurants(
+      [weak, strong],
+      {
+        gfOnly: false,
+        gfEvidenceOnly: false,
+        openNowOnly: false,
+        sortMode: 'safety',
+        maxDistanceMeters: 0,
+        minRating: 0,
+        searchQuery: '',
+      },
+      false,
+      {
+        getSafetyScore: (restaurant) =>
+          restaurant.placeId === 'strong' ? 85 : 20,
+      }
+    ).map((item) => item.placeId);
+
+    expect(sorted).toEqual(['strong', 'weak']);
+  });
+
+  it('filters to restaurants with scanned GF menu items when gfEvidenceOnly is enabled', () => {
+    const withEvidence = restaurant({
+      placeId: 'with-evidence',
+      name: 'Evidence Cafe',
+      gfMenu: ['Gluten-free pasta'],
+    });
+    const nameOnly = restaurant({
+      placeId: 'name-only',
+      name: 'Gluten-Free Cafe',
+      hasGFMenu: true,
+      gfMenu: [],
+    });
+
+    const sorted = filterAndSortRestaurants(
+      [withEvidence, nameOnly],
+      {
+        gfOnly: false,
+        gfEvidenceOnly: true,
+        openNowOnly: false,
+        sortMode: 'name',
+        maxDistanceMeters: 0,
+        minRating: 0,
+        searchQuery: '',
+      },
+      false
+    ).map((item) => item.placeId);
+
+    expect(sorted).toEqual(['with-evidence']);
   });
 });

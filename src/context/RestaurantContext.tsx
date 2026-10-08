@@ -53,6 +53,7 @@ interface RestaurantContextValue {
     restaurant: Restaurant,
     session: { analysis?: MenuAnalysisResult | null; chat?: AiChatMessage[]; deepAnalysis?: string | null }
   ) => void;
+  clearAllData: () => Promise<void>;
 }
 
 const RestaurantContext = createContext<RestaurantContextValue | null>(null);
@@ -294,6 +295,23 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
     [updateRestaurant]
   );
 
+  const clearAllData = useCallback(async () => {
+    rawRestaurants.current = [];
+    userLat.current = null;
+    userLng.current = null;
+    orchestrator.current?.flushQueue();
+    menuScanCache.current = {};
+    await PersistenceService.clearAllData();
+    setUiState({
+      status: 'idle',
+      restaurants: [],
+      message: null,
+      userLatitude: null,
+      userLongitude: null,
+      scanProgress: null,
+    });
+  }, [menuScanCache]);
+
   const contextValue = useMemo(
     () => ({
       uiState,
@@ -304,8 +322,9 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
       requestInteractiveMenuRender,
       retryFailedScans,
       updateAiSession,
+      clearAllData,
     }),
-    [uiState, savedRestaurants, loadNearbyRestaurants, setFavoriteStatus, requestMenuRescan, requestInteractiveMenuRender, retryFailedScans, updateAiSession]
+    [uiState, savedRestaurants, loadNearbyRestaurants, setFavoriteStatus, requestMenuRescan, requestInteractiveMenuRender, retryFailedScans, updateAiSession, clearAllData]
   );
 
   return (

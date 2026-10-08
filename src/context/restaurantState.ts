@@ -1,6 +1,7 @@
 import { Platform } from 'react-native';
 import { FavoriteMap, FavoriteStatus, MenuScanProgress, Restaurant, RestaurantFilters, RestaurantUiState } from '../types/restaurant';
 import { filterAndSortRestaurants, getRestaurantIdentityKey } from '../util/restaurantUtils';
+import { getRestaurantSafetyScore } from '../services/menuSafety';
 import { getRuntimeConfig } from '../config/runtimeConfig';
 
 const MENU_SCAN_TTL_DAYS = 14;
@@ -59,9 +60,11 @@ export function resolveFilteredRestaurantUiState({
   status?: RestaurantUiState['status'];
   userLatitude: number | null;
   userLongitude: number | null;
-  scanProgress: RestaurantUiState['scanProgress'];
+scanProgress: RestaurantUiState['scanProgress'];
 }): RestaurantUiState {
-  const filtered = filterAndSortRestaurants(restaurants, filters, strictCeliac);
+  const filtered = filterAndSortRestaurants(restaurants, filters, strictCeliac, {
+    getSafetyScore: (restaurant) => getRestaurantSafetyScore(restaurant, { strictCeliac }).score,
+  });
   const resolvedReason = emptyReason ?? getCollectionReason(restaurants.length);
   const resolvedStatus = status ?? (currentStatus === 'loading' ? 'loading' : 'success');
 

@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -7,6 +7,7 @@ import {
   ScrollView,
   ActivityIndicator,
   Linking,
+  RefreshControl,
 } from 'react-native';
 import { NavigationProp, TabActions, useNavigation } from '@react-navigation/native';
 import { Spacing, Radius, FontSize, FontWeight } from '../theme/colors';
@@ -19,6 +20,7 @@ import { getRestaurantListKey } from '../util/restaurantUtils';
 import { formatDistance } from '../util/formatters';
 
 import { IconCircle, Ionicons, MetaPill } from '../components/ui';
+import { Skeleton } from '../components/Skeleton';
 import { RestaurantSummaryCard } from '../components/RestaurantSummaryCard';
 import RestaurantDetailModal from './components/RestaurantDetailModal';
 import { SafeRestaurantPick, getSafeRestaurantPicks } from '../services/safePicks';
@@ -31,6 +33,14 @@ export default function HomeScreen() {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const [selectedRestaurant, setSelectedRestaurant] = useState<Restaurant | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const isMounted = useRef(true);
+
+  useEffect(() => {
+    return () => {
+      isMounted.current = false;
+    };
+  }, []);
 
   const cached = uiState.restaurants;
   const hasData = cached.length > 0;
@@ -38,6 +48,17 @@ export default function HomeScreen() {
   const shouldShowStatusMessage =
     Boolean(uiState.message) &&
     (uiState.status === 'error' || uiState.status === 'permission_required' || !hasData);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await loadNearbyRestaurants(undefined, { forceRefresh: true });
+    } finally {
+      if (isMounted.current) {
+        setRefreshing(false);
+      }
+    }
+  }, [loadNearbyRestaurants]);
 
   const handleFindRestaurants = useCallback(() => {
     navigation.dispatch(TabActions.jumpTo('Restaurants'));
@@ -71,6 +92,14 @@ export default function HomeScreen() {
       style={styles.container}
       contentContainerStyle={styles.content}
       showsVerticalScrollIndicator={false}
+      refreshControl={
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={onRefresh}
+          tintColor={colors.primary}
+          colors={[colors.primary]}
+        />
+      }
     >
       <View style={styles.hero}>
         <View style={styles.heroTop}>
@@ -116,9 +145,19 @@ export default function HomeScreen() {
       </View>
 
       <View style={styles.statsGrid}>
-        <StatCard icon="location" label="Results" value={`${cached.length}`} />
-        <StatCard icon="heart" label="Saved" value={`${savedRestaurants.length}`} />
-        <StatCard icon="scan" label="Scanned" value={`${stats.scans}`} />
+        {isLoading && !hasData ? (
+          <>
+            <StatSkeleton />
+            <StatSkeleton />
+            <StatSkeleton />
+          </>
+        ) : (
+          <>
+            <StatCard icon="location" label="Results" value={`${cached.length}`} />
+            <StatCard icon="heart" label="Saved" value={`${savedRestaurants.length}`} />
+            <StatCard icon="scan" label="Scanned" value={`${stats.scans}`} />
+          </>
+        )}
       </View>
 
       {stats.latestScan > 0 ? (
@@ -260,6 +299,19 @@ function StatCard({ icon, label, value }: { icon: 'location' | 'heart' | 'scan';
       <Ionicons name={icon} size={16} color={colors.primary} />
       <Text style={styles.statValue}>{value}</Text>
       <Text style={styles.statLabel}>{label}</Text>
+    </View>
+  );
+}
+
+function StatSkeleton() {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
+
+  return (
+    <View style={styles.statCard}>
+      <Skeleton width={16} height={16} style={{ borderRadius: 4 }} />
+      <Skeleton width={22} height={20} style={{ marginTop: 6, borderRadius: 4 }} />
+      <Skeleton width={36} height={10} style={{ marginTop: 2, borderRadius: 4 }} />
     </View>
   );
 }

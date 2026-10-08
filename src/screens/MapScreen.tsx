@@ -23,6 +23,7 @@ import { LocationSearchBar } from '../components/LocationSearchBar';
 import * as Haptics from 'expo-haptics';
 import { impactAsync } from '../util/haptics';
 import { distanceBetween } from '../util/geoUtils';
+import { buildMapClusters } from '../util/mapClustering';
 
 const LOCATION_SEARCH_BAR_HEIGHT = 52;
 const MAP_SUMMARY_BAR_HEIGHT = 68;
@@ -123,6 +124,13 @@ export default function MapScreen() {
   const mapActionTop = summaryTop + MAP_SUMMARY_BAR_HEIGHT + Spacing.sm;
   const canRecenterOnUser = uiState.userLatitude != null && uiState.userLongitude != null;
 
+  // Cluster nearby pins so overlapping markers don't obscure each other.
+  // Recompute whenever the map region changes (debounced by React).
+  const mapClusters = useMemo(
+    () => buildMapClusters(restaurants, mapRegion),
+    [restaurants, mapRegion]
+  );
+
   const recenterOnUser = () => {
     if (!canRecenterOnUser || !mapRef.current) return;
 
@@ -178,24 +186,50 @@ export default function MapScreen() {
         onPress={() => setPreviewRestaurant(null)}
         onRegionChangeComplete={setMapRegion}
       >
-        {restaurants.map((restaurant, index) => {
-          if (restaurant.latitude == null || restaurant.longitude == null) return null;
-          
-          // Match with saved status so pinColor updates instantly on favorite status toggling
-          const activeRestaurant = savedRestaurants.find(r => isSameRestaurantIdentity(r, restaurant)) ?? restaurant;
-          
+        {mapClusters.map((cluster) => {
+          if (cluster.count === 1) {
+            const restaurant = cluster.points[0];
+            const activeRestaurant =
+              savedRestaurants.find((r) => isSameRestaurantIdentity(r, restaurant)) ?? restaurant;
+            return (
+              <Marker
+                key={getRestaurantListKey(activeRestaurant, 0)}
+                coordinate={{
+                  latitude: activeRestaurant.latitude,
+                  longitude: activeRestaurant.longitude,
+                }}
+                title={activeRestaurant.name}
+                description={activeRestaurant.address}
+                pinColor={markerColor(activeRestaurant, colors)}
+                onPress={() => setPreviewRestaurant(activeRestaurant)}
+              />
+            );
+          }
+
           return (
             <Marker
-              key={getRestaurantListKey(activeRestaurant, index)}
+              key={cluster.id}
               coordinate={{
-                latitude: activeRestaurant.latitude,
-                longitude: activeRestaurant.longitude,
+                latitude: cluster.latitude,
+                longitude: cluster.longitude,
               }}
-              title={activeRestaurant.name}
-              description={activeRestaurant.address}
-              pinColor={markerColor(activeRestaurant, colors)}
-              onPress={() => setPreviewRestaurant(activeRestaurant)}
-            />
+              title={`${cluster.count} restaurants nearby`}
+              description="Zoom in to see individual pins"
+              onPress={() => {
+                impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                mapRef.current?.animateToRegion({
+                  latitude: cluster.latitude,
+                  longitude: cluster.longitude,
+                  latitudeDelta: Math.max(0.01, mapRegion?.latitudeDelta ? mapRegion.latitudeDelta / 2 : 0.08),
+                  longitudeDelta: Math.max(0.01, mapRegion?.longitudeDelta ? mapRegion.longitudeDelta / 2 : 0.08),
+                }, 600);
+              }}
+              pinColor={colors.primary}
+            >
+              <View style={[styles.clusterBadge, { backgroundColor: colors.primary }]}>
+                <Text style={styles.clusterBadgeText}>{cluster.count}</Text>
+              </View>
+            </Marker>
           );
         })}
       </MapView>
@@ -396,6 +430,21 @@ function createStyles(colors: ThemeColors) {
       color: colors.textSecondary,
       fontSize: FontSize.sm,
       marginTop: 4,
+    },
+    clusterBadge: {
+      minWidth: 26,
+      height: 26,
+      borderRadius: Radius.full,
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingHorizontal: 8,
+      borderWidth: 2,
+      borderColor: colors.background,
+    },
+    clusterBadgeText: {
+      color: colors.textInverse,
+      fontSize: FontSize.xs,
+      fontWeight: FontWeight.extraBold,
     },
   });
 }

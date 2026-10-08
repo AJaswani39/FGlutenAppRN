@@ -35,14 +35,16 @@ interface Props {
   restaurant: Restaurant;
   useMiles: boolean;
   onClose: () => void;
+  /** When provided, opens the AI analysis sheet directly (e.g. from a list "Share" button). */
+  shareShortcut?: boolean;
 }
 
-export default function RestaurantDetailModal({ restaurant: initial, useMiles, onClose }: Props) {
+export default function RestaurantDetailModal({ restaurant: initial, useMiles, onClose, shareShortcut = false }: Props) {
   const { uiState, savedRestaurants, setFavoriteStatus, requestMenuRescan, requestInteractiveMenuRender, updateAiSession } = useRestaurants();
   const { strictCeliac } = useSettings();
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
-  const [showAI, setShowAI] = useState(false);
+  const [showAI, setShowAI] = useState(shareShortcut);
   const [showChat, setShowChat] = useState(false);
 
   if (!initial) return null;

@@ -97,7 +97,7 @@ export function LocationSearchBar({ onLocationSelected }: Props) {
       setIsLoading(true);
       try {
         const res = await fetchWithTimeout(
-          `https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${encodeURIComponent(query)}&types=(cities)&key=${API_KEY}`,
+          `https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${encodeURIComponent(query)}&types=(regions)&key=${API_KEY}`,
           { signal: controller.signal },
           API_TIMEOUTS.DEFAULT
         );

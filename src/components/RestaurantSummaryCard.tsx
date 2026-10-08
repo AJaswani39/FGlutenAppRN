@@ -38,12 +38,14 @@ export const RestaurantSummaryCard = React.memo(
     onPress,
     compact,
     onRescan,
+    onShare,
   }: {
     restaurant: Restaurant;
     useMiles: boolean;
     onPress?: () => void;
     compact?: boolean;
     onRescan?: () => void;
+    onShare?: () => void;
   }) {
     const { colors } = useTheme();
     const styles = useMemo(() => createStyles(colors), [colors]);
@@ -52,6 +54,8 @@ export const RestaurantSummaryCard = React.memo(
     const confidence = getConfidenceMeta(restaurant);
     const favorite = getFavoriteMeta(restaurant.favoriteStatus);
     const Container = onPress ? Pressable : View;
+
+    const canShare = Boolean(onShare) && Boolean(restaurant.rawMenuText || restaurant.gfMenu.length > 0 || restaurant.aiAnalysisResult);
 
     return (
       <Container
@@ -69,7 +73,22 @@ export const RestaurantSummaryCard = React.memo(
               {restaurant.address || 'Address unavailable'}
             </Text>
           </View>
-          <StatusBadge label={favorite?.label ?? confidence.label} tone={favorite?.tone ?? confidence.tone} />
+          <View style={styles.headerActions}>
+            <StatusBadge label={favorite?.label ?? confidence.label} tone={favorite?.tone ?? confidence.tone} />
+            {canShare && (
+              <Pressable
+                style={styles.shareBtn}
+                onPress={(e) => {
+                  e.stopPropagation();
+                  onShare?.();
+                }}
+                accessibilityRole="button"
+                accessibilityLabel={`Share ${restaurant.name} safety card`}
+              >
+                <Ionicons name="share-social" size={15} color={colors.primary} />
+              </Pressable>
+            )}
+          </View>
         </View>
 
         <View style={styles.metaRow}>
@@ -148,6 +167,21 @@ function createStyles(colors: ThemeColors) {
     },
     titleGroup: {
       flex: 1,
+    },
+    headerActions: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: Spacing.xs,
+    },
+    shareBtn: {
+      width: 30,
+      height: 30,
+      borderRadius: Radius.full,
+      backgroundColor: colors.primaryLight,
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderWidth: 1,
+      borderColor: colors.primary,
     },
     name: {
       color: colors.textPrimary,

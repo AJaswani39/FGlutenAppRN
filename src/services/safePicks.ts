@@ -49,6 +49,7 @@ function getRankScore(restaurant: Restaurant, safetyScore: number): number {
   if (restaurant.rating != null) score += Math.max(0, restaurant.rating - 3) * 4;
   if (restaurant.favoriteStatus === 'safe') score += 12;
   if (restaurant.favoriteStatus === 'try') score += 4;
+  // Note: 'avoid' restaurants are filtered out before ranking, so no penalty is applied here.
 
   const distanceKm = getComparableDistanceMeters(restaurant) / 1000;
   score -= Math.min(16, distanceKm * 2.5);

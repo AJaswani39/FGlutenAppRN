@@ -81,16 +81,18 @@ function getQueryRegex(query: string): RegExp | null {
 export function filterAndSortRestaurants(
   restaurants: Restaurant[],
   filters: RestaurantFilters,
-  strictCeliac: boolean
+  strictCeliac: boolean,
+  options: { getSafetyScore?: (restaurant: Restaurant) => number | null } = {}
 ): Restaurant[] {
   const query = filters.searchQuery.trim();
   const queryRegex = getQueryRegex(query);
-  
-  const needsGfEvidence = filters.gfOnly || strictCeliac;
+  const getSafetyScore = options.getSafetyScore ?? (() => null);
+
+  const needsGfEvidence = filters.gfOnly || filters.gfEvidenceOnly || strictCeliac;
   const minRating = filters.minRating;
   const maxDist = filters.maxDistanceMeters;
   const openNowOnly = filters.openNowOnly;
-  
+
   const filtered = restaurants.filter((restaurant) => {
     // 1. Boolean/Numeric filters (Fastest)
     if (openNowOnly && restaurant.openNow !== true) return false;
@@ -103,6 +105,9 @@ export function filterAndSortRestaurants(
       if (strictCeliac) {
         // Strict mode: only restaurants with scanned GF menu items.
         if (!hasGfItems) return false;
+      } else if (filters.gfEvidenceOnly && !hasGfItems) {
+        // GF evidence filter: only restaurants with scanned GF menu items.
+        return false;
       } else if (filters.gfOnly && !(restaurant.hasGFMenu || hasGfItems)) {
         return false;
       }
@@ -121,6 +126,13 @@ export function filterAndSortRestaurants(
   // Sort the filtered array directly to avoid extra shallow copy
   if (filters.sortMode === 'distance') {
     return filtered.sort((a, b) => getComparableDistanceMeters(a) - getComparableDistanceMeters(b));
+  } else if (filters.sortMode === 'safety') {
+    return filtered.sort((a, b) => {
+      const scoreA = getSafetyScore(a) ?? 0;
+      const scoreB = getSafetyScore(b) ?? 0;
+      if (scoreB !== scoreA) return scoreB - scoreA;
+      return getComparableDistanceMeters(a) - getComparableDistanceMeters(b);
+    });
   } else {
     return filtered.sort((a, b) => {
       const nameA = a.name.toLowerCase();

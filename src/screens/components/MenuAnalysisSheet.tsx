@@ -80,6 +80,20 @@ export default function MenuAnalysisSheet({ restaurant, onClose }: Props) {
   
   const scorecardRef = useRef(null);
   const analysisAbortController = useRef<AbortController | null>(null);
+  // Tracks the last placeId we seeded editableText from, so a background
+  // rescan can refresh the textarea without clobbering user edits.
+  const seededPlaceIdRef = useRef<string | null>(null);
+
+  // Sync the editable textarea when the underlying restaurant's raw menu text
+  // changes (e.g. after a rescan from the detail modal). Only auto-populate when
+  // the user hasn't typed anything yet, so manual edits survive rescans.
+  useEffect(() => {
+    const freshText = restaurant.rawMenuText?.trim() || '';
+    if (freshText && editableText.trim().length === 0) {
+      setEditableText(freshText);
+      seededPlaceIdRef.current = restaurant.placeId;
+    }
+  }, [restaurant.placeId, restaurant.rawMenuText]);
 
   useEffect(() => {
     // Initialize Puter AI with key from config.

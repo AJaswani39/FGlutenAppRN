@@ -5,7 +5,7 @@ export type FavoriteStatus = 'safe' | 'try' | 'avoid' | null;
 /** Non-null favorite value stored in the favorites map (null means "not favorited"). */
 export type FavoriteStatusValue = Exclude<FavoriteStatus, null>;
 export type FavoriteMap = Record<string, FavoriteStatusValue>;
-export type SortMode = 'distance' | 'name';
+export type SortMode = 'distance' | 'name' | 'safety';
 export type GfConfidenceLevel = 'confirmed' | 'name_match' | 'no_evidence' | 'unavailable' | 'pending';
 
 export interface AiChatMessage {
@@ -37,6 +37,7 @@ export interface Restaurant {
 
 export interface RestaurantFilters {
   gfOnly: boolean;
+  gfEvidenceOnly: boolean;
   openNowOnly: boolean;
   sortMode: SortMode;
   maxDistanceMeters: number;

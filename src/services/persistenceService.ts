@@ -24,6 +24,7 @@ export interface MenuScanCacheEntry {
 
 export const DEFAULT_FILTERS: RestaurantFilters = {
   gfOnly: false,
+  gfEvidenceOnly: false,
   openNowOnly: false,
   sortMode: 'distance',
   maxDistanceMeters: 0,
@@ -78,7 +79,7 @@ function normalizeNullableFiniteNumber(value: unknown): number | null {
 }
 
 function normalizeSortMode(value: unknown): SortMode {
-  return value === 'distance' || value === 'name' ? value : 'distance';
+  return value === 'distance' || value === 'name' || value === 'safety' ? value : 'distance';
 }
 
 function isFavoriteStatusValue(value: unknown): value is FavoriteStatusValue {
@@ -102,6 +103,7 @@ export function normalizeFilters(value: unknown): RestaurantFilters {
   const record = isRecord(value) ? value : {};
   return {
     gfOnly: normalizeBoolean(record.gfOnly),
+    gfEvidenceOnly: normalizeBoolean(record.gfEvidenceOnly),
     openNowOnly: normalizeBoolean(record.openNowOnly),
     sortMode: normalizeSortMode(record.sortMode),
     maxDistanceMeters: Math.max(0, normalizeFiniteNumber(record.maxDistanceMeters, 0)),
@@ -424,5 +426,34 @@ export const PersistenceService = {
     const cache = await this.loadMenuScanCache(maxAgeMs);
     cache[entry.placeId] = entry;
     await this.saveMenuScanCache(cache, maxAgeMs);
+  },
+
+  /**
+   * Returns a JSON-serialisable snapshot of the user's saved places for export.
+   * Large menu fields are stripped to keep the payload small.
+   */
+  async exportSavedPlaces(): Promise<string> {
+    const restaurants = await this.loadSavedRestaurantsDb();
+    const payload = {
+      version: 1,
+      exportedAt: Date.now(),
+      count: restaurants.length,
+      restaurants: restaurants.map(stripLargeFields),
+    };
+    return JSON.stringify(payload, null, 2);
+  },
+
+  /**
+   * Wipes all locally persisted app data (filters, favorites, saved places,
+   * restaurant cache, and menu scan cache). Does not touch user settings.
+   */
+  async clearAllData(): Promise<void> {
+    await Promise.all([
+      AsyncStorage.removeItem(KEYS.FILTERS),
+      AsyncStorage.removeItem(KEYS.FAVORITES),
+      AsyncStorage.removeItem(KEYS.SAVED_RESTAURANTS_DB),
+      AsyncStorage.removeItem(KEYS.CACHE),
+      AsyncStorage.removeItem(KEYS.MENU_SCAN_CACHE),
+    ]);
   },
 };

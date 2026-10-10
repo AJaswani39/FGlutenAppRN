@@ -11,7 +11,7 @@ import { FavoriteStatus, MenuScanProgress, Restaurant, RestaurantUiState, AiChat
 import { PersistenceService } from '../services/persistenceService';
 
 import { MenuAnalysisResult } from '../services/menuSafety';
-import { filterAndSortRestaurants } from '../util/restaurantUtils';
+import { filterAndSortRestaurants, getRestaurantIdentityKey } from '../util/restaurantUtils';
 import { useFilters } from './FiltersContext';
 import { useSettings } from './SettingsContext';
 import { useRestaurantMutator } from './useRestaurantMutator';
@@ -92,7 +92,6 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
   const isMounted = useRef(true);
   const {
     savedRestaurants,
-    favoriteKey,
     applyFavorites,
     syncSavedRestaurants,
     loadFavorites,
@@ -145,14 +144,14 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
     const cachedByKey = new Map<string, Restaurant>();
 
     for (const cachedRestaurant of rawRestaurants.current) {
-      const key = favoriteKey(cachedRestaurant);
+      const key = getRestaurantIdentityKey(cachedRestaurant);
       if (key) {
         cachedByKey.set(key, cachedRestaurant);
       }
     }
 
     return freshRestaurants.map((freshRestaurant) => {
-      const key = favoriteKey(freshRestaurant);
+      const key = getRestaurantIdentityKey(freshRestaurant);
       const cachedRestaurant = key ? cachedByKey.get(key) : null;
       const cachedScan = freshRestaurant.placeId ? menuScanCache.current[freshRestaurant.placeId] : null;
       if (!cachedRestaurant && !cachedScan) return freshRestaurant;
@@ -180,7 +179,7 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
         aiDeepAnalysis: scanSource.aiDeepAnalysis,
       };
     });
-  }, [favoriteKey]);
+  }, []);
 
   const orchestrator = useRef<ScanOrchestrator | null>(null);
 
@@ -191,7 +190,7 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
       htmlProxyBaseUrl: getAiProxyBaseUrl(),
       onRestaurantUpdate: updateRestaurant,
       onNotifyUI: () => emitFilteredState(),
-      getIdentityKey: favoriteKey,
+      getIdentityKey: getRestaurantIdentityKey,
     };
 
     if (!orchestrator.current) {
@@ -199,7 +198,7 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
     } else {
       orchestrator.current.setConfig(config);
     }
-  }, [emitFilteredState, favoriteKey, persistCache, updateRestaurant]);
+  }, [emitFilteredState, persistCache, updateRestaurant]);
 
   useEffect(() => {
     return () => {

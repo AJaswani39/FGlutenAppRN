@@ -11,10 +11,6 @@ export function useRestaurantFavorites(rawRestaurants: MutableRefObject<Restaura
   const savedDb = useRef<Restaurant[]>([]);
   const [savedRestaurants, setSavedRestaurants] = useState<Restaurant[]>([]);
 
-  const favoriteKey = useCallback((restaurant: Restaurant): string | null => {
-    return getRestaurantIdentityKey(restaurant);
-  }, []);
-
   const applyFavorites = useCallback((restaurants: Restaurant[]) => {
     return applyFavoritesToRestaurants(restaurants, favoriteMap.current);
   }, []);
@@ -43,15 +39,15 @@ export function useRestaurantFavorites(rawRestaurants: MutableRefObject<Restaura
 
   const setFavoriteMapStatus = useCallback(
     (restaurant: Restaurant, status: FavoriteStatus): boolean => {
-      const key = favoriteKey(restaurant);
+      const key = getRestaurantIdentityKey(restaurant);
       if (!key) return false;
 
       if (!status) {
         delete favoriteMap.current[key];
-        savedDb.current = savedDb.current.filter(r => favoriteKey(r) !== key);
+        savedDb.current = savedDb.current.filter(r => getRestaurantIdentityKey(r) !== key);
       } else {
         favoriteMap.current[key] = status;
-        const existingIdx = savedDb.current.findIndex(r => favoriteKey(r) === key);
+        const existingIdx = savedDb.current.findIndex(r => getRestaurantIdentityKey(r) === key);
         if (existingIdx >= 0) {
           savedDb.current[existingIdx] = { ...restaurant, favoriteStatus: status };
         } else {
@@ -71,15 +67,15 @@ export function useRestaurantFavorites(rawRestaurants: MutableRefObject<Restaura
 
       return true;
     },
-    [favoriteKey]
+    []
   );
 
   const updateSavedRestaurant = useCallback(
     (restaurant: Restaurant, updater: (r: Restaurant) => Restaurant) => {
-      const key = favoriteKey(restaurant);
+      const key = getRestaurantIdentityKey(restaurant);
       if (!key) return;
 
-      const existingIdx = savedDb.current.findIndex(r => favoriteKey(r) === key);
+      const existingIdx = savedDb.current.findIndex(r => getRestaurantIdentityKey(r) === key);
       if (existingIdx >= 0) {
         const next = updater(savedDb.current[existingIdx]);
         if (next !== savedDb.current[existingIdx]) {
@@ -91,13 +87,13 @@ export function useRestaurantFavorites(rawRestaurants: MutableRefObject<Restaura
         }
       }
     },
-    [favoriteKey, syncSavedRestaurants]
+    [syncSavedRestaurants]
   );
 
   return useMemo(
     () => ({
       savedRestaurants,
-      favoriteKey,
+      favoriteKey: getRestaurantIdentityKey,
       applyFavorites,
       syncSavedRestaurants,
       loadFavorites,
@@ -106,7 +102,6 @@ export function useRestaurantFavorites(rawRestaurants: MutableRefObject<Restaura
     }),
     [
       savedRestaurants,
-      favoriteKey,
       applyFavorites,
       syncSavedRestaurants,
       loadFavorites,

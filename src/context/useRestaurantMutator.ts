@@ -1,14 +1,6 @@
 import { useCallback, MutableRefObject } from 'react';
-import { MenuScanStatus, Restaurant } from '../types/restaurant';
+import { MenuScanStatus, Restaurant, TERMINAL_SCAN_STATUSES } from '../types/restaurant';
 import { isSameRestaurantIdentity } from '../util/restaurantUtils';
-
-const TERMINAL_SCAN_STATUSES = new Set<MenuScanStatus>([
-  'SUCCESS',
-  'NO_MENU_CONTENT',
-  'FAILED',
-  'NO_WEBSITE',
-  'JS_ONLY',
-]);
 
 interface UseRestaurantMutatorDeps {
   rawRestaurants: MutableRefObject<Restaurant[]>;

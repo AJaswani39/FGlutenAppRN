@@ -1,6 +1,15 @@
 import type { MenuAnalysisResult } from '../services/menuSafety';
 
 export type MenuScanStatus = 'NOT_STARTED' | 'FETCHING' | 'SUCCESS' | 'NO_MENU_CONTENT' | 'NO_WEBSITE' | 'FAILED' | 'JS_ONLY';
+
+export const TERMINAL_SCAN_STATUSES: ReadonlySet<MenuScanStatus> = new Set([
+  'SUCCESS',
+  'NO_MENU_CONTENT',
+  'FAILED',
+  'NO_WEBSITE',
+  'JS_ONLY',
+]);
+
 export type FavoriteStatus = 'safe' | 'try' | 'avoid' | null;
 /** Non-null favorite value stored in the favorites map (null means "not favorited"). */
 export type FavoriteStatusValue = Exclude<FavoriteStatus, null>;

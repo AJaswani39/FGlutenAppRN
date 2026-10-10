@@ -3,33 +3,56 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { FontSize, FontWeight, Radius, Spacing } from '../theme/colors';
 import { ThemeColors, useTheme } from '../context/ThemeContext';
-import { logger } from '../util/logger';
+import { logger, reportError } from '../util/logger';
 
 interface State {
   hasError: boolean;
+  error?: Error;
 }
 
-export class AppErrorBoundary extends React.Component<{ children: React.ReactNode }, State> {
+interface Props {
+  children: React.ReactNode;
+  fallback?: React.ReactNode | ((error: Error, reset: () => void) => React.ReactNode);
+  onError?: (error: Error, errorInfo: React.ErrorInfo) => void;
+  context?: Record<string, unknown>;
+}
+
+export class AppErrorBoundary extends React.Component<Props, State> {
   state: State = { hasError: false };
 
-  static getDerivedStateFromError(): State {
-    return { hasError: true };
+  static getDerivedStateFromError(error: Error): State {
+    return { hasError: true, error };
   }
 
   componentDidCatch(error: Error, info: React.ErrorInfo) {
+    const context = { ...this.props.context, errorBoundary: 'AppErrorBoundary' };
     logger.error('Unhandled render error', error.message, info.componentStack);
+    void reportError(error, context, { componentStack: info.componentStack ?? undefined });
+    this.props.onError?.(error, info);
   }
+
+  reset = () => {
+    this.setState({ hasError: false, error: undefined });
+  };
 
   render() {
     if (!this.state.hasError) {
       return this.props.children;
     }
 
-    return <ThemedErrorFallback onRetry={() => this.setState({ hasError: false })} />;
+    if (typeof this.props.fallback === 'function') {
+      return this.props.fallback(this.state.error!, this.reset);
+    }
+
+    if (this.props.fallback) {
+      return this.props.fallback;
+    }
+
+    return <ThemedErrorFallback onRetry={this.reset} error={this.state.error} />;
   }
 }
 
-function ThemedErrorFallback({ onRetry }: { onRetry: () => void }) {
+function ThemedErrorFallback({ onRetry, error }: { onRetry: () => void; error?: Error }) {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
 
@@ -50,6 +73,9 @@ function ThemedErrorFallback({ onRetry }: { onRetry: () => void }) {
         <Ionicons name="refresh" size={16} color={colors.textInverse} />
         <Text style={styles.buttonText}>Try again</Text>
       </Pressable>
+      {error && __DEV__ && (
+        <Text style={styles.errorDetails}>{error.message}</Text>
+      )}
     </View>
   );
 }
@@ -99,6 +125,13 @@ function createStyles(colors: ThemeColors) {
       color: colors.textInverse,
       fontSize: FontSize.md,
       fontWeight: FontWeight.bold,
+    },
+    errorDetails: {
+      color: colors.textSecondary,
+      fontSize: FontSize.xs,
+      marginTop: Spacing.md,
+      textAlign: 'center',
+      fontFamily: 'monospace',
     },
   });
 }

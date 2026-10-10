@@ -15,3 +15,5 @@ export const logger = {
     }
   },
 } as const;
+
+export { reportError } from './errorReporting';

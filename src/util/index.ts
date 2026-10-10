@@ -12,3 +12,4 @@ export * from './http';
 export * from './menuAiResponse';
 export * from './menuAiContext';
 export * from './mapClustering';
+export * from './errorReporting';

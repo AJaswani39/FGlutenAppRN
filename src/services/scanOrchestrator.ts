@@ -1,6 +1,7 @@
 import { Restaurant } from '../types/restaurant';
 import { scanRestaurantMenu, scanRestaurantMenuWithBrowser } from './menuScanner';
-import { getMenuScanTargets, CONCURRENT_SCAN_LIMIT } from '../context/restaurantState';
+import { getMenuScanTargets } from '../util/scanUtils';
+import { CONCURRENT_SCAN_LIMIT } from '../constants/scan';
 import { getRestaurantIdentityKey } from '../util/restaurantUtils';
 import { logger } from '../util/logger';
 

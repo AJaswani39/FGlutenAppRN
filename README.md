@@ -1,6 +1,6 @@
 # FGlutenApp — React Native (Expo)
 
-A full React Native port of the original Android FGlutenApp, built with Expo SDK 54 and EAS.
+A full React Native port of the original Android FGlutenApp, built with Expo SDK 57 and EAS.
 
 ## Features
 
@@ -8,13 +8,17 @@ A full React Native port of the original Android FGlutenApp, built with Expo SDK
 |---|---|
 | 📍 Location-based restaurant search | ✅ |
 | 🤖 AI menu scanning (heuristic + keyword) | ✅ |
+| 📸 Menu photo OCR (Cloud Vision) | ✅ |
+| 💬 AI menu chat (Puter AI, gpt-4o-mini) | ✅ |
+| 🛡️ Safety scorecard + cuisine risk hints | ✅ |
 | ❤️ Favorites (Safe / Try / Avoid) | ✅ |
-| 🔍 Smart filters (GF-only, Open Now, Distance, Rating) | ✅ |
-| 📋 Explore list + 🗺️ native map tab | ✅ |
+| 🔍 Smart filters (GF-only, GF-evidence, Open Now, Distance, Rating) | ✅ |
+| 📋 Explore list + 🗺️ native map tab with clustering | ✅ |
 | ❤️ Saved places tab | ✅ |
-| 💾 Offline cache (AsyncStorage, 3-day scan TTL) | ✅ |
+| ⚙️ Settings tab (dietary needs, units, data management) | ✅ |
+| 💾 Offline cache (AsyncStorage, 14-day scan TTL) | ✅ |
 | 📏 Miles / KM toggle | ✅ |
-| 🧬 Strict Celiac mode | ✅ |
+| 🧬 Strict Celiac mode (+ dairy/nut/soy-free) | ✅ |
 | 🌙 Dark mode (system default) | ✅ |
 | 📱 iOS + Android | ✅ |
 
@@ -22,8 +26,8 @@ A full React Native port of the original Android FGlutenApp, built with Expo SDK
 
 ```
 FGlutenAppRN/
-├── App.tsx                         # Root entry point
-├── app.json                        # Expo config (bundle ID, permissions, API key)
+├── App.tsx                         # Root entry point (providers + error boundaries)
+├── app.config.js                   # Expo config (bundle ID, permissions, API keys from env)
 ├── eas.json                        # EAS build profiles
 ├── src/
 │   ├── types/
@@ -31,22 +35,75 @@ FGlutenAppRN/
 │   │   └── navigation.ts           # Navigation types
 │   ├── theme/
 │   │   └── colors.ts               # Design token system (dark theme)
-│   ├── util/
-│   │   └── SettingsManager.ts      # AsyncStorage wrapper (mirrors SettingsManager.java)
+│   ├── config/
+│   │   ├── runtimeConfig.ts        # Reads Constants.expoConfig.extra at runtime
+│   │   └── platformConfig.ts       # Platform-specific Maps/AI key selection
+│   ├── constants/
+│   │   ├── api.ts                  # API endpoints + timeouts
+│   │   └── scan.ts                 # Scan TTL (14 days), batch size, concurrency
 │   ├── data/
-│   │   └── placesRepository.ts     # Google Places API + menu scanning (mirrors PlacesRepository.java + MenuScannerRepository.java)
+│   │   └── placesRepository.ts     # Google Places API + HTML fetching (mirrors PlacesRepository.java)
+│   ├── services/
+│   │   ├── scanOrchestrator.ts     # Scan queue, batching, concurrency control
+│   │   ├── menuScanner.ts          # Static HTML menu scanning (mirrors MenuScannerRepository.java)
+│   │   ├── menuSafety.ts           # Safety scoring engine
+│   │   ├── menuOcr.ts              # Cloud Vision OCR for menu photos
+│   │   ├── puterAiService.ts       # Puter AI analysis + menu chat
+│   │   ├── persistenceService.ts   # AsyncStorage cache, favorites, scan cache (mirrors RestaurantCacheManager.java)
+│   │   ├── cuisineRiskHints.ts     # Per-cuisine risk notes
+│   │   ├── diningChecklist.ts      # Dining-out checklist content
+│   │   └── safePicks.ts            # Generic GF safe-pick suggestions
+│   ├── hooks/
+│   │   ├── useDebounce.ts          # Debounced values (search input)
+│   │   └── useErrorBoundary.ts     # Error boundary hook helper
 │   ├── context/
-│   │   └── RestaurantContext.tsx   # Global state (mirrors RestaurantViewModel.java + HomeViewModel.java)
+│   │   ├── RestaurantContext.tsx   # Global state (mirrors RestaurantViewModel.java + HomeViewModel.java)
+│   │   ├── useRestaurantLoader.ts  # Location + network fetch lifecycle
+│   │   ├── useRestaurantFavorites.ts # Favorites map + historical saved DB
+│   │   ├── useRestaurantPersistence.ts # Debounced cache writes, scan-cache queue, AppState flush
+│   │   ├── useRestaurantCacheHydration.ts # Cold-start cache restore
+│   │   ├── useRestaurantCollectionState.ts # Filtered/sorted UI state derivation
+│   │   ├── useRestaurantMutator.ts # Diffed updates with selective persistence
+│   │   ├── FiltersContext.tsx      # Filter state
+│   │   ├── SettingsContext.tsx     # Units, strict mode, dietary needs (mirrors SettingsManager.java)
+│   │   ├── ThemeContext.tsx        # Dark/light theming
+│   │   └── AppProviders.tsx        # Provider composition root
 │   ├── navigation/
-│   │   └── AppNavigator.tsx        # Bottom tab navigator
+│   │   └── AppNavigator.tsx        # Bottom tab navigator (Home / Find / Map / Saved / Settings)
+│   ├── components/
+│   │   ├── AppErrorBoundary.tsx    # Top-level error boundary + reporting
+│   │   ├── FeatureErrorBoundaries.tsx # Per-feature boundary isolation
+│   │   ├── CustomSplashScreen.tsx  # Animated splash
+│   │   ├── LocationSearchBar.tsx   # Manual area search
+│   │   ├── NetworkBanner.tsx       # Offline indicator
+│   │   ├── RestaurantSummaryCard.tsx # List row card
+│   │   ├── ScanProgressBanner.tsx  # Live menu-scan progress
+│   │   ├── Skeleton.tsx            # Loading placeholders
+│   │   └── ui.tsx                  # Shared primitives
+│   ├── util/
+│   │   ├── http.ts                 # fetchWithTimeout with abort support
+│   │   ├── logger.ts / errorReporting.ts # Dev-gated logging + error reports
+│   │   ├── restaurantUtils.ts      # Identity, filtering, sorting
+│   │   ├── collectionUtils.ts      # Saved-place merge + empty-state logic
+│   │   ├── cacheUtils.ts           # Cache restore + scan progress
+│   │   ├── scanUtils.ts            # TTL-based scan target selection
+│   │   ├── geoUtils.ts / mapClustering.ts # Distance + map clustering
+│   │   ├── htmlUtils.ts            # HTML parsing + GF evidence extraction
+│   │   ├── formatters.ts / haptics.ts # Display formatting + haptics
+│   │   └── menuAiContext.ts / menuAiResponse.ts # AI prompt context + response parsing
 │   └── screens/
 │       ├── HomeScreen.tsx          # Dashboard (mirrors HomeFragment.java)
 │       ├── RestaurantListScreen.tsx # List + filter (mirrors RestaurantListFragment.java)
-│       ├── MapScreen.tsx           # Native restaurant map
+│       ├── MapScreen.tsx           # Native restaurant map with clustering
 │       ├── SavedPlacesScreen.tsx   # Safe / Try / Avoid saved places
+│       ├── SettingsScreen.tsx      # Dietary needs, units, data management
 │       └── components/
 │           ├── RestaurantDetailModal.tsx  # Detail sheet (mirrors RestaurantDetailBottomSheet.java)
-│           └── MenuAnalysisSheet.tsx      # AI analysis (mirrors MenuAnalysisBottomSheet.kt)
+│           ├── MenuAnalysisSheet.tsx      # AI analysis (mirrors MenuAnalysisBottomSheet.kt)
+│           ├── MenuChatSheet.tsx          # AI menu chat
+│           ├── RestaurantMenuEvidence.tsx # Scanned GF menu evidence list
+│           ├── RestaurantSafetySection.tsx # Safety summary section
+│           └── SafetyScorecard.tsx        # Safety score breakdown
 ```
 
 ## Setup
@@ -67,8 +124,9 @@ IOS_MAPS_API_KEY=YOUR_IOS_GOOGLE_MAPS_API_KEY
 > - Maps SDK for Android / iOS — for map view (native build)
 >
 > Treat this as a public mobile client key. Restrict it in Google Cloud by
-> package/bundle/signing identity and only allow the APIs above. `GCP_API_KEY`
-> is still accepted as a fallback for local development.
+> package/bundle/signing identity and only allow the APIs above.
+>
+> `GCP_API_KEY` is accepted as a legacy fallback for the base Maps key.
 
 For production AI/OCR, prefer the Cloud Run proxy so Puter and Vision keys do
 not ship in the mobile app:
@@ -137,31 +195,42 @@ npx eas submit --profile production --platform android
 | Android | React Native |
 |---|---|
 | `Restaurant.java` | `src/types/restaurant.ts` |
-| `RestaurantViewModel.java` | `src/context/RestaurantContext.tsx` |
+| `RestaurantViewModel.java` | `src/context/RestaurantContext.tsx` (+ `useRestaurant*` hooks) |
 | `PlacesRepository.java` | `src/data/placesRepository.ts` |
-| `MenuScannerRepository.java` | `src/data/placesRepository.ts` |
-| `RestaurantCacheManager.java` | `src/util/SettingsManager.ts` (AsyncStorage) |
-| `SettingsManager.java` | `src/util/SettingsManager.ts` |
+| `MenuScannerRepository.java` | `src/services/menuScanner.ts` + `src/services/scanOrchestrator.ts` |
+| `RestaurantCacheManager.java` | `src/services/persistenceService.ts` + `src/context/useRestaurantPersistence.ts` |
+| `SettingsManager.java` | `src/context/SettingsContext.tsx` + `src/services/persistenceService.ts` |
 | `HomeFragment.java` | `src/screens/HomeScreen.tsx` |
 | `RestaurantListFragment.java` | `src/screens/RestaurantListScreen.tsx` |
-| Map view | `src/screens/MapScreen.tsx` |
-| Favorites/saved places | `src/screens/SavedPlacesScreen.tsx` |
+| Map view | `src/screens/MapScreen.tsx` + `src/util/mapClustering.ts` |
+| Favorites/saved places | `src/screens/SavedPlacesScreen.tsx` + `src/context/useRestaurantFavorites.ts` |
 | `RestaurantDetailBottomSheet.java` | `src/screens/components/RestaurantDetailModal.tsx` |
 | `MenuAnalysisBottomSheet.kt` | `src/screens/components/MenuAnalysisSheet.tsx` |
 | `mobile_navigation.xml` | `src/navigation/AppNavigator.tsx` |
 | SharedPreferences | AsyncStorage |
 | LiveData / ViewModel | React Context + useState/useRef |
 | Kotlin Coroutines | async/await |
-| ML Kit / TFLite | Local JS heuristic analysis |
+| ML Kit / TFLite | `src/services/menuOcr.ts` (Cloud Vision) + `src/services/menuSafety.ts` |
 | Firebase Auth | *(excluded per user request)* |
 | Firebase Firestore | *(excluded per user request)* |
+
+## Testing
+
+```bash
+npm test          # Jest (jest-expo) unit suite
+npm run typecheck # tsc --noEmit
+npm run check     # both, in order
+```
+
+Tests live in `__tests__` folders next to the code they cover, including
+context hooks, services, utils, and error boundaries.
 
 ## Notes
 
 - **No sign-in required** — guest mode only, all data stored locally.
-- **Menu scanning** uses the same Google Places API (`websiteUri` field) + HTML scraping as the original app.
+- **Menu scanning** uses the same Google Places API (`websiteUri` field) + HTML scraping as the original app, with a two-week (14-day) TTL for rescans.
 - **AI analysis** uses local keyword heuristics plus Puter AI (`openai/gpt-4o-mini`) for deep menu analysis and chat. In production, route AI/OCR through `cloud-run-proxy`.
-- The **Maps API key** is read from `app.json extra` → `Constants.expoConfig.extra.MAPS_API_KEY` at runtime.
+- The **Maps API key** flows from `ANDROID_MAPS_API_KEY` / `IOS_MAPS_API_KEY` env vars → `app.config.js` → `Constants.expoConfig.extra` → `src/config/runtimeConfig.ts`, with `src/config/platformConfig.ts` selecting the platform-specific key at runtime.
 
 ## Cloud Run Proxy
 

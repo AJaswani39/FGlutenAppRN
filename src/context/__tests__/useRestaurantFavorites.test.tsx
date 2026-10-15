@@ -14,12 +14,7 @@ jest.mock('../../services/persistenceService', () => ({
   },
 }));
 
-const persistenceMock = PersistenceService as unknown as {
-  loadFavorites: jest.MockedFunction<() => Promise<FavoriteMap>>;
-  loadSavedRestaurantsDb: jest.MockedFunction<() => Promise<Restaurant[]>>;
-  saveFavorites: jest.MockedFunction<(map: FavoriteMap) => Promise<void>>;
-  saveSavedRestaurantsDb: jest.MockedFunction<(db: Restaurant[]) => Promise<void>>;
-};
+const persistenceMock = jest.mocked(PersistenceService);
 
 function restaurant(overrides: Partial<Restaurant> = {}): Restaurant {
   return {

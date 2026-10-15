@@ -23,11 +23,7 @@ jest.mock('../../services/persistenceService', () => {
   };
 });
 
-const persistenceMock = PersistenceService as unknown as {
-  saveCache: jest.MockedFunction<typeof PersistenceService.saveCache>;
-  loadMenuScanCache: jest.MockedFunction<typeof PersistenceService.loadMenuScanCache>;
-  saveMenuScanCache: jest.MockedFunction<typeof PersistenceService.saveMenuScanCache>;
-};
+const persistenceMock = jest.mocked(PersistenceService);
 
 function restaurant(overrides: Partial<Restaurant> = {}): Restaurant {
   return {

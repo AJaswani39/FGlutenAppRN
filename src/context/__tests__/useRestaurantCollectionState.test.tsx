@@ -95,7 +95,10 @@ function renderCollectionState(options: {
     rawRestaurants,
     setUiState,
     syncSavedRestaurants,
-    latestState: () => uiStateRef.current,
+    latestState: (): RestaurantUiState => {
+      expect(setUiState).toHaveBeenCalled();
+      return uiStateRef.current;
+    },
     rerenderWithFilters: (next: RestaurantFilters) => {
       filtersValue = next;
       act(() => {
@@ -118,7 +121,7 @@ describe('useRestaurantCollectionState', () => {
 
     expect(harness.syncSavedRestaurants).toHaveBeenCalled();
     expect(harness.setUiState).toHaveBeenCalledTimes(callsBeforeRefresh + 1);
-    const state = harness.setUiState.mock.calls.at(-1)![0] as RestaurantUiState;
+    const state = harness.latestState();
     expect(state.restaurants.map((r) => r.name)).toEqual(['Alpha', 'Zeta']);
     expect(state.userLatitude).toBe(40);
     expect(state.userLongitude).toBe(-74);
@@ -131,12 +134,12 @@ describe('useRestaurantCollectionState', () => {
       initialFilters: filters({ searchQuery: 'zzz' }),
     });
     withResults.api.emitFilteredState();
-    const filteredOut = withResults.setUiState.mock.calls.at(-1)![0] as RestaurantUiState;
+    const filteredOut = withResults.latestState();
     expect(filteredOut.message).toBe('No restaurants match your current filters.');
 
     const withoutResults = renderCollectionState({ restaurants: [] });
     withoutResults.api.emitFilteredState();
-    const empty = withoutResults.setUiState.mock.calls.at(-1)![0] as RestaurantUiState;
+    const empty = withoutResults.latestState();
     expect(empty.message).toBe(
       'No nearby restaurants found. Try expanding your distance or refreshing your search.'
     );
@@ -150,7 +153,7 @@ describe('useRestaurantCollectionState', () => {
 
     harness.api.emitFilteredState({ emptyReason: 'filters' });
 
-    const state = harness.setUiState.mock.calls.at(-1)![0] as RestaurantUiState;
+    const state = harness.latestState();
     expect(state.message).toBe('No restaurants match your current filters.');
   });
 
@@ -162,7 +165,7 @@ describe('useRestaurantCollectionState', () => {
 
     harness.api.refreshCollectionState();
 
-    const state = harness.setUiState.mock.calls.at(-1)![0] as RestaurantUiState;
+    const state = harness.latestState();
     expect(state.status).toBe('loading');
     expect(state.message).toBe('Refreshing nearby restaurants…');
   });
@@ -175,7 +178,7 @@ describe('useRestaurantCollectionState', () => {
 
     harness.api.refreshCollectionState({ status: 'success', message: 'New message' });
 
-    const state = harness.setUiState.mock.calls.at(-1)![0] as RestaurantUiState;
+    const state = harness.latestState();
     expect(state.status).toBe('success');
     expect(state.message).toBe('New message');
   });
@@ -189,7 +192,7 @@ describe('useRestaurantCollectionState', () => {
 
     harness.api.emitFilteredState();
 
-    const state = harness.setUiState.mock.calls.at(-1)![0] as RestaurantUiState;
+    const state = harness.latestState();
     expect(state.restaurants.map((r) => r.placeId)).toEqual(['b']);
   });
 
@@ -209,7 +212,7 @@ describe('useRestaurantCollectionState', () => {
     harness.rerenderWithFilters(filters({ gfOnly: true }));
 
     expect(harness.setUiState.mock.calls.length).toBeGreaterThan(initialCalls);
-    const latest = harness.setUiState.mock.calls.at(-1)![0] as RestaurantUiState;
+    const latest = harness.latestState();
     expect(latest.restaurants).toHaveLength(1);
   });
 });

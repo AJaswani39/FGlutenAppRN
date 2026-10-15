@@ -2,7 +2,7 @@ import React from 'react';
 import TestRenderer, { act } from 'react-test-renderer';
 import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
 import * as Location from 'expo-location';
-import NetInfo from '@react-native-community/netinfo';
+import NetInfo, { NetInfoState, NetInfoStateType } from '@react-native-community/netinfo';
 import { Restaurant, RestaurantUiState } from '../../types/restaurant';
 import { useRestaurantLoader } from '../useRestaurantLoader';
 import { fetchNearbyRestaurants } from '../../data/placesRepository';
@@ -10,11 +10,27 @@ import { getMapsApiKey } from '../restaurantState';
 
 jest.mock('expo-location', () => ({
   Accuracy: { Balanced: 3 },
+  PermissionStatus: {
+    GRANTED: 'granted',
+    DENIED: 'denied',
+    UNDETERMINED: 'undetermined',
+  },
   requestForegroundPermissionsAsync: jest.fn(),
   getLastKnownPositionAsync: jest.fn(),
   getCurrentPositionAsync: jest.fn(),
 }));
 jest.mock('@react-native-community/netinfo', () => ({
+  NetInfoStateType: {
+    unknown: 'unknown',
+    none: 'none',
+    cellular: 'cellular',
+    wifi: 'wifi',
+    bluetooth: 'bluetooth',
+    ethernet: 'ethernet',
+    wimax: 'wimax',
+    vpn: 'vpn',
+    other: 'other',
+  },
   fetch: jest.fn(),
 }));
 jest.mock('../../data/placesRepository', () => ({
@@ -34,6 +50,60 @@ const netInfoMock = NetInfo as typeof NetInfo & {
 };
 const fetchNearbyMock = fetchNearbyRestaurants as jest.MockedFunction<typeof fetchNearbyRestaurants>;
 const mapsApiKeyMock = getMapsApiKey as jest.MockedFunction<typeof getMapsApiKey>;
+
+function mockWifiState(options: { isConnected?: boolean; isInternetReachable?: boolean } = {}): NetInfoState {
+  const { isConnected = true, isInternetReachable = true } = options;
+  return {
+    type: NetInfoStateType.wifi,
+    isConnected,
+    isInternetReachable,
+    details: {
+      isConnectionExpensive: false,
+      ssid: null,
+      bssid: null,
+      strength: null,
+      ipAddress: null,
+      subnet: null,
+      frequency: null,
+      linkSpeed: null,
+      rxLinkSpeed: null,
+      txLinkSpeed: null,
+    },
+  };
+}
+
+function mockDisconnectedState(): NetInfoState {
+  return {
+    type: NetInfoStateType.none,
+    isConnected: false,
+    isInternetReachable: false,
+    details: null,
+  };
+}
+
+function mockLocationObject(latitude: number, longitude: number, timestamp = Date.now()): Location.LocationObject {
+  return {
+    coords: {
+      latitude,
+      longitude,
+      altitude: 0,
+      accuracy: 10,
+      altitudeAccuracy: 0,
+      heading: 0,
+      speed: 0,
+    },
+    timestamp,
+  };
+}
+
+function mockPermissionResponse(granted: boolean, canAskAgain = true): Location.LocationPermissionResponse {
+  return {
+    status: granted ? Location.PermissionStatus.GRANTED : Location.PermissionStatus.DENIED,
+    granted,
+    canAskAgain,
+    expires: 'never',
+  };
+}
 
 function restaurant(overrides: Partial<Restaurant> = {}): Restaurant {
   return {
@@ -124,6 +194,10 @@ function renderLoader(options: LoaderOptions = {}) {
 
   return {
     loadNearby: (...args: Parameters<typeof api.loadNearbyRestaurants>) => api.loadNearbyRestaurants(...args),
+    getLastUiState: (): RestaurantUiState => {
+      expect(setUiState).toHaveBeenCalled();
+      return uiStateRef.current;
+    },
     rawRestaurants,
     userLat,
     userLng,
@@ -146,31 +220,10 @@ describe('useRestaurantLoader', () => {
     jest.clearAllMocks();
     jest.spyOn(console, 'warn').mockImplementation(() => {});
     jest.spyOn(console, 'error').mockImplementation(() => {});
-    netInfoMock.fetch.mockResolvedValue({
-      type: 'wifi',
-      isConnected: true,
-      isInternetReachable: true,
-      details: null,
-      isConnectionExpensive: false,
-    } as unknown as Awaited<ReturnType<typeof NetInfo.fetch>>);
-    locationMock.requestForegroundPermissionsAsync.mockResolvedValue({
-      status: 'granted',
-      granted: true,
-      canAskAgain: true,
-    } as Awaited<ReturnType<typeof Location.requestForegroundPermissionsAsync>>);
+    netInfoMock.fetch.mockResolvedValue(mockWifiState());
+    locationMock.requestForegroundPermissionsAsync.mockResolvedValue(mockPermissionResponse(true));
     locationMock.getLastKnownPositionAsync.mockResolvedValue(null);
-    locationMock.getCurrentPositionAsync.mockResolvedValue({
-      coords: {
-        latitude: 12.5,
-        longitude: -33.25,
-        altitude: 0,
-        accuracy: 10,
-        altitudeAccuracy: 0,
-        heading: 0,
-        speed: 0,
-      },
-      timestamp: Date.now(),
-    } as unknown as Awaited<ReturnType<typeof Location.getCurrentPositionAsync>>);
+    locationMock.getCurrentPositionAsync.mockResolvedValue(mockLocationObject(12.5, -33.25));
     mapsApiKeyMock.mockReturnValue('maps-key');
     fetchNearbyMock.mockResolvedValue([
       restaurant({ placeId: 'a', latitude: 12.5, longitude: -33.25 }),
@@ -318,10 +371,7 @@ describe('useRestaurantLoader', () => {
   });
 
   it('reuses a recent last-known position instead of requesting a fresh fix', async () => {
-    locationMock.getLastKnownPositionAsync.mockResolvedValue({
-      coords: { latitude: 1.5, longitude: 2.5 },
-      timestamp: Date.now(),
-    } as unknown as Awaited<ReturnType<typeof Location.getLastKnownPositionAsync>>);
+    locationMock.getLastKnownPositionAsync.mockResolvedValue(mockLocationObject(1.5, 2.5));
     const loader = renderLoader();
 
     await act(async () => {
@@ -333,13 +383,7 @@ describe('useRestaurantLoader', () => {
   });
 
   it('reports an offline state and skips the repository call', async () => {
-    netInfoMock.fetch.mockResolvedValue({
-      type: 'none',
-      isConnected: false,
-      isInternetReachable: false,
-      details: null,
-      isConnectionExpensive: false,
-    } as unknown as Awaited<ReturnType<typeof NetInfo.fetch>>);
+    netInfoMock.fetch.mockResolvedValue(mockDisconnectedState());
     const loader = renderLoader();
 
     await act(async () => {
@@ -347,19 +391,13 @@ describe('useRestaurantLoader', () => {
     });
 
     expect(fetchNearbyMock).not.toHaveBeenCalled();
-    const [state] = loader.setUiState.mock.calls.at(-1)! as [RestaurantUiState];
+    const state = loader.getLastUiState();
     expect(state.status).toBe('error');
     expect(state.message).toBe('No internet connection. Showing last cached results.');
   });
 
   it('treats an unreachable network as offline', async () => {
-    netInfoMock.fetch.mockResolvedValue({
-      type: 'wifi',
-      isConnected: true,
-      isInternetReachable: false,
-      details: null,
-      isConnectionExpensive: false,
-    } as unknown as Awaited<ReturnType<typeof NetInfo.fetch>>);
+    netInfoMock.fetch.mockResolvedValue(mockWifiState({ isConnected: true, isInternetReachable: false }));
     const loader = renderLoader();
 
     await act(async () => {
@@ -367,7 +405,7 @@ describe('useRestaurantLoader', () => {
     });
 
     expect(fetchNearbyMock).not.toHaveBeenCalled();
-    const [state] = loader.setUiState.mock.calls.at(-1)! as [RestaurantUiState];
+    const state = loader.getLastUiState();
     expect(state.status).toBe('error');
   });
 
@@ -377,7 +415,7 @@ describe('useRestaurantLoader', () => {
     await act(async () => {
       await withoutCache.loadNearby();
     });
-    const [state] = withoutCache.setUiState.mock.calls.at(-1)! as [RestaurantUiState];
+    const state = withoutCache.getLastUiState();
     expect(state.message).toBe('Could not check the internet connection. Please try again.');
     expect(console.warn).toHaveBeenCalledWith(
       expect.stringContaining('Could not determine network status')
@@ -398,7 +436,7 @@ describe('useRestaurantLoader', () => {
     await act(async () => {
       await withoutCache.loadNearby();
     });
-    let [state] = withoutCache.setUiState.mock.calls.at(-1)! as [RestaurantUiState];
+    const state = withoutCache.getLastUiState();
     expect(state.message).toBe('Maps API key is missing. Live refresh is unavailable.');
     expect(fetchNearbyMock).not.toHaveBeenCalled();
 
@@ -412,18 +450,14 @@ describe('useRestaurantLoader', () => {
   });
 
   it('maps denied location permission to a permission_required state', async () => {
-    locationMock.requestForegroundPermissionsAsync.mockResolvedValue({
-      status: 'denied',
-      granted: false,
-      canAskAgain: false,
-    } as Awaited<ReturnType<typeof Location.requestForegroundPermissionsAsync>>);
+    locationMock.requestForegroundPermissionsAsync.mockResolvedValue(mockPermissionResponse(false, false));
     const loader = renderLoader();
 
     await act(async () => {
       await loader.loadNearby();
     });
 
-    const [state] = loader.setUiState.mock.calls.at(-1)! as [RestaurantUiState];
+    const state = loader.getLastUiState();
     expect(state.status).toBe('permission_required');
     expect(state.message).toContain('location permission is needed');
   });
@@ -436,7 +470,7 @@ describe('useRestaurantLoader', () => {
       await loader.loadNearby();
     });
 
-    const [state] = loader.setUiState.mock.calls.at(-1)! as [RestaurantUiState];
+    const state = loader.getLastUiState();
     expect(state.status).toBe('permission_required');
     expect(state.message).toBe('Location permission or services are required to refresh results.');
   });

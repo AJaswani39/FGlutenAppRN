@@ -1,5 +1,5 @@
 import React from 'react';
-import TestRenderer, { act } from 'react-test-renderer';
+import { act, render, RenderResult } from '@testing-library/react-native';
 import { describe, expect, it, jest } from '@jest/globals';
 import { Restaurant } from '../../types/restaurant';
 import { useRestaurantMutator } from '../useRestaurantMutator';
@@ -25,7 +25,7 @@ function restaurant(overrides: Partial<Restaurant> = {}): Restaurant {
   };
 }
 
-function renderMutator(restaurants: Restaurant[]) {
+async function renderMutator(restaurants: Restaurant[]) {
   const rawRestaurants = { current: restaurants };
   const updateSavedRestaurant = jest.fn();
   const persistCache = jest.fn();
@@ -37,8 +37,8 @@ function renderMutator(restaurants: Restaurant[]) {
     return null;
   }
 
-  act(() => {
-    TestRenderer.create(<Probe />);
+  await act(async () => {
+    await render(<Probe />);
   });
 
   return {
@@ -53,10 +53,10 @@ function renderMutator(restaurants: Restaurant[]) {
 }
 
 describe('useRestaurantMutator', () => {
-  it('updates a matching restaurant and reports the change', () => {
+  it('updates a matching restaurant and reports the change', async () => {
     const target = restaurant({ placeId: 'a' });
     const other = restaurant({ placeId: 'b' });
-    const harness = renderMutator([target, other]);
+    const harness = await renderMutator([target, other]);
 
     const updated = harness.api(target, (current) => ({ ...current, gfMenu: ['GF bun'] }));
 
@@ -66,9 +66,9 @@ describe('useRestaurantMutator', () => {
     expect(harness.updateSavedRestaurant).toHaveBeenCalledWith(target, expect.any(Function));
   });
 
-  it('matches by fallback identity when place ids are absent', () => {
+  it('matches by fallback identity when place ids are absent', async () => {
     const target = restaurant({ placeId: '', name: 'Rice House', address: '7 Main' });
-    const harness = renderMutator([target]);
+    const harness = await renderMutator([target]);
 
     const updated = harness.api(target, (current) => ({ ...current, rating: 4.5 }));
 
@@ -76,8 +76,8 @@ describe('useRestaurantMutator', () => {
     expect(harness.rawRestaurants.current[0].rating).toBe(4.5);
   });
 
-  it('reports no change when nothing matches', () => {
-    const harness = renderMutator([restaurant({ placeId: 'a' })]);
+  it('reports no change when nothing matches', async () => {
+    const harness = await renderMutator([restaurant({ placeId: 'a' })]);
 
     const updated = harness.api(restaurant({ placeId: 'zzz' }), (current) => current);
 
@@ -86,9 +86,9 @@ describe('useRestaurantMutator', () => {
     expect(harness.persistMenuScan).not.toHaveBeenCalled();
   });
 
-  it('reports no change when the updater is a no-op', () => {
+  it('reports no change when the updater is a no-op', async () => {
     const target = restaurant({ placeId: 'a' });
-    const harness = renderMutator([target]);
+    const harness = await renderMutator([target]);
 
     const updated = harness.api(target, (current) => current);
 
@@ -97,9 +97,9 @@ describe('useRestaurantMutator', () => {
     expect(harness.updateSavedRestaurant).toHaveBeenCalled();
   });
 
-  it('persists the cache when a scan reaches a terminal status', () => {
+  it('persists the cache when a scan reaches a terminal status', async () => {
     const target = restaurant({ placeId: 'a', menuScanStatus: 'FETCHING' });
-    const harness = renderMutator([target]);
+    const harness = await renderMutator([target]);
 
     harness.api(target, (current) => ({ ...current, menuScanStatus: 'SUCCESS' }));
 
@@ -110,9 +110,9 @@ describe('useRestaurantMutator', () => {
     );
   });
 
-  it('does not persist anything for an in-flight status transition', () => {
+  it('does not persist anything for an in-flight status transition', async () => {
     const target = restaurant({ placeId: 'a' });
-    const harness = renderMutator([target]);
+    const harness = await renderMutator([target]);
 
     harness.api(target, (current) => ({ ...current, menuScanStatus: 'FETCHING' }));
 
@@ -120,9 +120,9 @@ describe('useRestaurantMutator', () => {
     expect(harness.persistMenuScan).not.toHaveBeenCalled();
   });
 
-  it('persists the cache when a favorite changes but not the scan cache', () => {
+  it('persists the cache when a favorite changes but not the scan cache', async () => {
     const target = restaurant({ placeId: 'a' });
-    const harness = renderMutator([target]);
+    const harness = await renderMutator([target]);
 
     harness.api(target, (current) => ({ ...current, favoriteStatus: 'safe' }));
 
@@ -130,9 +130,9 @@ describe('useRestaurantMutator', () => {
     expect(harness.persistMenuScan).not.toHaveBeenCalled();
   });
 
-  it('persists both stores when ai analysis changes', () => {
+  it('persists both stores when ai analysis changes', async () => {
     const target = restaurant({ placeId: 'a', menuScanStatus: 'SUCCESS', menuScanTimestamp: 10 });
-    const harness = renderMutator([target]);
+    const harness = await renderMutator([target]);
     const analysis = {
       overallSafety: 'safe' as const,
       score: 90,
@@ -150,9 +150,9 @@ describe('useRestaurantMutator', () => {
     );
   });
 
-  it('persists the scan cache when chat history changes', () => {
+  it('persists the scan cache when chat history changes', async () => {
     const target = restaurant({ placeId: 'a', menuScanStatus: 'SUCCESS', menuScanTimestamp: 10 });
-    const harness = renderMutator([target]);
+    const harness = await renderMutator([target]);
 
     harness.api(target, (current) => ({
       ...current,

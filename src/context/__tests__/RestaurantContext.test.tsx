@@ -1,7 +1,7 @@
 import React from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import NetInfo from '@react-native-community/netinfo';
-import TestRenderer, { act } from 'react-test-renderer';
+import { act, render, RenderResult } from '@testing-library/react-native';
 import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
 import * as Location from 'expo-location';
 import Constants from 'expo-constants';
@@ -61,7 +61,6 @@ const constantsMock = Constants as typeof Constants & {
 };
 type FetchMock = jest.MockedFunction<(...args: Parameters<typeof fetch>) => Promise<any>>;
 const fetchMock = () => global.fetch as unknown as FetchMock;
-const activeRenderers: TestRenderer.ReactTestRenderer[] = [];
 
 function Probe({ capture }: { capture: (api: HarnessApi) => void }) {
   capture({
@@ -91,10 +90,10 @@ function createDeferred<T>() {
 
 async function renderHarness() {
   let latestApi: HarnessApi | null = null;
-  let renderer!: TestRenderer.ReactTestRenderer;
+  let renderer!: RenderResult;
 
   await act(async () => {
-    renderer = TestRenderer.create(
+    renderer = await render(
       <SettingsProvider>
         <FiltersProvider>
           <RestaurantProvider>
@@ -106,7 +105,6 @@ async function renderHarness() {
       </SettingsProvider>
     );
   });
-  activeRenderers.push(renderer);
 
   await flushAsync();
 
@@ -123,11 +121,6 @@ async function renderHarness() {
 }
 
 describe('RestaurantContext', () => {
-  afterEach(() => {
-    act(() => {
-      activeRenderers.splice(0).forEach((renderer) => renderer.unmount());
-    });
-  });
 
   beforeEach(() => {
     storage.__reset();
@@ -565,7 +558,7 @@ describe('RestaurantContext', () => {
 
     expect(getApi().restaurants.uiState.restaurants).toHaveLength(1);
 
-    act(() => {
+    await act(() => {
       getApi().settings.setStrictCeliac(true);
     });
     await flushAsync();
@@ -600,7 +593,7 @@ describe('RestaurantContext', () => {
     });
 
     const [restaurant] = getApi().restaurants.uiState.restaurants;
-    act(() => {
+    await act(() => {
       getApi().restaurants.setFavoriteStatus(restaurant, 'safe');
     });
     await flushAsync();
@@ -679,7 +672,7 @@ describe('RestaurantContext', () => {
 
     const { getApi } = await renderHarness();
 
-    act(() => {
+    await act(() => {
       getApi().filters.setFilters({ gfOnly: true });
     });
     await act(async () => {
@@ -700,7 +693,7 @@ describe('RestaurantContext', () => {
 
     const { getApi } = await renderHarness();
 
-    act(() => {
+    await act(() => {
       getApi().settings.setStrictCeliac(true);
     });
     await act(async () => {
@@ -758,7 +751,7 @@ describe('RestaurantContext', () => {
 
     const { getApi } = await renderHarness();
 
-    act(() => {
+    await act(() => {
       getApi().filters.setFilters({ maxDistanceMeters: 12000 });
     });
     await flushAsync();
@@ -829,13 +822,13 @@ describe('RestaurantContext', () => {
     });
 
     const [safePlace, avoidPlace] = getApi().restaurants.uiState.restaurants;
-    act(() => {
+    await act(() => {
       getApi().restaurants.setFavoriteStatus(safePlace, 'safe');
       getApi().restaurants.setFavoriteStatus(avoidPlace, 'avoid');
     });
     await flushAsync();
 
-    act(() => {
+    await act(() => {
       getApi().filters.setFilters({ searchQuery: 'not in saved names' });
     });
     await flushAsync();
@@ -871,14 +864,14 @@ describe('RestaurantContext', () => {
     });
 
     const [restaurant] = getApi().restaurants.uiState.restaurants;
-    act(() => {
+    await act(() => {
       getApi().restaurants.setFavoriteStatus(restaurant, 'try');
     });
     await flushAsync();
 
     expect(getApi().restaurants.savedRestaurants).toHaveLength(1);
 
-    act(() => {
+    await act(() => {
       getApi().restaurants.setFavoriteStatus(restaurant, null);
     });
     await flushAsync();
@@ -958,7 +951,7 @@ describe('RestaurantContext', () => {
     expect(getApi().restaurants.uiState.scanProgress?.total).toBe(3);
 
     const [restaurant] = getApi().restaurants.uiState.restaurants;
-    act(() => {
+    await act(() => {
       getApi().restaurants.requestMenuRescan(restaurant);
     });
 
@@ -1011,7 +1004,7 @@ describe('RestaurantContext', () => {
     });
 
     const [restaurant] = getApi().restaurants.uiState.restaurants;
-    act(() => {
+    await act(() => {
       getApi().restaurants.requestInteractiveMenuRender({
         ...restaurant,
         menuUrl: 'https://example.com/menu',

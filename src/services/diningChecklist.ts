@@ -118,16 +118,18 @@ const CUISINE_RULES: CuisineRule[] = [
 ];
 
 export function getDiningChecklist(
+  // The restaurant for which to generate the dining checklist.
   restaurant: Restaurant,
   options: { strictCeliac?: boolean; safetyLevel?: MenuSafetyLevel } = {}
 ): DiningChecklistItem[] {
   const text = `${restaurant.name}\n${restaurant.rawMenuText ?? ''}\n${restaurant.gfMenu.join('\n')}`;
   const items = [...BASE_ITEMS];
-
+  // If strict celiac mode is enabled or the safety level is caution or unsafe, add the strict celiac protocol item to the checklist.
   if (options.strictCeliac || options.safetyLevel === 'caution' || options.safetyLevel === 'unsafe') {
     items.unshift(STRICT_ITEM);
   }
-
+  // For each cuisine rule, check if the restaurant's name or menu text matches any of the rule's patterns. 
+  // If a match is found, add the corresponding items to the checklist.
   for (const rule of CUISINE_RULES) {
     if (rule.patterns.some((pattern) => pattern.test(text))) {
       items.push(...rule.items);
@@ -138,9 +140,10 @@ export function getDiningChecklist(
 }
 
 function dedupeItems(items: DiningChecklistItem[]): DiningChecklistItem[] {
+  // Deduplicate the checklist items by their unique IDs to ensure that each item appears only once in the final list.
   const seen = new Set<string>();
   const deduped: DiningChecklistItem[] = [];
-
+  // Iterate through the provided items and add them to the deduped list only if their ID has not been seen before.
   for (const item of items) {
     if (seen.has(item.id)) continue;
     seen.add(item.id);

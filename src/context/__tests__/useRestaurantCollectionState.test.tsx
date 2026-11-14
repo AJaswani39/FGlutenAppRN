@@ -1,5 +1,5 @@
 import React from 'react';
-import TestRenderer, { act } from 'react-test-renderer';
+import { act, render, RenderResult } from '@testing-library/react-native';
 import { describe, expect, it, jest } from '@jest/globals';
 import { Restaurant, RestaurantFilters, RestaurantUiState } from '../../types/restaurant';
 import { useRestaurantCollectionState } from '../useRestaurantCollectionState';
@@ -38,7 +38,7 @@ function filters(overrides: Partial<RestaurantFilters> = {}): RestaurantFilters 
   };
 }
 
-function renderCollectionState(options: {
+async function renderCollectionState(options: {
   restaurants?: Restaurant[];
   initialFilters?: RestaurantFilters;
   strictCeliac?: boolean;
@@ -83,9 +83,9 @@ function renderCollectionState(options: {
     return null;
   }
 
-  let renderer!: TestRenderer.ReactTestRenderer;
-  act(() => {
-    renderer = TestRenderer.create(<Probe />);
+  let renderer!: RenderResult;
+  await act(async () => {
+    renderer = await render(<Probe />);
   });
 
   return {
@@ -99,22 +99,22 @@ function renderCollectionState(options: {
       expect(setUiState).toHaveBeenCalled();
       return uiStateRef.current;
     },
-    rerenderWithFilters: (next: RestaurantFilters) => {
+    rerenderWithFilters: async (next: RestaurantFilters) => {
       filtersValue = next;
-      act(() => {
-        renderer.update(<Probe />);
+      await act(async () => {
+        await renderer.rerender(<Probe />);
       });
     },
   };
 }
 
 describe('useRestaurantCollectionState', () => {
-  it('emits the filtered and sorted collection', () => {
+  it('emits the filtered and sorted collection', async () => {
     const restaurants = [
       restaurant({ placeId: 'a', name: 'Zeta' }),
       restaurant({ placeId: 'b', name: 'Alpha' }),
     ];
-    const harness = renderCollectionState({ restaurants, initialFilters: filters({ searchQuery: 'a' }) });
+    const harness = await renderCollectionState({ restaurants, initialFilters: filters({ searchQuery: 'a' }) });
 
     const callsBeforeRefresh = harness.setUiState.mock.calls.length;
     harness.api.refreshCollectionState();
@@ -128,8 +128,8 @@ describe('useRestaurantCollectionState', () => {
     expect(state.message).toBeNull();
   });
 
-  it('defaults the empty reason from the raw restaurant count', () => {
-    const withResults = renderCollectionState({
+  it('defaults the empty reason from the raw restaurant count', async () => {
+    const withResults = await renderCollectionState({
       restaurants: [restaurant()],
       initialFilters: filters({ searchQuery: 'zzz' }),
     });
@@ -137,7 +137,7 @@ describe('useRestaurantCollectionState', () => {
     const filteredOut = withResults.latestState();
     expect(filteredOut.message).toBe('No restaurants match your current filters.');
 
-    const withoutResults = renderCollectionState({ restaurants: [] });
+    const withoutResults = await renderCollectionState({ restaurants: [] });
     withoutResults.api.emitFilteredState();
     const empty = withoutResults.latestState();
     expect(empty.message).toBe(
@@ -145,8 +145,8 @@ describe('useRestaurantCollectionState', () => {
     );
   });
 
-  it('honors an explicit empty reason override', () => {
-    const harness = renderCollectionState({
+  it('honors an explicit empty reason override', async () => {
+    const harness = await renderCollectionState({
       restaurants: [],
       initialFilters: filters(),
     });
@@ -157,8 +157,8 @@ describe('useRestaurantCollectionState', () => {
     expect(state.message).toBe('No restaurants match your current filters.');
   });
 
-  it('preserves the current message and status in refreshCollectionState', () => {
-    const harness = renderCollectionState({
+  it('preserves the current message and status in refreshCollectionState', async () => {
+    const harness = await renderCollectionState({
       restaurants: [restaurant()],
       uiState: { status: 'loading', message: 'Refreshing nearby restaurants…' },
     });
@@ -170,8 +170,8 @@ describe('useRestaurantCollectionState', () => {
     expect(state.message).toBe('Refreshing nearby restaurants…');
   });
 
-  it('lets overrides win over the current ui state', () => {
-    const harness = renderCollectionState({
+  it('lets overrides win over the current ui state', async () => {
+    const harness = await renderCollectionState({
       restaurants: [restaurant()],
       uiState: { status: 'loading', message: 'Old message' },
     });
@@ -183,12 +183,12 @@ describe('useRestaurantCollectionState', () => {
     expect(state.message).toBe('New message');
   });
 
-  it('requires scanned GF evidence in strict celiac mode', () => {
+  it('requires scanned GF evidence in strict celiac mode', async () => {
     const restaurants = [
       restaurant({ placeId: 'a', hasGFMenu: true }),
       restaurant({ placeId: 'b', gfMenu: ['GF crust'] }),
     ];
-    const harness = renderCollectionState({ restaurants, strictCeliac: true });
+    const harness = await renderCollectionState({ restaurants, strictCeliac: true });
 
     harness.api.emitFilteredState();
 
@@ -196,20 +196,20 @@ describe('useRestaurantCollectionState', () => {
     expect(state.restaurants.map((r) => r.placeId)).toEqual(['b']);
   });
 
-  it('skips re-emitting while idle with no restaurants', () => {
-    const harness = renderCollectionState({ restaurants: [], uiState: { status: 'idle' } });
+  it('skips re-emitting while idle with no restaurants', async () => {
+    const harness = await renderCollectionState({ restaurants: [], uiState: { status: 'idle' } });
 
     expect(harness.setUiState).not.toHaveBeenCalled();
   });
 
-  it('re-emits when the filters change', () => {
+  it('re-emits when the filters change', async () => {
     const restaurants = [restaurant({ placeId: 'a', hasGFMenu: true })];
-    const harness = renderCollectionState({ restaurants });
+    const harness = await renderCollectionState({ restaurants });
 
     const initialCalls = harness.setUiState.mock.calls.length;
     expect(initialCalls).toBe(1);
 
-    harness.rerenderWithFilters(filters({ gfOnly: true }));
+    await harness.rerenderWithFilters(filters({ gfOnly: true }));
 
     expect(harness.setUiState.mock.calls.length).toBeGreaterThan(initialCalls);
     const latest = harness.latestState();

@@ -3,6 +3,10 @@ import { API_TIMEOUTS } from '../constants';
 /**
  * A fetch wrapper that aborts the request after a configurable timeout.
  * Extracted as a shared utility to avoid duplication across service files.
+ * @param url 
+ * @param [options={}] 
+ * @param [timeoutMs=API_TIMEOUTS.DEFAULT]
+ * @returns A Promise that resolves to the fetch Response or rejects with an error if the request times out or fails.
  */
 export async function fetchWithTimeout(
   url: string,

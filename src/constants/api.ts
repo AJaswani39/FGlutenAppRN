@@ -1,4 +1,5 @@
 export const API_ENDPOINTS = {
+  PLACES_AUTOCOMPLETE: 'https://places.googleapis.com/v1/places:autocomplete',
   PLACES_NEARBY: 'https://places.googleapis.com/v1/places:searchNearby',
   PLACE_DETAILS: 'https://places.googleapis.com/v1/places',
   VISION_ANNOTATE: 'https://vision.googleapis.com/v1/images:annotate',

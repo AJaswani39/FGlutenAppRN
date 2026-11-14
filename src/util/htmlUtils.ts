@@ -3,6 +3,13 @@ import { isRecord } from './typeGuards';
 
 export type MenuSourceFormat = 'html' | 'pdf' | 'image' | 'javascript' | 'unknown';
 
+/**
+ * Detects the likely format of a menu source based on the URL and content type.
+ * This function checks the content type first, then falls back to examining the URL's file extension.
+ * @param url The URL of the menu source.
+ * @param contentType The content type of the menu source, if known.
+ * @returns A MenuSourceFormat indicating the detected format of the menu source.
+ */
 export function detectMenuSourceFormat(url: string, contentType = ''): MenuSourceFormat {
   const normalizedType = contentType.toLowerCase().split(';', 1)[0].trim();
   if (normalizedType === 'application/pdf') return 'pdf';
@@ -61,6 +68,9 @@ export function stripNonContentTags(html: string): string {
 
 /**
  * Converts HTML to a list of text segments, stripping tags and normalizing whitespace.
+ * This function also attempts to extract structured menu segments from JSON-LD if present.
+ * @param html The HTML string to convert.
+ * @returns An array of text segments extracted from the HTML.
  */
 export function htmlToTextSegments(html: string): string[] {
   const safeHtml = html.slice(0, 500_000);
@@ -101,7 +111,13 @@ export function htmlToTextSegments(html: string): string[] {
     .filter((segment) => !isLikelyNonMenuNoise(segment))
     .filter(segment => segment.length > 2); // Filter out tiny random character fragments
 }
-
+/**
+ * Extracts structured menu segments from JSON-LD embedded in the HTML.
+ * This function looks for <script type="application/ld+json"> tags 
+ * and parses their content to find MenuItem and MenuSection entries.
+ * @param html The HTML string to search for structured menu data.
+ * @returns An array of text segments extracted from structured menu data.
+ */
 function extractStructuredMenuSegments(html: string): string[] {
   const jsonLdPattern = /<script\b[^>]*type\s*=\s*["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
   const segments: string[] = [];
@@ -119,7 +135,13 @@ function extractStructuredMenuSegments(html: string): string[] {
 
   return Array.from(new Set(segments.map((segment) => segment.trim()).filter(Boolean))).slice(0, 80);
 }
-
+/**
+ * Recursively collects structured menu segments from a parsed JSON-LD object.
+ * It looks for MenuItem and MenuSection entries and extracts their names, descriptions, and prices.
+ * @param value The parsed JSON-LD object to traverse.
+ * @param segments The array to which extracted segments will be added.
+ * @returns void. The segments array is modified in place.
+ */
 function collectStructuredMenuSegments(value: unknown, segments: string[]): void {
   if (Array.isArray(value)) {
     value.forEach((entry) => collectStructuredMenuSegments(entry, segments));
@@ -145,7 +167,12 @@ function collectStructuredMenuSegments(value: unknown, segments: string[]): void
 
   Object.values(value).forEach((entry) => collectStructuredMenuSegments(entry, segments));
 }
-
+/**
+ * Attempts to extract a structured price from a JSON-LD offers object.
+ * It handles both single offer objects and arrays of offers, returning the first valid price found.
+ * @param value The offers object or array to extract the price from.
+ * @returns A string representing the price, or null if no valid price is found.
+ */
 function getStructuredPrice(value: unknown): string | null {
   if (Array.isArray(value)) {
     for (const entry of value) {
@@ -159,13 +186,24 @@ function getStructuredPrice(value: unknown): string | null {
   const price = value.price;
   return typeof price === 'number' || typeof price === 'string' ? String(price) : null;
 }
-
+/**
+ * Attempts to find a potential menu link within an HTML string.
+ * This function searches for anchor tags with href attributes that contain keywords related to menus.
+ * It filters out links that point to non-menu resources, such as PDFs, images, or unrelated pages.
+ * @param html The HTML string to search for menu links.
+ * @param baseUrl The base URL to resolve relative links against.
+ * @returns A string containing the first valid menu link found, or null if no suitable link is found.
+ */
 function extractMenuContainerHtml(html: string): string {
   const menuContainerPattern = /<([a-z][\w-]*)\b[^>]*(?:class|id)\s*=\s*["'][^"']*\b(?:menu|food|entrees?|appetizers?|desserts?|drinks?|beverages?)\b[^"']*["'][^>]*>[\s\S]*?<\/\1>/gi;
   const blocks = Array.from(html.matchAll(menuContainerPattern), (match) => match[0]);
   return blocks.join('\n');
 }
-
+/**
+ * Decodes HTML entities within a string.
+ * @param entity The HTML entity to decode.
+ * @returns The decoded string.
+ */
 function decodeHtmlEntity(entity: string): string {
   const namedEntities: Record<string, string> = {
     '&nbsp;': ' ',
@@ -200,7 +238,11 @@ const CSS_KEYWORD_TOKEN_REGEX = /\b(?:font-family|background-color|justify-conte
 const UTILITY_COPY_REGEX = /^(?:download|get|install|join|sign\s+up|follow|book|reserve|view|learn)\b.*\b(?:app|application|newsletter|rewards?|gift cards?|careers?|jobs?|reservations?)\b/i;
 const MARKETING_COPY_REGEX = /^(?:welcome|visit\s+us|find\s+us|contact\s+us|our\s+locations?|hours?|learn\s+more|subscribe)\b|\b(?:limited[- ]time|special\s+offer|now\s+available|join\s+our)\b/i;
 const CSS_SYNTAX_REGEX = /^(?:var\(|@media\b|@font-face\b|from\s+['"]|import\s+)/i;
-
+/** 
+ * Determines if a string segment is likely to be non-menu noise.
+ * @param segment The string segment to evaluate.
+ * @returns A boolean indicating if the segment is likely non-menu noise.
+ */
 function isLikelyNonMenuNoise(segment: string): boolean {
   const cssClassTokens = segment.match(CSS_CLASS_TOKEN_REGEX) || [];
   const cssPropertyTokens = segment.match(CSS_PROPERTY_TOKEN_REGEX) || [];
@@ -220,6 +262,11 @@ function isLikelyNonMenuNoise(segment: string): boolean {
 
 /**
  * Attempts to find a potential menu link within an HTML string.
+ * This function searches for anchor tags with href attributes that contain keywords related to menus.
+ * It filters out links that point to non-menu resources, such as PDFs, images, or unrelated pages.
+ * @param html The HTML string to search for menu links.
+ * @param baseUrl The base URL to resolve relative links against.
+ * @returns A string containing the first valid menu link found, or null if no suitable link is found.
  */
 const MENU_PATTERN = /href=["']([^"']*(?:menu|food|eat|dining)[^"']*)["']/gi;
 const EXCLUDED_EXTENSIONS = /\.(?:pdf|jpg|jpeg|png|gif|svg|css|js|zip|mp4|webp)$/i;
@@ -280,7 +327,11 @@ export function findMenuLink(html: string, baseUrl: string): string | null {
   candidates.sort((left, right) => right.score - left.score);
   return candidates[0]?.url || null;
 }
-
+/**
+ * Extracts balanced JSON objects from a string, ignoring nested structures and strings.
+ * @param text The string to search for JSON objects.
+ * @returns An array of strings, each representing a balanced JSON object found in the input text.
+ */
 export function normalizeHttpUrl(value: string | null | undefined): string | null {
   const trimmed = value?.trim();
   if (!trimmed) return null;
@@ -297,6 +348,9 @@ export function normalizeHttpUrl(value: string | null | undefined): string | nul
 
 /**
  * Cleans a menu line, removing tags and truncating long fragments.
+ * This function also attempts to extract the most relevant fragment if the line is too long.
+ * @param line The menu line to clean.
+ * @returns A cleaned and possibly truncated version of the menu line.
  */
 const CLEAN_MENU_GLF_REGEX = /gluten[\s-]?free|\bgf\b|celiac|coeliac/i;
 const TAG_STRIP_REGEX = /<[^>]*>/g;
@@ -323,6 +377,9 @@ export function cleanMenuLine(line: string): string {
 
 /**
  * Searches for indicators of a menu section in text segments.
+ * This function looks for headings and patterns that suggest the presence of a menu, such as "Menu", "Food", or "Dining".
+ * @param segments An array of text segments to search for menu indicators.
+ * @returns The index of the first segment that appears to be a menu heading, or -1 if none are found.
  */
 const MENU_INDICATORS = ['menu', 'food', 'dining', 'entree', 'appetizer', 'dessert'];
 const MENU_WORD_REGEX = /\bmenu\b/i;
@@ -357,6 +414,12 @@ const ITEM_GLF_REGEX = /gluten[\s-]?free|\bgf\b|celiac|coeliac/i;
 const ITEM_CAPITALIZED_REGEX = /^[A-Z][\w'&-]*(?:\s+[A-Z][\w'&-]*){1,5}(?:\s|$)/;
 const DESCRIPTION_KEYWORD_REGEX = /\b(?:with|served|topped|made|contains|includes|choice|sauce|dressing|allergen|wheat|milk|egg|soy|nuts?)\b/i;
 
+/**
+ * Determines if a string segment is likely to be a menu item based on length, 
+ * capitalization, and presence of price or category keywords.
+ * @param segment The string segment to evaluate.
+ * @returns A boolean indicating if the segment is likely a menu item.
+ */
 function isLikelyMenuItem(segment: string): boolean {
   if (segment.length < 4 || segment.length > 160) return false;
   if (ITEM_PRICE_REGEX.test(segment)) return true;
@@ -364,7 +427,13 @@ function isLikelyMenuItem(segment: string): boolean {
   if (ITEM_GLF_REGEX.test(segment)) return true;
   return ITEM_CAPITALIZED_REGEX.test(segment);
 }
-
+/**
+ * Includes menu descriptions that follow likely menu items in a block of text segments.
+ * This function scans through a block of text segments, selecting those that are likely menu items
+ * and including any subsequent segments that appear to be descriptions of those items.
+ * @param block An array of text segments representing a block of content.
+ * @returns An array of text segments that includes menu items and their associated descriptions.
+ */
 function includeMenuDescriptions(block: string[]): string[] {
   const selected: string[] = [];
 
@@ -382,7 +451,12 @@ function includeMenuDescriptions(block: string[]): string[] {
 
   return selected;
 }
-
+/**
+ * Determines if a string segment is likely to be a menu description based on length,
+ * absence of menu item characteristics, and presence of descriptive keywords.
+ * @param segment The string segment to evaluate.
+ * @returns A boolean indicating if the segment is likely a menu description.
+ */
 function isLikelyMenuDescription(segment: string): boolean {
   return (
     segment.length >= 20 &&
@@ -394,6 +468,10 @@ function isLikelyMenuDescription(segment: string): boolean {
 
 /**
  * Extracts snippets of gluten-free evidence from HTML or text segments.
+ * This function searches for segments that contain gluten-free indicators, such as "gluten-free", "GF", "celiac", or "coeliac".
+ * It filters out segments that are too short or too long, and normalizes whitespace for consistency.
+ * @param htmlOrSegments A string of HTML or an array of text segments to search for gluten-free evidence.
+ * @returns An array of strings containing the extracted gluten-free evidence snippets.
  */
 const GF_EVIDENCE_REGEX = /gluten[\s-]?free|\bgf\b|celiac|coeliac/i;
 const NON_MENU_HEADING_REGEX = /\bmenu\b|\b(?:food|dining|entrees?|appetizers?|desserts?)\b/i;
@@ -429,12 +507,22 @@ export function extractGfEvidence(htmlOrSegments: string | string[]): string[] {
 
 /**
  * Extracts a larger block of raw menu text for scanning.
+ * This function attempts to find the main content of a menu from HTML or text segments,
+ * returning a string that is truncated to a maximum of 3000 characters.
+ * @param htmlOrSegments A string of HTML or an array of text segments to extract the menu text from.
+ * @returns A string containing the extracted raw menu text, truncated to 3000 characters.
  */
 export function extractRawMenuText(htmlOrSegments: string | string[]): string {
   const segments = typeof htmlOrSegments === 'string' ? htmlToTextSegments(htmlOrSegments) : htmlOrSegments;
   return findMainContent(segments).slice(0, 3000);
 }
-
+/**
+ * Determines if a set of text segments likely contains menu content.
+ * This function evaluates the segments for characteristics typical of menu items, such as length, capitalization, and presence of price or category keywords.
+ * It also checks for the presence of gluten-free evidence or menu category headings to strengthen the likelihood of menu content.
+ * @param segments An array of text segments to evaluate.
+ * @returns A boolean indicating if the segments likely contain menu content.
+ */
 export function hasLikelyMenuContent(segments: string[]): boolean {
   const itemLikeSegments = segments.filter((segment) => {
     if (segment.length < 4 || segment.length > 160) return false;

@@ -2,7 +2,7 @@
  * Simple logging utility that only outputs logs in development
  */
 const isDev = __DEV__;
-
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 export const logger = {
   warn: (...args: unknown[]) => {
     if (isDev) {

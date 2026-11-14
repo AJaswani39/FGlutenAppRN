@@ -19,6 +19,9 @@ export interface MapCluster {
  * The grid cell size scales with the region delta so that, at any zoom level,
  * the map shows a reasonable number of cells. A small floor prevents
  * pathological fragmentation when the user zooms way in.
+ * @param restaurants The list of restaurants to cluster.
+ * @param region The current map region, used to determine the grid cell size.
+ * @returns An array of MapCluster objects representing the clustered restaurants.
  */
 export function buildMapClusters(
   restaurants: Restaurant[],

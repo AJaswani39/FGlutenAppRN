@@ -41,6 +41,10 @@ function parseSafetyLevel(value: unknown): MenuSafetyLevel | undefined {
  * - non-array → undefined
  * - explicit [] → []
  * - all elements invalid → undefined (so merges can fall back)
+ * - some elements valid → keep only valid
+ * @param value The value to parse as an array of strings.
+ * @returns An array of valid strings, an empty array if the input was an empty array, 
+ * or undefined if the input was not an array or contained no valid strings.
  */
 function parseStringArray(value: unknown): string[] | undefined {
   if (!Array.isArray(value)) return undefined;
@@ -57,6 +61,9 @@ function parseStringArray(value: unknown): string[] | undefined {
 /**
  * Keeps valid risk objects; drops junk.
  * Same empty vs all-invalid semantics as parseStringArray.
+ * @param value The value to parse as an array of MenuAiRiskFactor objects.
+ * @returns An array of valid MenuAiRiskFactor objects, an empty array if the input was an empty array,
+ * or undefined if the input was not an array or contained no valid risk objects.
  */
 function parseRiskBreakdown(value: unknown): MenuAiRiskFactor[] | undefined {
   if (!Array.isArray(value)) return undefined;
@@ -79,6 +86,12 @@ function stripMarkdownFences(raw: string): string {
   return raw.replace(/```(?:json)?\s*/gi, '').replace(/```/g, '').trim();
 }
 
+/**
+ * Attempts to parse a string as JSON and returns the resulting object if it is a valid record.
+ * If the string cannot be parsed or does not result in a record, it returns null.
+ * @param candidate The string to parse as JSON.
+ * @returns A record object if parsing is successful and results in a record; otherwise, null.
+ */
 function tryParseRecord(candidate: string): Record<string, unknown> | null {
   try {
     const parsed: unknown = JSON.parse(candidate);
@@ -88,7 +101,11 @@ function tryParseRecord(candidate: string): Record<string, unknown> | null {
   }
 }
 
-/** Extract top-level `{ ... }` slices, respecting JSON string escaping. */
+/** Extract top-level `{ ... }` slices, respecting JSON string escaping. 
+ * This is a best-effort approach and may not handle all edge cases, but it works for the expected menu-AI output.
+ * @param text The input string from which to extract JSON objects.
+ * @returns An array of strings, each representing a top-level JSON object found in the input text.
+*/
 function extractBalancedJsonObjects(text: string): string[] {
   const objects: string[] = [];
   let depth = 0;
@@ -130,7 +147,11 @@ function extractBalancedJsonObjects(text: string): string[] {
 
   return objects;
 }
-
+/**
+ * Scores a menu AI record based on the presence of expected keys.
+ * @param record The record to score.
+ * @returns The score as a number.
+ */
 function scoreMenuAiRecord(record: Record<string, unknown>): number {
   let score = 0;
   for (const key of MENU_AI_KEYS) {
@@ -138,7 +159,14 @@ function scoreMenuAiRecord(record: Record<string, unknown>): number {
   }
   return score;
 }
-
+/**
+ * Selects the best JSON object from a raw string that may contain multiple JSON-like structures.
+ * It first attempts to parse the entire string as a single JSON object. If that fails or is not valid,
+ * it extracts all top-level JSON objects and scores them based on the presence of expected keys.
+ * The object with the highest score is returned. If no valid objects are found, it returns null.
+ * @param raw The raw string input that may contain JSON objects.
+ * @returns The best-scoring JSON object as a record, or null if none are valid.
+ */
 function pickBestMenuAiRecord(raw: string): Record<string, unknown> | null {
   const cleaned = stripMarkdownFences(raw);
   if (!cleaned) return null;
@@ -166,7 +194,12 @@ function pickBestMenuAiRecord(raw: string): Record<string, unknown> | null {
   // No menu-AI-shaped object; fall back to a direct full-string parse if any.
   return direct ?? best;
 }
-
+/**
+ * Converts a parsed record into a MenuAiResponse object, ensuring that all fields are validated and properly typed.
+ * It uses helper functions to parse safety levels, string arrays, and risk breakdowns, returning undefined for any invalid or missing fields.
+ * @param parsed The record to convert into a MenuAiResponse.
+ * @returns A MenuAiResponse object with validated fields.
+ */
 function toMenuAiResponse(parsed: Record<string, unknown>): MenuAiResponse {
   return {
     overallSafety: parseSafetyLevel(parsed.overallSafety),
@@ -179,7 +212,11 @@ function toMenuAiResponse(parsed: Record<string, unknown>): MenuAiResponse {
     riskBreakdown: parseRiskBreakdown(parsed.riskBreakdown),
   };
 }
-
+/**
+ * Parses a raw string into a MenuAiResponse object.
+ * @param raw The raw string input that may contain JSON objects.
+ * @returns A MenuAiResponse object with validated fields, or null if parsing fails.
+ */
 export function parseMenuAiResponse(raw: string): MenuAiResponse | null {
   const record = pickBestMenuAiRecord(raw);
   if (!record) return null;

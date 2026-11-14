@@ -77,6 +77,8 @@ export default function RestaurantDetailModal({ restaurant: initial, useMiles, o
 
   const openMaps = () => {
     if (mapsUrl) {
+      // Open the maps URL using the device's default mapping application. 
+      // If it fails, log the error for debugging purposes.
       void Linking.openURL(mapsUrl).catch((error: unknown) => {
         const message = error instanceof Error ? error.message : String(error);
         logger.error(`Failed to open maps link: ${message}`);
@@ -86,6 +88,8 @@ export default function RestaurantDetailModal({ restaurant: initial, useMiles, o
 
   const openMenu = () => {
     if (safeMenuUrl) {
+      // Open the menu URL in the device's default web browser. 
+      // If it fails, log the error for debugging purposes.
       void Linking.openURL(safeMenuUrl).catch((error: unknown) => {
         const message = error instanceof Error ? error.message : String(error);
         logger.error(`Failed to open menu link: ${message}`);
@@ -96,6 +100,8 @@ export default function RestaurantDetailModal({ restaurant: initial, useMiles, o
   const handleFav = (status: FavoriteStatus) => {
     impactAsync(Haptics.ImpactFeedbackStyle.Light);
     if (restaurant.favoriteStatus === status) {
+      // If the restaurant is already marked with the selected favorite status, clear it by setting it to null. 
+      // Otherwise, update the favorite status to the selected value.
       setFavoriteStatus(restaurant, null);
     } else {
       setFavoriteStatus(restaurant, status);
@@ -103,16 +109,21 @@ export default function RestaurantDetailModal({ restaurant: initial, useMiles, o
   };
 
   const handleRescan = () => {
+    // Trigger a haptic feedback to indicate the rescan action and request a menu rescan for the restaurant.
     impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     requestMenuRescan(restaurant);
   };
 
   const handleInteractiveMenuRender = () => {
+    // Trigger a haptic feedback to indicate the interactive menu render action and request the 
+    // rendering of an interactive menu for the restaurant.
     impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     requestInteractiveMenuRender(restaurant);
   };
 
   const buildAiText = (): string | null => {
+    // Build a string containing the restaurant's name, raw menu text, 
+    // and gluten-free menu items to provide context for AI analysis.
     if (restaurant.rawMenuText) return restaurant.rawMenuText;
     if (restaurant.gfMenu.length > 0) return restaurant.gfMenu.join('\n');
     return null;
@@ -325,6 +336,8 @@ export default function RestaurantDetailModal({ restaurant: initial, useMiles, o
 }
 
 function getSafeExternalUrl(url: string | null): string | null {
+  // Normalize the provided URL to ensure it is safe for external linking. 
+  // If the URL is null, return null. Otherwise, return the normalized URL.
   return normalizeHttpUrl(url);
 }
 

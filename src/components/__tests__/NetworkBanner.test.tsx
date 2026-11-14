@@ -1,6 +1,6 @@
 import React from 'react';
 import { Text } from 'react-native';
-import TestRenderer, { act } from 'react-test-renderer';
+import { act, render, RenderResult } from '@testing-library/react-native';
 import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
 import NetInfo, { NetInfoChangeHandler } from '@react-native-community/netinfo';
 import { ThemeProvider } from '../../context/ThemeContext';
@@ -35,10 +35,10 @@ describe('NetworkBanner', () => {
     jest.clearAllMocks();
   });
 
-  function renderBanner() {
-    let renderer!: TestRenderer.ReactTestRenderer;
-    act(() => {
-      renderer = TestRenderer.create(
+  async function renderBanner() {
+    let renderer!: RenderResult;
+    await act(async () => {
+      renderer = await render(
         <ThemeProvider initialIsDark={false}>
           <NetworkBanner />
         </ThemeProvider>
@@ -47,28 +47,28 @@ describe('NetworkBanner', () => {
     return renderer;
   }
 
-  it('subscribes to NetInfo on mount and cleans up on unmount', () => {
-    const renderer = renderBanner();
+  it('subscribes to NetInfo on mount and cleans up on unmount', async () => {
+    const renderer = await renderBanner();
     expect(netInfoMock.addEventListener).toHaveBeenCalledTimes(1);
 
-    act(() => {
+    await act(() => {
       renderer.unmount();
     });
     expect(unsubscribeMock).toHaveBeenCalledTimes(1);
   });
 
-  it('renders the offline message text', () => {
-    const renderer = renderBanner();
-    const texts = renderer.root.findAllByType(Text);
+  it('renders the offline message text', async () => {
+    const renderer = await renderBanner();
+    const texts = renderer.container.queryAll((node) => node.type === 'Text');
     const offlineText = texts.find((t) => t.props.children === 'No internet connection. AI disabled.');
     expect(offlineText).toBeDefined();
   });
 
-  it('updates pointerEvents to auto when disconnected', () => {
-    const renderer = renderBanner();
+  it('updates pointerEvents to auto when disconnected', async () => {
+    const renderer = await renderBanner();
     const handler = listeners[0];
 
-    act(() => {
+    await act(() => {
       handler({
         type: 'none',
         isConnected: false,
@@ -77,15 +77,15 @@ describe('NetworkBanner', () => {
       } as any);
     });
 
-    const animatedView = renderer.root.findByProps({ pointerEvents: 'auto' });
+    const animatedView = renderer.container.queryAll((node) => node.props.pointerEvents === 'auto')[0];
     expect(animatedView).toBeDefined();
   });
 
-  it('sets pointerEvents to none when connected and reachable', () => {
-    const renderer = renderBanner();
+  it('sets pointerEvents to none when connected and reachable', async () => {
+    const renderer = await renderBanner();
     const handler = listeners[0];
 
-    act(() => {
+    await act(() => {
       handler({
         type: 'wifi',
         isConnected: true,
@@ -94,15 +94,15 @@ describe('NetworkBanner', () => {
       } as any);
     });
 
-    const animatedView = renderer.root.findByProps({ pointerEvents: 'none' });
+    const animatedView = renderer.container.queryAll((node) => node.props.pointerEvents === 'none')[0];
     expect(animatedView).toBeDefined();
   });
 
-  it('treats connected without internet reachability as disconnected', () => {
-    const renderer = renderBanner();
+  it('treats connected without internet reachability as disconnected', async () => {
+    const renderer = await renderBanner();
     const handler = listeners[0];
 
-    act(() => {
+    await act(() => {
       handler({
         type: 'wifi',
         isConnected: true,
@@ -111,15 +111,15 @@ describe('NetworkBanner', () => {
       } as any);
     });
 
-    const animatedView = renderer.root.findByProps({ pointerEvents: 'auto' });
+    const animatedView = renderer.container.queryAll((node) => node.props.pointerEvents === 'auto')[0];
     expect(animatedView).toBeDefined();
   });
 
-  it('ignores events where isConnected is null', () => {
-    const renderer = renderBanner();
+  it('ignores events where isConnected is null', async () => {
+    const renderer = await renderBanner();
     const handler = listeners[0];
 
-    act(() => {
+    await act(() => {
       handler({
         type: 'unknown',
         isConnected: null,
@@ -128,7 +128,7 @@ describe('NetworkBanner', () => {
       } as any);
     });
 
-    const animatedView = renderer.root.findByProps({ pointerEvents: 'none' });
+    const animatedView = renderer.container.queryAll((node) => node.props.pointerEvents === 'none')[0];
     expect(animatedView).toBeDefined();
   });
 });

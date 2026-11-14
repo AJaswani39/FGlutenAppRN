@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import * as ImagePicker from 'expo-image-picker';
-import * as ImageManipulator from 'expo-image-manipulator';
+import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 import {
   View,
   Text,
@@ -70,6 +70,7 @@ export default function MenuAnalysisSheet({ restaurant, onClose }: Props) {
   
   const { dairyFree, nutFree, soyFree, strictCeliac } = useSettings();
   
+  
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isExtractingPhotoText, setIsExtractingPhotoText] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -90,6 +91,7 @@ export default function MenuAnalysisSheet({ restaurant, onClose }: Props) {
   useEffect(() => {
     const freshText = restaurant.rawMenuText?.trim() || '';
     if (freshText && editableText.trim().length === 0) {
+      // If the user hasn't typed anything yet, seed the textarea with the restaurant's raw menu text.
       setEditableText(freshText);
       seededPlaceIdRef.current = restaurant.placeId;
     }
@@ -101,6 +103,7 @@ export default function MenuAnalysisSheet({ restaurant, onClose }: Props) {
     PuterAiService.init(config.puterApiKey, config.aiProxyBaseUrl);
 
     return () => {
+      // Mark the component as unmounted to prevent state updates after unmount.
       isMounted.current = false;
       analysisAbortController.current?.abort();
       analysisAbortController.current = null;
@@ -115,6 +118,7 @@ export default function MenuAnalysisSheet({ restaurant, onClose }: Props) {
   });
 
   useEffect(() => {
+    // Update the session data ref whenever analysisResult or deepAnalysisMarkdown changes
     sessionDataRef.current = {
       analysis: analysisResult,
       deepAnalysis: deepAnalysisMarkdown,
@@ -135,6 +139,7 @@ export default function MenuAnalysisSheet({ restaurant, onClose }: Props) {
 
   const runAnalysis = useCallback(async (text: string) => {
     if (!text.trim()) {
+      // If the user tries to run analysis on empty text, show an error message and return early.
       setError('Please enter or paste menu text to analyse.');
       return;
     }
@@ -164,13 +169,16 @@ export default function MenuAnalysisSheet({ restaurant, onClose }: Props) {
       });
 
       if (isMounted.current) {
+        // If we get a valid JSON response, parse it and merge it into the analysisResult state.
         const parsed = parseMenuAiResponse(deepResultRaw);
         if (!parsed) {
+          // If we fail to parse the JSON, log a warning and fall back to showing the raw markdown.
           logger.warn('Failed to parse Puter AI JSON, falling back to markdown display');
           setDeepAnalysisMarkdown(deepResultRaw);
         } else {
           // Merge deep results into analysisResult for UI rendering
           setAnalysisResult((prev) => {
+            // If we have a previous result, use it as the base; otherwise, use the localResult.
             const base = prev ?? localResult;
             const aligned = alignScoreWithSafetyLevel(
               base.score,
@@ -193,6 +201,7 @@ export default function MenuAnalysisSheet({ restaurant, onClose }: Props) {
       }
     } catch (err: unknown) {
       const isCancelled = err instanceof Error && err.name === 'AbortError';
+      // If the analysis was aborted, we don't want to show an error message, but we do want to reset the analyzing state.
       if (isCancelled) return;
       if (!isMounted.current) return;
       const message = err instanceof Error ? err.message : String(err);
@@ -200,6 +209,7 @@ export default function MenuAnalysisSheet({ restaurant, onClose }: Props) {
     } finally {
       const isCurrentRequest = analysisAbortController.current === controller;
       if (isCurrentRequest) {
+        // Clear the abort controller if this is the current request, so we don't accidentally abort a future request.
         analysisAbortController.current = null;
       }
       if (isMounted.current && isCurrentRequest) {
@@ -212,24 +222,26 @@ export default function MenuAnalysisSheet({ restaurant, onClose }: Props) {
   // runAnalysis is stable (wrapped in useCallback) so it's safe in this dep array.
   useEffect(() => {
     if (!analysisResult && editableText.trim().length > 10) {
+      // We have menu text but no analysis result yet, so run the analysis automatically.
       void runAnalysis(editableText);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [runAnalysis]);
 
   const pickMenuPhoto = async () => {
+    // Reset any previous error and show the loading indicator while we process the image.
     setError(null);
     setIsExtractingPhotoText(true);
 
     try {
+      // Request permission to access the photo library
       const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (!isMounted.current) return;
-
+      // If permission is denied, show an error message and exit
       if (!permission.granted) {
         setError('Photo access is needed to scan a menu image.');
         return;
       }
-
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ['images'],
         allowsEditing: false,
@@ -241,11 +253,26 @@ export default function MenuAnalysisSheet({ restaurant, onClose }: Props) {
 
       const pickedAsset = result.assets[0];
       
-      const manipulated = await ImageManipulator.manipulateAsync(
-        pickedAsset.uri,
-        [{ resize: { width: 1024 } }],
-        { base64: true, format: ImageManipulator.SaveFormat.JPEG, compress: 0.5 }
-      );
+      const context = ImageManipulator.manipulate(pickedAsset.uri);
+      const manipulated = await (async () => {
+        try {
+          context.resize({ width: 1024 });
+          const image = await context.renderAsync();
+          try {
+            // We need to save the image as base64 to send to the OCR service, 
+            // but we also want to compress it to reduce payload size.
+            return await image.saveAsync({
+              base64: true,
+              format: SaveFormat.JPEG,
+              compress: 0.5,
+            });
+          } finally {
+            image.release();
+          }
+        } finally {
+          context.release();
+        }
+      })();
       if (!isMounted.current) return;
 
       const base64 = manipulated.base64;

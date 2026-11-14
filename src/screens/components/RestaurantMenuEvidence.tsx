@@ -8,7 +8,11 @@ interface Props {
   restaurant: Restaurant;
   colors: ThemeColors;
 }
-
+/**
+ * Returns a human-readable status message for the restaurant's menu scan status.
+ * @param restaurant The restaurant for which to get the menu scan status text.
+ * @returns A string representing the menu scan status.
+ */
 function getMenuStatusText(restaurant: Restaurant): string {
   switch (restaurant.menuScanStatus) {
     case 'FETCHING': return '🔄 Scanning menu…';

@@ -38,6 +38,7 @@ export default function HomeScreen() {
 
   useEffect(() => {
     return () => {
+      // When the component unmounts, set isMounted to false to prevent state updates on an unmounted component.
       isMounted.current = false;
     };
   }, []);
@@ -45,15 +46,20 @@ export default function HomeScreen() {
   const cached = uiState.restaurants;
   const hasData = cached.length > 0;
   const isLoading = uiState.status === 'loading';
+  // Determine whether to show a status message based on the current UI state and data availability.
   const shouldShowStatusMessage =
     Boolean(uiState.message) &&
     (uiState.status === 'error' || uiState.status === 'permission_required' || !hasData);
 
   const onRefresh = useCallback(async () => {
+    // Set the refreshing state to true to show the refresh indicator.
     setRefreshing(true);
     try {
+      // Force a refresh of the nearby restaurants, ignoring any cached data.
       await loadNearbyRestaurants(undefined, { forceRefresh: true });
     } finally {
+      // After the refresh is complete, set the refreshing state back to false.
+      // This will hide the refresh indicator.
       if (isMounted.current) {
         setRefreshing(false);
       }

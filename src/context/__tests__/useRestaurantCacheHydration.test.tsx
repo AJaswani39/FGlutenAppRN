@@ -1,5 +1,5 @@
 import React from 'react';
-import TestRenderer, { act } from 'react-test-renderer';
+import { act, render, RenderResult } from '@testing-library/react-native';
 import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
 import { Restaurant } from '../../types/restaurant';
 import { useRestaurantCacheHydration } from '../useRestaurantCacheHydration';
@@ -39,7 +39,7 @@ function restaurant(overrides: Partial<Restaurant> = {}): Restaurant {
   };
 }
 
-function renderHydration(loadFavoritesImpl?: () => Promise<unknown>) {
+async function renderHydration(loadFavoritesImpl?: () => Promise<unknown>) {
   const rawRestaurants = { current: [] as Restaurant[] };
   const userLat = { current: null as number | null };
   const userLng = { current: null as number | null };
@@ -66,8 +66,8 @@ function renderHydration(loadFavoritesImpl?: () => Promise<unknown>) {
     return null;
   }
 
-  act(() => {
-    TestRenderer.create(<Probe />);
+  await act(async () => {
+    await render(<Probe />);
   });
 
   return {
@@ -101,7 +101,7 @@ describe('useRestaurantCacheHydration', () => {
       lng: -73,
       timestamp: 1700000000000,
     });
-    const harness = renderHydration();
+    const harness = await renderHydration();
 
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 0));
@@ -125,7 +125,7 @@ describe('useRestaurantCacheHydration', () => {
       lng: 2,
       timestamp: 1700000000000,
     });
-    const harness = renderHydration();
+    const harness = await renderHydration();
 
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 0));
@@ -135,7 +135,7 @@ describe('useRestaurantCacheHydration', () => {
   });
 
   it('does not emit an empty cached state when nothing is stored', async () => {
-    const harness = renderHydration();
+    const harness = await renderHydration();
 
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 0));
@@ -149,7 +149,7 @@ describe('useRestaurantCacheHydration', () => {
 
   it('treats an empty restaurant list as no cache', async () => {
     persistenceMock.loadCache.mockResolvedValue({ restaurants: [], lat: null, lng: null, timestamp: 0 });
-    const harness = renderHydration();
+    const harness = await renderHydration();
 
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 0));
@@ -160,7 +160,7 @@ describe('useRestaurantCacheHydration', () => {
   });
 
   it('only attempts hydration once', async () => {
-    const harness = renderHydration();
+    const harness = await renderHydration();
 
     await harness.api.loadCachedIfAvailable();
     await harness.api.loadCachedIfAvailable();
@@ -170,17 +170,21 @@ describe('useRestaurantCacheHydration', () => {
 
   it('stops hydrating once the component is unmounted', async () => {
     const cached = restaurant({ placeId: 'a', menuScanStatus: 'SUCCESS', menuScanTimestamp: 1000 });
-    persistenceMock.loadCache.mockResolvedValue({
+    let releaseCache!: (value: Awaited<ReturnType<typeof PersistenceService.loadCache>>) => void;
+    persistenceMock.loadCache.mockImplementation(() => new Promise((resolve) => {
+      releaseCache = resolve;
+    }));
+    const cachedData = {
       restaurants: [cached],
       lat: 1,
       lng: 2,
       timestamp: 1700000000000,
-    });
-    const harness = renderHydration();
+    };
+    const harness = await renderHydration();
     harness.isMounted.current = false;
 
     await act(async () => {
-      await harness.api.loadCachedIfAvailable();
+      releaseCache(cachedData);
     });
 
     expect(harness.loadFavorites).toHaveBeenCalled();
@@ -191,7 +195,7 @@ describe('useRestaurantCacheHydration', () => {
 
   it('stops before touching storage when unmounted while favorites load', async () => {
     let releaseFavorites!: () => void;
-    const harness = renderHydration(
+    const harness = await renderHydration(
       () =>
         new Promise((resolve) => {
           releaseFavorites = () => resolve({});

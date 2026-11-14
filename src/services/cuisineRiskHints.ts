@@ -16,6 +16,7 @@ interface CuisineRiskRule {
   hints: CuisineRiskHint[];
 }
 
+// Default hints that apply to all cuisines, regardless of the specific cuisine rules.
 const DEFAULT_HINTS: CuisineRiskHint[] = [
   {
     id: 'shared-fryer',
@@ -156,11 +157,15 @@ export function getCuisineRiskHints(restaurant: Restaurant): CuisineRiskHint[] {
   return dedupeHints(hints).slice(0, 6);
 }
 
+/**
+ * Dedupe hints by their ID to avoid showing the same hint multiple times.
+ */
 function dedupeHints(hints: CuisineRiskHint[]): CuisineRiskHint[] {
   const seen = new Set<string>();
   const deduped: CuisineRiskHint[] = [];
 
   for (const hint of hints) {
+    // If we've already seen this hint ID, skip it.
     if (seen.has(hint.id)) continue;
     seen.add(hint.id);
     deduped.push(hint);

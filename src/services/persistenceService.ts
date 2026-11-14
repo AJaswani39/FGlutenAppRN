@@ -10,7 +10,8 @@ export interface CachePayload {
   lng: number | null;
   timestamp: number;
 }
-
+// Represents a cached entry for a restaurant's menu scan, including its place ID, GF menu items, 
+// raw menu text, scan status, timestamp, and optional AI analysis results and chat history.
 export interface MenuScanCacheEntry {
   placeId: string;
   gfMenu: string[];
@@ -21,7 +22,8 @@ export interface MenuScanCacheEntry {
   aiChatHistory?: AiChatMessage[];
   aiDeepAnalysis?: string | null;
 }
-
+// Default filter settings for restaurants, including options for GF-only, GF evidence-only, 
+// open-now-only, sort mode, max distance, min rating, and search query.
 export const DEFAULT_FILTERS: RestaurantFilters = {
   gfOnly: false,
   gfEvidenceOnly: false,
@@ -31,7 +33,8 @@ export const DEFAULT_FILTERS: RestaurantFilters = {
   minRating: 0,
   searchQuery: '',
 };
-
+// Keys used for storing various pieces of data in AsyncStorage, including filters, favorites, 
+// saved restaurants, cache, menu scan cache, and settings.
 const KEYS = {
   FILTERS: 'restaurant_filters',
   FAVORITES: 'restaurant_favorites',
@@ -91,6 +94,9 @@ function normalizeFavoriteStatus(value: unknown): FavoriteStatus {
 }
 
 function normalizeStringArray(value: unknown, maxLength?: number): string[] {
+  // If the input value is not an array, return an empty array. Otherwise, filter the array to include only string entries, 
+  // trim whitespace from each string, and remove any empty strings. If a maximum length is specified, return only the first 
+  // maxLength entries; otherwise, return the entire normalized array.
   if (!Array.isArray(value)) return [];
   const normalized = value
     .filter((entry): entry is string => typeof entry === 'string')
@@ -100,6 +106,7 @@ function normalizeStringArray(value: unknown, maxLength?: number): string[] {
 }
 
 export function normalizeFilters(value: unknown): RestaurantFilters {
+  // If the input value is not a record (object), treat it as an empty object. Then, normalize each filter property:
   const record = isRecord(value) ? value : {};
   return {
     gfOnly: normalizeBoolean(record.gfOnly),
@@ -113,6 +120,7 @@ export function normalizeFilters(value: unknown): RestaurantFilters {
 }
 
 export function normalizeFavoriteMap(value: unknown): FavoriteMap {
+  // If the input value is not a record (object), return an empty object. Otherwise, iterate over each key-value pair in the object,
   if (!isRecord(value)) return {};
   const normalized: FavoriteMap = {};
   for (const [key, status] of Object.entries(value)) {
@@ -125,6 +133,7 @@ export function normalizeFavoriteMap(value: unknown): FavoriteMap {
 }
 
 export function normalizeRestaurant(value: unknown): Restaurant | null {
+  // If the input value is not a record (object), return null. Otherwise, normalize each property of the restaurant object:
   if (!isRecord(value)) return null;
 
   const placeId = normalizeString(value.placeId).trim();
@@ -239,6 +248,12 @@ export function normalizeMenuScanCache(
   return normalized;
 }
 
+/**
+ * Returns a MenuScanCacheEntry for the given restaurant if it has a valid placeId and a recent menu scan timestamp.
+ * Returns null if the restaurant does not have a valid placeId, has not been scanned, or is still in progress.
+ * @param restaurant The restaurant to extract the menu scan cache entry from.
+ * @returns A MenuScanCacheEntry object or null if the restaurant is not eligible for caching.
+ */
 export function getMenuScanCacheEntry(restaurant: Restaurant): MenuScanCacheEntry | null {
   if (!restaurant.placeId || restaurant.menuScanTimestamp <= 0) return null;
   if (restaurant.menuScanStatus === 'NOT_STARTED' || restaurant.menuScanStatus === 'FETCHING') return null;
@@ -255,6 +270,12 @@ export function getMenuScanCacheEntry(restaurant: Restaurant): MenuScanCacheEntr
   };
 }
 
+/**
+ * Normalizes a value to a MenuSafetyLevel ('safe', 'caution', 'unknown', or 'unsafe').
+ * Returns undefined if the value is not a valid string representation of a MenuSafetyLevel.
+ * @param value The value to normalize.
+ * @returns A MenuSafetyLevel or undefined if the value is invalid.
+ */
 function normalizeMenuSafetyLevel(value: unknown): MenuSafetyLevel | undefined {
   if (typeof value !== 'string') return undefined;
   const normalized = value.toLowerCase();
@@ -262,7 +283,12 @@ function normalizeMenuSafetyLevel(value: unknown): MenuSafetyLevel | undefined {
     ? normalized
     : undefined;
 }
-
+/**
+ * Normalizes a risk factor object to ensure it has valid properties: factor (string), severity (number), and description (string).
+ * Returns null if the input value is not a valid risk factor object.
+ * @param value The value to normalize.
+ * @returns A normalized risk factor object or null if the input is invalid.
+ */
 function normalizeRiskFactor(value: unknown): { factor: string; severity: number; description: string } | null {
   if (!isRecord(value)) return null;
   const factor = normalizeString(value.factor);
@@ -271,7 +297,13 @@ function normalizeRiskFactor(value: unknown): { factor: string; severity: number
   if (!factor) return null;
   return { factor, severity, description };
 }
-
+/**
+ * Normalizes a MenuAnalysisResult object to ensure it has valid properties, including overallSafety, score, glutenFreeItems, 
+ * warnings, crossContamRisk, summary, and optional riskFactors, safeItems, cautionItems, and unsafeItems.
+ * Returns null if the input value is not a valid MenuAnalysisResult object.
+ * @param value The value to normalize.
+ * @returns A normalized MenuAnalysisResult object or null if the input is invalid.
+ */
 export function normalizeMenuAnalysisResult(value: unknown): MenuAnalysisResult | null {
   if (!isRecord(value)) return null;
 
@@ -301,7 +333,13 @@ export function normalizeMenuAnalysisResult(value: unknown): MenuAnalysisResult 
     unsafeItems: normalizeStringArray(value.unsafeItems, 50),
   };
 }
-
+/**
+ * Normalizes an array of AI chat messages, ensuring each message has a valid role ('user' or 'model'), text, and timestamp.
+ * Filters out any messages with empty text and returns undefined if the input value is not a valid array of messages.
+ * @param value The value to normalize.
+ * @param fallbackTimestamp A fallback timestamp to use for messages that do not have a valid timestamp.
+ * @returns An array of normalized AiChatMessage objects or undefined if the input is invalid.
+ */
 export function normalizeAiChatHistory(
   value: unknown,
   fallbackTimestamp: number
@@ -323,7 +361,11 @@ export function normalizeAiChatHistory(
 }
 
 // ─── Persistence Service ───────────────────────────────────────
-
+/**
+ * PersistenceService provides methods for saving and loading user settings, filters, favorites, saved restaurants,
+ * restaurant cache, and menu scan cache using AsyncStorage. It also includes methods for exporting saved places
+ * and clearing all persisted data.
+ */
 export const PersistenceService = {
   async getSetting(key: string): Promise<boolean> {
     const val = await AsyncStorage.getItem(`${KEYS.SETTINGS}:${key}`);
@@ -430,7 +472,7 @@ export const PersistenceService = {
 
   /**
    * Returns a JSON-serialisable snapshot of the user's saved places for export.
-   * Large menu fields are stripped to keep the payload small.
+   * Large menu fields are stripped to keep the payload small. 
    */
   async exportSavedPlaces(): Promise<string> {
     const restaurants = await this.loadSavedRestaurantsDb();

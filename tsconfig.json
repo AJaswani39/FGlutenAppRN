@@ -5,10 +5,9 @@
     "types": [
       "jest"
     ],
-    "baseUrl": ".",
     "paths": {
       "@/*": [
-        "src/*"
+        "./src/*"
       ]
     }
   },

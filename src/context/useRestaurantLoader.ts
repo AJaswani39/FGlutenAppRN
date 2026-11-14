@@ -11,12 +11,12 @@ type Coordinates = { latitude: number; longitude: number };
 type LoadNearbyOptions = { forceRefresh?: boolean };
 
 interface Options {
-  rawRestaurants: React.MutableRefObject<Restaurant[]>;
-  userLat: React.MutableRefObject<number | null>;
-  userLng: React.MutableRefObject<number | null>;
-  filtersRef: React.MutableRefObject<{ maxDistanceMeters: number }>;
-  uiStateRef: React.MutableRefObject<RestaurantUiState>;
-  isMounted: React.MutableRefObject<boolean>;
+  rawRestaurants: React.RefObject<Restaurant[]>;
+  userLat: React.RefObject<number | null>;
+  userLng: React.RefObject<number | null>;
+  filtersRef: React.RefObject<{ maxDistanceMeters: number }>;
+  uiStateRef: React.RefObject<RestaurantUiState>;
+  isMounted: React.RefObject<boolean>;
   setUiState: React.Dispatch<React.SetStateAction<RestaurantUiState>>;
   getScanProgress: () => RestaurantUiState['scanProgress'];
   emitFilteredState: (options?: { emptyReason?: 'filters' | 'nearby'; message?: string | null; status?: RestaurantUiState['status'] }) => void;

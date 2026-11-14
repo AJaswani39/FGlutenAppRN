@@ -1,4 +1,4 @@
-import { useCallback, useEffect, MutableRefObject } from 'react';
+import { useCallback, useEffect, RefObject } from 'react';
 import { Restaurant, RestaurantFilters, RestaurantUiState } from '../types/restaurant';
 import {
   EmptyResultsReason,
@@ -7,12 +7,12 @@ import {
 } from './restaurantState';
 
 interface Options {
-  rawRestaurants: MutableRefObject<Restaurant[]>;
+  rawRestaurants: RefObject<Restaurant[]>;
   filters: RestaurantFilters;
   strictCeliac: boolean;
-  userLat: MutableRefObject<number | null>;
-  userLng: MutableRefObject<number | null>;
-  uiStateRef: MutableRefObject<RestaurantUiState>;
+  userLat: RefObject<number | null>;
+  userLng: RefObject<number | null>;
+  uiStateRef: RefObject<RestaurantUiState>;
   getScanProgress: () => RestaurantUiState['scanProgress'];
   syncSavedRestaurants: () => void;
   setUiState: React.Dispatch<React.SetStateAction<RestaurantUiState>>;

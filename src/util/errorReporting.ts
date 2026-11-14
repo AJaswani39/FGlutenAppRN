@@ -12,7 +12,12 @@ export interface ErrorReporter {
   report(error: ErrorReport): Promise<void> | void;
   flush?(): Promise<void>;
 }
-
+/**
+ * A simple error reporter that logs errors to the console.
+ * It formats the error message with a timestamp and severity level.
+ * Errors are logged using console.error for 'error' severity and console.warn for 'warning' severity.
+ * This reporter is intended for development use and may not be suitable for production environments.
+ */
 export class ConsoleErrorReporter implements ErrorReporter {
   report(error: ErrorReport): void {
     const prefix = `[${error.severity.toUpperCase()}] ${new Date(error.timestamp).toISOString()}`;

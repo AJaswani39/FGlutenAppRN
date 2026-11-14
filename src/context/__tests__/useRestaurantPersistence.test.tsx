@@ -1,5 +1,5 @@
 import React from 'react';
-import TestRenderer, { act } from 'react-test-renderer';
+import { act, render, RenderResult } from '@testing-library/react-native';
 import { AppState } from 'react-native';
 import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
 import { MenuScanCacheEntry } from '../../services/persistenceService';
@@ -46,7 +46,7 @@ function restaurant(overrides: Partial<Restaurant> = {}): Restaurant {
   };
 }
 
-function renderPersistence(initial: Restaurant[] = []) {
+async function renderPersistence(initial: Restaurant[] = []) {
   const rawRestaurants = { current: initial };
   const userLat = { current: 10 };
   const userLng = { current: 20 };
@@ -57,9 +57,9 @@ function renderPersistence(initial: Restaurant[] = []) {
     return null;
   }
 
-  let renderer!: TestRenderer.ReactTestRenderer;
-  act(() => {
-    renderer = TestRenderer.create(<Probe />);
+  let renderer!: RenderResult;
+  await act(async () => {
+    renderer = await render(<Probe />);
   });
 
   return {
@@ -69,7 +69,7 @@ function renderPersistence(initial: Restaurant[] = []) {
     rawRestaurants,
     userLat,
     userLng,
-    unmount: () => act(() => renderer.unmount()),
+    unmount: async () => await act(() => renderer.unmount()),
   };
 }
 
@@ -98,9 +98,9 @@ describe('useRestaurantPersistence', () => {
 
   it('debounces cache writes by two seconds', async () => {
     jest.useFakeTimers();
-    const harness = renderPersistence([restaurant({ placeId: 'a' })]);
+    const harness = await renderPersistence([restaurant({ placeId: 'a' })]);
 
-    act(() => {
+    await act(() => {
       harness.api.persistCache();
     });
     expect(persistenceMock.saveCache).not.toHaveBeenCalled();
@@ -118,15 +118,15 @@ describe('useRestaurantPersistence', () => {
 
   it('collapses repeated persistCache calls into a single write', async () => {
     jest.useFakeTimers();
-    const harness = renderPersistence([restaurant({ placeId: 'a' })]);
+    const harness = await renderPersistence([restaurant({ placeId: 'a' })]);
 
-    act(() => {
+    await act(() => {
       harness.api.persistCache();
     });
     await act(async () => {
       jest.advanceTimersByTime(1000);
     });
-    act(() => {
+    await act(() => {
       harness.api.persistCache();
     });
     await act(async () => {
@@ -139,9 +139,9 @@ describe('useRestaurantPersistence', () => {
   it('flushes immediately with the current refs and cancels the pending debounce', async () => {
     jest.useFakeTimers();
     const cached = restaurant({ placeId: 'a' });
-    const harness = renderPersistence([cached]);
+    const harness = await renderPersistence([cached]);
 
-    act(() => {
+    await act(() => {
       harness.api.persistCache();
       harness.api.flushPersistence();
     });
@@ -162,7 +162,7 @@ describe('useRestaurantPersistence', () => {
   });
 
   it('flushes the cache when the app goes to the background', async () => {
-    const harness = renderPersistence([restaurant({ placeId: 'a' })]);
+    const harness = await renderPersistence([restaurant({ placeId: 'a' })]);
     expect(appStateHandlers).toHaveLength(1);
 
     await act(async () => {
@@ -178,7 +178,7 @@ describe('useRestaurantPersistence', () => {
   });
 
   it('flushes the cache when the app becomes inactive', async () => {
-    const harness = renderPersistence([restaurant({ placeId: 'a' })]);
+    const harness = await renderPersistence([restaurant({ placeId: 'a' })]);
 
     await act(async () => {
       appStateHandlers[0]('inactive');
@@ -187,25 +187,25 @@ describe('useRestaurantPersistence', () => {
     expect(persistenceMock.saveCache).toHaveBeenCalledTimes(1);
   });
 
-  it('removes the app state listener on unmount', () => {
-    const harness = renderPersistence();
+  it('removes the app state listener on unmount', async () => {
+    const harness = await renderPersistence();
 
     expect(appStateListenerSpy).toHaveBeenCalledTimes(1);
     expect(appStateRemove).not.toHaveBeenCalled();
 
-    harness.unmount();
+    await harness.unmount();
 
     expect(appStateRemove).toHaveBeenCalledTimes(1);
   });
 
   it('cancels a pending debounced write on unmount', async () => {
     jest.useFakeTimers();
-    const harness = renderPersistence([restaurant({ placeId: 'a' })]);
+    const harness = await renderPersistence([restaurant({ placeId: 'a' })]);
 
-    act(() => {
+    await act(() => {
       harness.api.persistCache();
     });
-    harness.unmount();
+    await harness.unmount();
 
     await act(async () => {
       jest.advanceTimersByTime(5000);
@@ -214,16 +214,16 @@ describe('useRestaurantPersistence', () => {
     expect(persistenceMock.saveCache).not.toHaveBeenCalled();
   });
 
-  it('updates the in-memory scan cache immediately on persistMenuScan', () => {
+  it('updates the in-memory scan cache immediately on persistMenuScan', async () => {
     const scanned = restaurant({
       placeId: 'a',
       menuScanStatus: 'SUCCESS',
       menuScanTimestamp: 1000,
       gfMenu: ['GF bun'],
     });
-    const harness = renderPersistence();
+    const harness = await renderPersistence();
 
-    act(() => {
+    await act(() => {
       harness.api.persistMenuScan(scanned);
     });
 
@@ -249,9 +249,9 @@ describe('useRestaurantPersistence', () => {
           menuScanTimestamp: 1000,
         },
       });
-    const harness = renderPersistence();
+    const harness = await renderPersistence();
 
-    act(() => {
+    await act(() => {
       harness.api.persistMenuScan(first);
       harness.api.persistMenuScan(second);
     });
@@ -270,15 +270,15 @@ describe('useRestaurantPersistence', () => {
   });
 
   it('ignores restaurants without a persistable scan entry', async () => {
-    const harness = renderPersistence();
+    const harness = await renderPersistence();
 
-    act(() => {
+    await act(() => {
       harness.api.persistMenuScan(restaurant({ placeId: 'a', menuScanStatus: 'NOT_STARTED' }));
     });
-    act(() => {
+    await act(() => {
       harness.api.persistMenuScan(restaurant({ placeId: 'b', menuScanStatus: 'FETCHING', menuScanTimestamp: 50 }));
     });
-    act(() => {
+    await act(() => {
       harness.api.persistMenuScan(restaurant({ placeId: 'c', menuScanStatus: 'SUCCESS', menuScanTimestamp: 0 }));
     });
 
@@ -288,7 +288,7 @@ describe('useRestaurantPersistence', () => {
 
   it('logs cache write failures without throwing', async () => {
     persistenceMock.saveCache.mockRejectedValue(new Error('quota'));
-    const harness = renderPersistence([restaurant({ placeId: 'a' })]);
+    const harness = await renderPersistence([restaurant({ placeId: 'a' })]);
 
     await act(async () => {
       await harness.api.flushPersistence();
@@ -301,12 +301,12 @@ describe('useRestaurantPersistence', () => {
     const failing = restaurant({ placeId: 'a', menuScanStatus: 'SUCCESS', menuScanTimestamp: 1000 });
     const passing = restaurant({ placeId: 'b', menuScanStatus: 'SUCCESS', menuScanTimestamp: 2000 });
     persistenceMock.loadMenuScanCache.mockRejectedValueOnce(new Error('read failed'));
-    const harness = renderPersistence();
+    const harness = await renderPersistence();
 
-    act(() => {
+    await act(() => {
       harness.api.persistMenuScan(failing);
     });
-    act(() => {
+    await act(() => {
       harness.api.persistMenuScan(passing);
     });
 

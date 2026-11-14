@@ -6,6 +6,7 @@ import { getRestaurantIdentityKey } from '../util/restaurantUtils';
 import { logger } from '../util/logger';
 
 export interface ScanOrchestratorConfig {
+  // The Google Maps API key used for fetching restaurant menus. This is required for the scan operations to work.
   mapsApiKey: string;
   htmlProxyBaseUrl?: string;
   onRestaurantUpdate: (
@@ -21,6 +22,7 @@ export interface ScanOrchestratorConfig {
  * status transitions, and concurrency control.
  */
 export class ScanOrchestrator {
+  // Tracks the set of restaurants currently being scanned to prevent duplicate scans.
   private activeScans = new Set<string>();
   private scanControllers = new Map<string, AbortController>();
   private currentBatchKeys: string[] = [];
@@ -34,6 +36,7 @@ export class ScanOrchestrator {
    * Stops all processing and prevents future scans.
    */
   destroy() {
+    // Mark the orchestrator as destroyed to prevent any further scans or updates.
     this.isDestroyed = true;
     for (const controller of this.scanControllers.values()) controller.abort();
     this.scanControllers.clear();
@@ -51,14 +54,17 @@ export class ScanOrchestrator {
   }
 
   private trackBatchKey(restaurant: Restaurant) {
+    // Use the provided identity key function or the default to get a unique key for the restaurant.
     const getKey = this.config.getIdentityKey || getRestaurantIdentityKey;
     const key = getKey(restaurant);
     if (key && !this.currentBatchKeys.includes(key)) {
+      // If the key is valid and not already tracked, add it to the current batch keys.
       this.currentBatchKeys.push(key);
     }
   }
 
   private clearBatchTrackingIfIdle() {
+    // If there are no active scans and the queue is empty, clear the current batch keys.
     if (this.isDestroyed) return;
     if (this.scanQueue.length > 0 || this.activeScans.size > 0 || this.isProcessing) return;
 
@@ -70,6 +76,7 @@ export class ScanOrchestrator {
    * This should be called when the user starts a fresh search or navigates away.
    */
   flushQueue() {
+    // Abort any in-progress scans and clear the queue and batch tracking.
     for (const controller of this.scanControllers.values()) controller.abort();
     this.scanControllers.clear();
     this.scanQueue = [];
@@ -89,6 +96,8 @@ export class ScanOrchestrator {
    * Orchestrates scans for a list of restaurants based on TTL and priority.
    */
   async scanBatch(restaurants: Restaurant[]): Promise<void> {
+    // Filter the provided restaurants to find those that need scanning based on their current status and TTL.
+    if (this.isDestroyed) return;
     const targets = getMenuScanTargets(restaurants);
     if (targets.length === 0) return;
 
@@ -99,6 +108,8 @@ export class ScanOrchestrator {
    * Retries all restaurants that currently have a FAILED scan status.
    */
   async retryFailed(restaurants: Restaurant[]): Promise<void> {
+    // Filter the provided restaurants to find those that have a FAILED scan status and enqueue them for rescanning.
+    if (this.isDestroyed) return;
     const targets = restaurants.filter((r) => r.menuScanStatus === 'FAILED');
     if (targets.length === 0) return;
 
@@ -109,21 +120,25 @@ export class ScanOrchestrator {
    * Forces a rescan for a specific restaurant, clearing previous data.
    */
   async requestRescan(restaurant: Restaurant): Promise<void> {
+    // If the orchestrator is destroyed, do not proceed with the rescan request.
     if (this.isDestroyed) return;
 
     const id = restaurant.placeId;
+    // If there's an existing scan controller for this restaurant, abort it and remove it from tracking.
     const existingController = id ? this.scanControllers.get(id) : undefined;
     if (existingController) {
       existingController.abort();
       this.scanControllers.delete(id);
     }
     if (id) {
+      // Remove the restaurant from active scans and the queue to ensure a fresh rescan.
       this.activeScans.delete(id);
       this.scanQueue = this.scanQueue.filter((queued) => queued.placeId !== id);
     }
 
     this.trackBatchKey(restaurant);
 
+    // Update the restaurant's status to FETCHING and clear previous menu data before starting the rescan.
     const scanRequestedAt = Date.now();
     const updated = this.config.onRestaurantUpdate(restaurant, (current) => ({
       ...current,
@@ -131,14 +146,16 @@ export class ScanOrchestrator {
       menuScanStatus: 'FETCHING',
       menuScanTimestamp: scanRequestedAt,
     }));
-
+    // If the update was successful, notify the UI and enqueue the restaurant for scanning.
     if (!updated) return;
-
+    // Notify the UI that a rescan has been requested and the restaurant's status has changed.
     this.config.onNotifyUI();
     await this.enqueueAndStart([restaurant]);
   }
 
   async requestInteractiveMenuRender(restaurant: Restaurant): Promise<void> {
+    // If the orchestrator is destroyed or the restaurant is already being scanned, 
+    // do not proceed with the interactive menu render request.
     const id = restaurant.placeId;
     if (!id || this.activeScans.has(id) || this.isDestroyed) return;
 
@@ -149,6 +166,7 @@ export class ScanOrchestrator {
     const scanStartedAt = Date.now();
 
     try {
+      // Mark the restaurant as FETCHING and clear previous menu data before starting the interactive render.
       const started = this.config.onRestaurantUpdate(restaurant, (current) => ({
         ...current,
         gfMenu: [],
@@ -158,7 +176,8 @@ export class ScanOrchestrator {
       }));
       if (!started) return;
       this.config.onNotifyUI();
-
+      // Perform the interactive menu render using a browser-based scan, 
+      // which may involve more complex rendering than a standard scan.
       const result = await scanRestaurantMenuWithBrowser({
         restaurant,
         scanStartedAt,
@@ -166,7 +185,8 @@ export class ScanOrchestrator {
         signal: controller.signal,
       });
       if (this.isDestroyed || !result) return;
-
+      // Apply the results of the interactive menu render to the restaurant's state, 
+      // ensuring that we only update if the scan is still relevant (i.e., no newer scans have started).
       const applied = this.config.onRestaurantUpdate(restaurant, (current) => {
         if (current.menuScanStatus !== 'FETCHING' || current.menuScanTimestamp !== scanStartedAt) {
           return current;
@@ -175,6 +195,8 @@ export class ScanOrchestrator {
       });
       if (applied) this.config.onNotifyUI();
     } catch (error) {
+      // If an error occurs during the interactive menu render, 
+      // log the error and update the restaurant's status to NO_MENU_CONTENT.
       if (this.isDestroyed) return;
       if (controller.signal.aborted) return;
       logger.error('Interactive menu render failed for ' + restaurant.name, error);
@@ -190,6 +212,7 @@ export class ScanOrchestrator {
         this.scanControllers.delete(id);
         this.activeScans.delete(id);
       }
+      // Clear batch tracking if there are no more active scans or queued scans, and notify the UI of any changes.
       this.clearBatchTrackingIfIdle();
       this.config.onNotifyUI();
     }

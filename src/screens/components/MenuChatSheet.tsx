@@ -30,6 +30,7 @@ interface Props {
   onClose: () => void;
 }
 
+// Suggested questions to help users get started with the AI chat.
 const SUGGESTED_QUESTIONS = [
   'Which items appear gluten-free?',
   'What should I ask about cross-contamination?',
@@ -71,6 +72,7 @@ export default function MenuChatSheet({
 
   useEffect(() => {
     return () => {
+      // Mark the component as unmounted to prevent state updates after unmount.
       isMounted.current = false;
       abortController.current?.abort();
       abortController.current = null;
@@ -78,6 +80,7 @@ export default function MenuChatSheet({
   }, []);
 
   const updateHistory = useCallback((next: AiChatMessage[] | ((current: AiChatMessage[]) => AiChatMessage[])) => {
+    // Update the chat history state and notify the parent component of the change.
     setChatHistory((current) => {
       const updated = typeof next === 'function' ? next(current) : next;
       onHistoryChange(updated);
@@ -86,6 +89,7 @@ export default function MenuChatSheet({
   }, [onHistoryChange]);
 
   const copyToClipboard = useCallback((text: string) => {
+    // Copy the provided text to the clipboard and log any errors that occur during the process.
     void ExpoClipboard.setStringAsync(text).catch((copyError: unknown) => {
       const message = copyError instanceof Error ? copyError.message : String(copyError);
       logger.warn(`Failed to copy chat response: ${message}`);
@@ -93,10 +97,12 @@ export default function MenuChatSheet({
   }, []);
 
   const askAi = useCallback(async (question = userQuestion) => {
+    // Trim the question and check if it's empty or if a request is already in progress. If so, return early.
     const trimmedQuestion = question.trim();
     if (!trimmedQuestion || isAsking) return;
 
     if (!menuText.trim()) {
+      // If the menu text is empty, show an error message and return early.
       setError('There is no menu text available for this restaurant.');
       return;
     }
@@ -115,11 +121,14 @@ export default function MenuChatSheet({
     updateHistory((current) => [...current, userMessage, modelMessage]);
 
     try {
+      // Ask the Puter AI service the question, providing the menu context and chat history. Update the model message in real-time as chunks of the response are received.
       await PuterAiService.askQuestion(buildMenuAiContext(menuText), trimmedQuestion, (chunk) => {
         if (!isMounted.current) return;
         updateHistory((current) => current.map((message) => (
+          // If the message timestamp matches the model's timestamp, update its text with the new chunk; otherwise, leave it unchanged.
           message.timestamp === modelTimestamp ? { ...message, text: chunk || '...' } : message
         )));
+        // Scroll to the bottom of the chat view to show the latest message.
         requestAnimationFrame(() => scrollRef.current?.scrollToEnd({ animated: true }));
       }, {
         signal: controller.signal,
@@ -129,11 +138,14 @@ export default function MenuChatSheet({
     } catch (requestError: unknown) {
       const cancelled = requestError instanceof Error && requestError.name === 'AbortError';
       if (isMounted.current && !cancelled) {
+        // If the request failed and was not cancelled, set an error message and remove the model message from the chat history.
         const message = requestError instanceof Error ? requestError.message : String(requestError);
         setError(message || 'Failed to get an AI answer.');
         updateHistory((current) => current.filter((entry) => entry.timestamp !== modelTimestamp));
       }
     } finally {
+      // Regardless of success or failure, if the component is still mounted and the abort controller matches the current one, 
+      // reset the abort controller and mark that we're no longer asking a question.
       if (abortController.current === controller) {
         abortController.current = null;
         if (isMounted.current) setIsAsking(false);
@@ -142,6 +154,7 @@ export default function MenuChatSheet({
   }, [chatHistory, isAsking, menuText, restaurant.name, updateHistory, userQuestion]);
 
   const clearHistory = () => {
+    // Clear the chat history and reset the error state.
     updateHistory([]);
     setError(null);
   };

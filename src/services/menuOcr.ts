@@ -2,6 +2,15 @@ import { API_ENDPOINTS, API_TIMEOUTS } from '../constants';
 import { fetchWithTimeout } from '../util/http';
 import { isRecord } from '../util/typeGuards';
 
+/**
+ * Extracts readable text from the Vision API response payload.
+ * If the payload contains an error, throws an Error with the message.
+ * If the payload contains a fullTextAnnotation, returns its text. 
+ * If not, checks for textAnnotations and returns the description of the first annotation.
+ * If none of these are present, returns an empty string.
+ * @param payload The response payload from the Vision API.
+ * @returns The extracted text or an empty string if no text is found.
+ */
 function extractVisionText(payload: unknown): string {
   if (!isRecord(payload) || !Array.isArray(payload.responses)) {
     return '';
@@ -30,7 +39,16 @@ function extractVisionText(payload: unknown): string {
 
   return '';
 }
-
+/**
+ * Extracts readable text from a base64-encoded image using the Google Vision API or a proxy service.
+ * If a proxyBaseUrl is provided, it sends the image to the proxy for OCR processing.
+ * If no proxy is provided, it uses the Vision API directly with the provided apiKey.
+ * Throws an error if the image data is empty, if the Vision API key is missing, or if no readable text is found.
+ * @param base64 The base64-encoded image data.
+ * @param apiKey The Google Vision API key for direct API access (ignored if proxyBaseUrl is provided).
+ * @param proxyBaseUrl Optional base URL for a proxy service that handles OCR requests.
+ * @returns A Promise that resolves to the extracted text from the image.
+ */
 export async function extractMenuTextFromImage({
   base64,
   apiKey,

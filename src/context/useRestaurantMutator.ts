@@ -1,9 +1,9 @@
-import { useCallback, MutableRefObject } from 'react';
+import { useCallback, RefObject } from 'react';
 import { MenuScanStatus, Restaurant, TERMINAL_SCAN_STATUSES } from '../types/restaurant';
 import { isSameRestaurantIdentity } from '../util/restaurantUtils';
 
 interface UseRestaurantMutatorDeps {
-  rawRestaurants: MutableRefObject<Restaurant[]>;
+  rawRestaurants: RefObject<Restaurant[]>;
   updateSavedRestaurant: (restaurant: Restaurant, updater: (r: Restaurant) => Restaurant) => void;
   persistCache: () => void;
   persistMenuScan: (restaurant: Restaurant) => void;

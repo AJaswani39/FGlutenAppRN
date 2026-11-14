@@ -5,8 +5,9 @@ import Animated, {
   useAnimatedStyle,
   withTiming,
   Easing,
-  runOnJS,
+  cancelAnimation,
 } from 'react-native-reanimated';
+import { scheduleOnRN } from 'react-native-worklets';
 import { DarkColors, LightColors, FontSize, FontWeight, Radius } from '../theme/colors';
 
 interface Props {
@@ -26,22 +27,30 @@ export function CustomSplashScreen({ onFinish, isDark }: Props) {
   }, [onFinish]);
 
   useEffect(() => {
+    let active = true;
+    const scheduleFinish = () => {
+      if (!active) return;
+      finishTimeout.current = setTimeout(() => {
+        finishTimeout.current = null;
+        if (active) onFinishRef.current();
+      }, 150);
+    };
+
     // Animate progress bar from 0 to 100% over 1.2 seconds
     progress.value = withTiming(
       1,
       { duration: 1200, easing: Easing.bezier(0.25, 0.1, 0.25, 1) },
       (finished) => {
         if (finished) {
-          // Add a tiny pause at 100% before firing onFinish
-          finishTimeout.current = setTimeout(() => {
-            runOnJS(onFinishRef.current)();
-            finishTimeout.current = null;
-          }, 150);
+          // Schedule the pause on the React Native runtime, which owns the timer.
+          scheduleOnRN(scheduleFinish);
         }
       }
     );
 
     return () => {
+      active = false;
+      cancelAnimation(progress);
       if (finishTimeout.current) {
         clearTimeout(finishTimeout.current);
         finishTimeout.current = null;

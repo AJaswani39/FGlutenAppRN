@@ -24,6 +24,13 @@ export interface MenuScanResult {
 // Module-level: these are pure data lookups, no need to recompile per scan.
 const JS_PROVIDERS = /toasttab\.com|chownow\.com|bentobox\.com|singleplatform\.com|doordash\.com|ubereats\.com|grubhub\.com/i;
 
+/**
+ * Determines if the restaurant's menu can be scanned using a browser-based fallback method.
+ * This is true if the restaurant's menu scan status indicates that it is JS-only or has no menu content,
+ * and the restaurant has a valid HTTPS menu URL.
+ * @param restaurant The restaurant to check for browser-based menu scanning eligibility.
+ * @returns True if the restaurant can be scanned using a browser fallback, false otherwise.
+ */
 export function canUseBrowserMenuFallback(
   restaurant: Pick<Restaurant, 'menuScanStatus' | 'menuUrl'>
 ): boolean {
@@ -34,7 +41,17 @@ export function canUseBrowserMenuFallback(
   const menuUrl = normalizeHttpUrl(restaurant.menuUrl);
   return Boolean(menuUrl?.startsWith('https://'));
 }
-
+/**
+ * Scans the restaurant's menu using a browser-based fallback method, if eligible.
+ * This method fetches the rendered menu text from the restaurant's menu URL, extracts GF evidence and raw menu text,
+ * and returns a MenuScanResult object with the scan results. 
+ * If the restaurant is not eligible for browser-based scanning, it returns null.
+ * @param restaurant The restaurant to scan.
+ * @param scanStartedAt The timestamp when the scan started.
+ * @param htmlProxyBaseUrl Optional base URL for the HTML proxy service.
+ * @param signal Optional AbortSignal to cancel the scan request.
+ * @returns A Promise that resolves to a MenuScanResult object or null if the restaurant is not eligible for scanning.
+ */
 export async function scanRestaurantMenuWithBrowser({
   restaurant,
   scanStartedAt,
@@ -67,6 +84,18 @@ export async function scanRestaurantMenuWithBrowser({
   };
 }
 
+/**
+ * Scans the restaurant's menu by fetching the website and extracting GF evidence and raw menu text.
+ * This method handles various scenarios, including restaurants with no website, JS-heavy providers, and menu links.
+ * It returns a MenuScanResult object with the scan results, including the menu URL, GF evidence, raw menu text,
+ * and the menu scan status. If the restaurant cannot be scanned, it returns null.
+ * @param restaurant The restaurant to scan.
+ * @param mapsApiKey The Google Maps API key for fetching the restaurant's website.
+ * @param scanStartedAt The timestamp when the scan started.
+ * @param htmlProxyBaseUrl Optional base URL for the HTML proxy service.
+ * @param signal Optional AbortSignal to cancel the scan request.
+ * @returns A Promise that resolves to a MenuScanResult object or null if the restaurant cannot be scanned.
+ */
 export async function scanRestaurantMenu({
   restaurant,
   mapsApiKey,

@@ -1,5 +1,5 @@
 import React from 'react';
-import TestRenderer, { act } from 'react-test-renderer';
+import { act, render, RenderResult } from '@testing-library/react-native';
 import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
 import * as Location from 'expo-location';
 import NetInfo, { NetInfoState, NetInfoStateType } from '@react-native-community/netinfo';
@@ -143,7 +143,7 @@ interface LoaderOptions {
   status?: RestaurantUiState['status'];
 }
 
-function renderLoader(options: LoaderOptions = {}) {
+async function renderLoader(options: LoaderOptions = {}) {
   const { initialRestaurants = [], status = 'idle' } = options;
   const rawRestaurants = { current: initialRestaurants };
   const userLat = { current: null as number | null };
@@ -187,9 +187,9 @@ function renderLoader(options: LoaderOptions = {}) {
     return null;
   }
 
-  let renderer!: TestRenderer.ReactTestRenderer;
-  act(() => {
-    renderer = TestRenderer.create(<Probe />);
+  let renderer!: RenderResult;
+  await act(async () => {
+    renderer = await render(<Probe />);
   });
 
   return {
@@ -211,7 +211,7 @@ function renderLoader(options: LoaderOptions = {}) {
     loadCachedIfAvailable,
     persistCache,
     startScans,
-    unmount: () => act(() => renderer.unmount()),
+    unmount: async () => await act(() => renderer.unmount()),
   };
 }
 
@@ -236,7 +236,7 @@ describe('useRestaurantLoader', () => {
   });
 
   it('ignores a new load while a load is already in flight', async () => {
-    const loader = renderLoader();
+    const loader = await renderLoader();
     let releaseFetch!: (value: Restaurant[]) => void;
     fetchNearbyMock.mockImplementation(
       () => new Promise<Restaurant[]>((resolve) => {
@@ -262,7 +262,7 @@ describe('useRestaurantLoader', () => {
   });
 
   it('loads nearby restaurants and wires up derived state', async () => {
-    const loader = renderLoader();
+    const loader = await renderLoader();
 
     await act(async () => {
       await loader.loadNearby();
@@ -288,7 +288,7 @@ describe('useRestaurantLoader', () => {
   });
 
   it('uses the filters distance as the search radius when set', async () => {
-    const loader = renderLoader();
+    const loader = await renderLoader();
     loader.filtersRef.current = { maxDistanceMeters: 2500 };
 
     await act(async () => {
@@ -305,7 +305,7 @@ describe('useRestaurantLoader', () => {
   });
 
   it('passes forceRefresh through to the repository', async () => {
-    const loader = renderLoader();
+    const loader = await renderLoader();
 
     await act(async () => {
       await loader.loadNearby(undefined, { forceRefresh: true });
@@ -322,7 +322,7 @@ describe('useRestaurantLoader', () => {
 
   it('shows a refreshing message while cached results are visible', async () => {
     const cached = [restaurant({ placeId: 'cached' })];
-    const loader = renderLoader({ initialRestaurants: cached });
+    const loader = await renderLoader({ initialRestaurants: cached });
 
     await act(async () => {
       await loader.loadNearby();
@@ -336,7 +336,7 @@ describe('useRestaurantLoader', () => {
   });
 
   it('shows a first-load message when nothing is cached', async () => {
-    const loader = renderLoader();
+    const loader = await renderLoader();
 
     await act(async () => {
       await loader.loadNearby();
@@ -349,7 +349,7 @@ describe('useRestaurantLoader', () => {
   });
 
   it('supports manual searches at explicit coordinates without location calls', async () => {
-    const loader = renderLoader();
+    const loader = await renderLoader();
 
     await act(async () => {
       await loader.loadNearby({ latitude: 40.7, longitude: -74 });
@@ -372,7 +372,7 @@ describe('useRestaurantLoader', () => {
 
   it('reuses a recent last-known position instead of requesting a fresh fix', async () => {
     locationMock.getLastKnownPositionAsync.mockResolvedValue(mockLocationObject(1.5, 2.5));
-    const loader = renderLoader();
+    const loader = await renderLoader();
 
     await act(async () => {
       await loader.loadNearby();
@@ -384,7 +384,7 @@ describe('useRestaurantLoader', () => {
 
   it('reports an offline state and skips the repository call', async () => {
     netInfoMock.fetch.mockResolvedValue(mockDisconnectedState());
-    const loader = renderLoader();
+    const loader = await renderLoader();
 
     await act(async () => {
       await loader.loadNearby();
@@ -398,7 +398,7 @@ describe('useRestaurantLoader', () => {
 
   it('treats an unreachable network as offline', async () => {
     netInfoMock.fetch.mockResolvedValue(mockWifiState({ isConnected: true, isInternetReachable: false }));
-    const loader = renderLoader();
+    const loader = await renderLoader();
 
     await act(async () => {
       await loader.loadNearby();
@@ -411,7 +411,7 @@ describe('useRestaurantLoader', () => {
 
   it('surfaces a network check failure with and without cached results', async () => {
     netInfoMock.fetch.mockRejectedValue(new Error('netinfo exploded'));
-    const withoutCache = renderLoader();
+    const withoutCache = await renderLoader();
     await act(async () => {
       await withoutCache.loadNearby();
     });
@@ -421,7 +421,7 @@ describe('useRestaurantLoader', () => {
       expect.stringContaining('Could not determine network status')
     );
 
-    const withCache = renderLoader({ initialRestaurants: [restaurant()] });
+    const withCache = await renderLoader({ initialRestaurants: [restaurant()] });
     await act(async () => {
       await withCache.loadNearby();
     });
@@ -432,7 +432,7 @@ describe('useRestaurantLoader', () => {
 
   it('surfaces a missing Maps API key differently depending on cached data', async () => {
     mapsApiKeyMock.mockReturnValue('');
-    const withoutCache = renderLoader();
+    const withoutCache = await renderLoader();
     await act(async () => {
       await withoutCache.loadNearby();
     });
@@ -440,7 +440,7 @@ describe('useRestaurantLoader', () => {
     expect(state.message).toBe('Maps API key is missing. Live refresh is unavailable.');
     expect(fetchNearbyMock).not.toHaveBeenCalled();
 
-    const withCache = renderLoader({ initialRestaurants: [restaurant()] });
+    const withCache = await renderLoader({ initialRestaurants: [restaurant()] });
     await act(async () => {
       await withCache.loadNearby();
     });
@@ -451,7 +451,7 @@ describe('useRestaurantLoader', () => {
 
   it('maps denied location permission to a permission_required state', async () => {
     locationMock.requestForegroundPermissionsAsync.mockResolvedValue(mockPermissionResponse(false, false));
-    const loader = renderLoader();
+    const loader = await renderLoader();
 
     await act(async () => {
       await loader.loadNearby();
@@ -464,7 +464,7 @@ describe('useRestaurantLoader', () => {
 
   it('maps fetch failures mentioning permission to a permission_required state', async () => {
     fetchNearbyMock.mockRejectedValue(new Error('Location permission denied by user'));
-    const loader = renderLoader({ initialRestaurants: [restaurant()] });
+    const loader = await renderLoader({ initialRestaurants: [restaurant()] });
 
     await act(async () => {
       await loader.loadNearby();
@@ -477,7 +477,7 @@ describe('useRestaurantLoader', () => {
 
   it('falls back to cached results for generic fetch failures', async () => {
     fetchNearbyMock.mockRejectedValue(new Error('boom'));
-    const loader = renderLoader({ initialRestaurants: [restaurant()] });
+    const loader = await renderLoader({ initialRestaurants: [restaurant()] });
 
     await act(async () => {
       await loader.loadNearby();
@@ -489,7 +489,7 @@ describe('useRestaurantLoader', () => {
   });
 
   it('discards results when the component unmounts mid-flight', async () => {
-    const loader = renderLoader();
+    const loader = await renderLoader();
     let releaseFetch!: (value: Restaurant[]) => void;
     fetchNearbyMock.mockImplementation(
       () => new Promise<Restaurant[]>((resolve) => {
@@ -502,7 +502,7 @@ describe('useRestaurantLoader', () => {
       pending = loader.loadNearby();
     });
 
-    loader.unmount();
+    await loader.unmount();
 
     await act(async () => {
       releaseFetch([restaurant({ placeId: 'late' })]);
@@ -514,7 +514,7 @@ describe('useRestaurantLoader', () => {
   });
 
   it('swallows abort rejections from the in-flight request', async () => {
-    const loader = renderLoader();
+    const loader = await renderLoader();
     fetchNearbyMock.mockImplementation((_lat, _lng, _key, _radius, options) => {
       return new Promise<Restaurant[]>((_resolve, reject) => {
         options?.signal?.addEventListener('abort', () =>
@@ -528,7 +528,7 @@ describe('useRestaurantLoader', () => {
       pending = loader.loadNearby();
     });
 
-    loader.unmount();
+    await loader.unmount();
     await act(async () => {
       await pending;
     });

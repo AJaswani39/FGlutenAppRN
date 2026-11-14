@@ -1,5 +1,5 @@
 import React from 'react';
-import TestRenderer, { act } from 'react-test-renderer';
+import { act, render, RenderResult } from '@testing-library/react-native';
 import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
 import { FavoriteMap, Restaurant } from '../../types/restaurant';
 import { useRestaurantFavorites } from '../useRestaurantFavorites';
@@ -41,7 +41,7 @@ function restaurant(overrides: Partial<Restaurant> = {}): Restaurant {
  * The hook object is memoized on `savedRestaurants`, so tests must read
  * `harness.api` fresh after every state update.
  */
-function renderFavorites(initial: Restaurant[] = []) {
+async function renderFavorites(initial: Restaurant[] = []) {
   const rawRestaurants = { current: initial };
 
   let api!: ReturnType<typeof useRestaurantFavorites>;
@@ -50,8 +50,8 @@ function renderFavorites(initial: Restaurant[] = []) {
     return null;
   }
 
-  act(() => {
-    TestRenderer.create(<Probe />);
+  await act(async () => {
+    await render(<Probe />);
   });
 
   return {
@@ -76,15 +76,15 @@ describe('useRestaurantFavorites', () => {
     jest.restoreAllMocks();
   });
 
-  it('exposes the identity key helper', () => {
-    const harness = renderFavorites();
+  it('exposes the identity key helper', async () => {
+    const harness = await renderFavorites();
 
     expect(harness.api.favoriteKey(restaurant({ placeId: 'abc' }))).toBe('pid:abc');
   });
 
   it('applies the loaded favorite map to a list of restaurants', async () => {
     persistenceMock.loadFavorites.mockResolvedValue({ 'pid:a': 'safe' });
-    const harness = renderFavorites();
+    const harness = await renderFavorites();
 
     const loaded = await harness.api.loadFavorites();
 
@@ -96,10 +96,10 @@ describe('useRestaurantFavorites', () => {
   it('loads favorites and the historical saved db in parallel', async () => {
     const historical = [restaurant({ placeId: 'old', name: 'Old Place' })];
     persistenceMock.loadSavedRestaurantsDb.mockResolvedValue(historical);
-    const harness = renderFavorites();
+    const harness = await renderFavorites();
 
     await harness.api.loadFavorites();
-    act(() => {
+    await act(() => {
       harness.api.syncSavedRestaurants();
     });
 
@@ -109,8 +109,8 @@ describe('useRestaurantFavorites', () => {
     expect(harness.api.savedRestaurants).toEqual([]);
   });
 
-  it('sets a favorite, records it in the historical db, and persists both stores', () => {
-    const harness = renderFavorites();
+  it('sets a favorite, records it in the historical db, and persists both stores', async () => {
+    const harness = await renderFavorites();
     const target = restaurant({ placeId: 'a' });
 
     const ok = harness.api.setFavoriteMapStatus(target, 'safe');
@@ -125,7 +125,7 @@ describe('useRestaurantFavorites', () => {
   it('updates an existing historical entry instead of duplicating it', async () => {
     const existing = restaurant({ placeId: 'a', name: 'Old Name', favoriteStatus: 'try' });
     persistenceMock.loadSavedRestaurantsDb.mockResolvedValue([existing]);
-    const harness = renderFavorites();
+    const harness = await renderFavorites();
     await harness.api.loadFavorites();
 
     const renamed = restaurant({ placeId: 'a', name: 'New Name', favoriteStatus: 'try' });
@@ -140,7 +140,7 @@ describe('useRestaurantFavorites', () => {
     persistenceMock.loadFavorites.mockResolvedValue({ 'pid:a': 'safe' });
     const target = restaurant({ placeId: 'a', favoriteStatus: 'safe' });
     persistenceMock.loadSavedRestaurantsDb.mockResolvedValue([target]);
-    const harness = renderFavorites();
+    const harness = await renderFavorites();
     await harness.api.loadFavorites();
 
     const ok = harness.api.setFavoriteMapStatus(target, null);
@@ -150,8 +150,8 @@ describe('useRestaurantFavorites', () => {
     expect(persistenceMock.saveSavedRestaurantsDb).toHaveBeenLastCalledWith([]);
   });
 
-  it('refuses to favorite a restaurant without an identity key', () => {
-    const harness = renderFavorites();
+  it('refuses to favorite a restaurant without an identity key', async () => {
+    const harness = await renderFavorites();
 
     const ok = harness.api.setFavoriteMapStatus(restaurant({ placeId: '', name: '', address: '' }), 'safe');
 
@@ -163,7 +163,7 @@ describe('useRestaurantFavorites', () => {
   it('logs but does not throw when persistence fails', async () => {
     persistenceMock.saveFavorites.mockRejectedValue(new Error('disk full'));
     persistenceMock.saveSavedRestaurantsDb.mockRejectedValue(new Error('disk full'));
-    const harness = renderFavorites();
+    const harness = await renderFavorites();
 
     expect(() => harness.api.setFavoriteMapStatus(restaurant({ placeId: 'a' }), 'safe')).not.toThrow();
     await act(async () => {
@@ -178,10 +178,10 @@ describe('useRestaurantFavorites', () => {
     const existing = restaurant({ placeId: 'a', favoriteStatus: 'safe', gfMenu: [] });
     persistenceMock.loadSavedRestaurantsDb.mockResolvedValue([existing]);
     persistenceMock.loadFavorites.mockResolvedValue({ 'pid:a': 'safe' });
-    const harness = renderFavorites();
+    const harness = await renderFavorites();
     await harness.api.loadFavorites();
 
-    act(() => {
+    await act(() => {
       harness.api.updateSavedRestaurant(existing, (current) => ({
         ...current,
         gfMenu: ['GF bun'],
@@ -199,7 +199,7 @@ describe('useRestaurantFavorites', () => {
     const existing = restaurant({ placeId: 'a', favoriteStatus: 'safe' });
     persistenceMock.loadSavedRestaurantsDb.mockResolvedValue([existing]);
     persistenceMock.loadFavorites.mockResolvedValue({ 'pid:a': 'safe' });
-    const harness = renderFavorites();
+    const harness = await renderFavorites();
     await harness.api.loadFavorites();
 
     harness.api.updateSavedRestaurant(existing, (current) => current);
@@ -209,7 +209,7 @@ describe('useRestaurantFavorites', () => {
 
   it('ignores updates for restaurants missing from the historical db', async () => {
     persistenceMock.loadSavedRestaurantsDb.mockResolvedValue([]);
-    const harness = renderFavorites();
+    const harness = await renderFavorites();
 
     harness.api.updateSavedRestaurant(restaurant({ placeId: 'ghost' }), (current) => ({
       ...current,
@@ -224,10 +224,10 @@ describe('useRestaurantFavorites', () => {
     persistenceMock.loadSavedRestaurantsDb.mockResolvedValue([historical]);
     persistenceMock.loadFavorites.mockResolvedValue({ 'pid:old': 'avoid' });
     const live = restaurant({ placeId: 'live', name: 'Live Place', favoriteStatus: 'safe' });
-    const harness = renderFavorites([live]);
+    const harness = await renderFavorites([live]);
 
     await harness.api.loadFavorites();
-    act(() => {
+    await act(() => {
       harness.api.syncSavedRestaurants();
     });
 

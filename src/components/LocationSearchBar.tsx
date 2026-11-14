@@ -5,7 +5,7 @@ import { Radius, Spacing, FontSize, FontWeight } from '../theme/colors';
 import { ThemeColors, useTheme } from '../context/ThemeContext';
 import { Ionicons } from './ui';
 import { getMapsApiKey } from '../context/restaurantState';
-import { API_TIMEOUTS } from '../constants';
+import { API_ENDPOINTS, API_TIMEOUTS } from '../constants';
 import { fetchWithTimeout } from '../util/http';
 import { isRecord } from '../util/typeGuards';
 
@@ -19,18 +19,20 @@ export interface LocationSearchResult {
 function normalizeAutocompletePrediction(value: unknown): LocationSearchResult | null {
   if (!isRecord(value)) return null;
 
-  const structuredFormatting = value.structured_formatting;
+  const prediction = value.placePrediction;
+  if (!isRecord(prediction)) return null;
+  const structuredFormatting = prediction.structuredFormat;
   if (!isRecord(structuredFormatting)) return null;
 
-  const placeId = typeof value.place_id === 'string' ? value.place_id.trim() : '';
-  const description = typeof value.description === 'string' ? value.description.trim() : '';
+  const placeId = typeof prediction.placeId === 'string' ? prediction.placeId.trim() : '';
+  const description = isRecord(prediction.text) && typeof prediction.text.text === 'string' ? prediction.text.text.trim() : '';
   const mainText =
-    typeof structuredFormatting.main_text === 'string'
-      ? structuredFormatting.main_text.trim()
+    isRecord(structuredFormatting.mainText) && typeof structuredFormatting.mainText.text === 'string'
+      ? structuredFormatting.mainText.text.trim()
       : '';
   const secondaryText =
-    typeof structuredFormatting.secondary_text === 'string'
-      ? structuredFormatting.secondary_text.trim()
+    isRecord(structuredFormatting.secondaryText) && typeof structuredFormatting.secondaryText.text === 'string'
+      ? structuredFormatting.secondaryText.text.trim()
       : '';
 
   if (!placeId || !description || !mainText) return null;
@@ -46,16 +48,10 @@ function normalizeAutocompletePrediction(value: unknown): LocationSearchResult |
 function getPlaceDetailsCoords(value: unknown): { lat: number; lng: number } | null {
   if (!isRecord(value)) return null;
 
-  const result = value.result;
-  if (!isRecord(result)) return null;
-
-  const geometry = result.geometry;
-  if (!isRecord(geometry)) return null;
-
-  const location = geometry.location;
+  const location = value.location;
   if (!isRecord(location)) return null;
 
-  const { lat, lng } = location;
+  const { latitude: lat, longitude: lng } = location;
   if (typeof lat !== 'number' || typeof lng !== 'number') return null;
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
 
@@ -81,31 +77,37 @@ export function LocationSearchBar({ onLocationSelected }: Props) {
   const API_KEY = getMapsApiKey();
 
   useEffect(() => {
+    setResults([]);
     if (query.trim().length < 3) {
       autocompleteController.current?.abort();
       autocompleteController.current = null;
-      setResults([]);
+
       setIsLoading(false);
       return;
     }
 
-    const fetchPlaces = async () => {
-      autocompleteController.current?.abort();
-      const controller = new AbortController();
-      autocompleteController.current = controller;
+    const controller = new AbortController();
+    autocompleteController.current = controller;
+    setIsLoading(detailsController.current !== null);
 
+    const fetchPlaces = async () => {
       setIsLoading(true);
       try {
         const res = await fetchWithTimeout(
-          `https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${encodeURIComponent(query)}&types=(regions)&key=${API_KEY}`,
-          { signal: controller.signal },
+          API_ENDPOINTS.PLACES_AUTOCOMPLETE,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-Goog-Api-Key': API_KEY },
+            body: JSON.stringify({ input: query, includedPrimaryTypes: ['(regions)'] }),
+            signal: controller.signal,
+          },
           API_TIMEOUTS.DEFAULT
         );
         const json = await res.json();
         if (autocompleteController.current !== controller) return;
         
-        if (isRecord(json) && json.status === 'OK' && Array.isArray(json.predictions)) {
-          const formatted = json.predictions
+        if (res.ok && isRecord(json) && Array.isArray(json.suggestions)) {
+          const formatted = json.suggestions
             .map(normalizeAutocompletePrediction)
             .filter((result): result is LocationSearchResult => result !== null);
           setResults(formatted);
@@ -113,6 +115,7 @@ export function LocationSearchBar({ onLocationSelected }: Props) {
           setResults([]);
         }
       } catch (error) {
+        if (autocompleteController.current !== controller) return;
         if (error instanceof Error && error.name === 'AbortError') return;
         console.error('Failed to fetch autocomplete:', error);
       } finally {
@@ -124,7 +127,13 @@ export function LocationSearchBar({ onLocationSelected }: Props) {
     };
 
     const timeoutId = setTimeout(fetchPlaces, 500);
-    return () => clearTimeout(timeoutId);
+    return () => {
+      clearTimeout(timeoutId);
+      if (autocompleteController.current === controller) {
+        autocompleteController.current = null;
+      }
+      controller.abort();
+    };
   }, [query, API_KEY]);
 
   useEffect(() => {
@@ -158,14 +167,17 @@ export function LocationSearchBar({ onLocationSelected }: Props) {
     
     try {
       const res = await fetchWithTimeout(
-        `https://maps.googleapis.com/maps/api/place/details/json?place_id=${result.placeId}&fields=geometry&key=${API_KEY}`,
-        { signal: controller.signal },
+        `${API_ENDPOINTS.PLACE_DETAILS}/${encodeURIComponent(result.placeId)}`,
+        {
+          headers: { 'X-Goog-Api-Key': API_KEY, 'X-Goog-FieldMask': 'location' },
+          signal: controller.signal,
+        },
         API_TIMEOUTS.DEFAULT
       );
       const json = await res.json();
       if (detailsController.current !== controller) return;
 
-      if (isRecord(json) && json.status === 'OK') {
+      if (res.ok && isRecord(json)) {
         const coords = getPlaceDetailsCoords(json);
         if (!coords) {
           setQuery('');

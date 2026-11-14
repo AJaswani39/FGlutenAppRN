@@ -98,7 +98,11 @@ function safetyScoreCacheKey(
     strictCeliac ? '1' : '0',
   ].join('\u0001');
 }
-
+/**
+ * Trims the safety-score memoization cache to ensure it does not exceed the defined limit.
+ * This function removes the oldest entries from the cache when the limit is exceeded.
+ * It is called after adding a new entry to the cache to maintain its size.
+ */
 function trimSafetyScoreCache() {
   while (safetyScoreCache.size > SAFETY_SCORE_CACHE_LIMIT) {
     // Map preserves insertion order; drop the oldest entry.
@@ -114,6 +118,13 @@ export function clearSafetyScoreCache() {
   safetyScoreCache.clear();
 }
 
+/**
+ * Analyzes the provided menu text to determine gluten-free options, potential gluten sources, and cross-contamination risks.
+ * Returns a MenuAnalysisResult object containing the overall safety level, score, identified gluten-free items,
+ * warnings about gluten sources, cross-contamination risk, and a summary of the findings.
+ * @param text The menu text to analyze.
+ * @returns A MenuAnalysisResult object summarizing the analysis of the menu text.
+ */
 export function analyseMenuText(text: string): MenuAnalysisResult {
   const lines = text.split(LINE_SPLIT_REGEX);
   const glutenFreeItems: string[] = [];
@@ -198,7 +209,14 @@ export function analyseMenuText(text: string): MenuAnalysisResult {
   };
 }
 
-
+/**
+ * Calculates the safety score for a restaurant based on its menu text, GF menu clues, AI analysis, and other attributes.
+ * Returns a RestaurantSafetyScore object containing the safety level, numeric score, title, summary, and reasons for the score.
+ * The score is memoized to improve performance for repeated calculations on the same restaurant data.
+ * @param restaurant The restaurant for which to calculate the safety score.
+ * @param options Optional settings, including strictCeliac mode for stricter scoring.
+ * @returns A RestaurantSafetyScore object summarizing the safety evaluation of the restaurant.
+ */
 export function getRestaurantSafetyScore(
   restaurant: Restaurant,
   options: { strictCeliac?: boolean } = {}
@@ -214,6 +232,14 @@ export function getRestaurantSafetyScore(
   return result;
 }
 
+/**
+ * Computes the safety score for a restaurant based on its menu text, GF menu clues, AI analysis, and other attributes.
+ * Returns a RestaurantSafetyScore object containing the safety level, numeric score, title, summary, and reasons for the score.
+ * This function does not use memoization and is called by getRestaurantSafetyScore, which handles caching.
+ * @param restaurant The restaurant for which to compute the safety score.
+ * @param strictCeliac Whether to apply stricter scoring for strict celiac considerations.
+ * @returns A RestaurantSafetyScore object summarizing the safety evaluation of the restaurant.
+ */
 function computeRestaurantSafetyScore(
   restaurant: Restaurant,
   strictCeliac: boolean
@@ -304,6 +330,11 @@ const SAFETY_LEVEL_RANK: Record<MenuSafetyLevel, number> = {
 /**
  * Maps a numeric score to a safety level, treating analysisLevel as a ceiling.
  * Example: AI says "unsafe" with local score 85 → still "unsafe".
+ * Example: AI says "caution" with local score 80 → still "caution".
+ * Example: AI says "safe" with local score 40 → still "safe".
+ * @param score The numeric score to map to a safety level.
+ * @param analysisLevel Optional ceiling for the safety level based on AI analysis.
+ * @returns The resolved MenuSafetyLevel based on the score and analysisLevel.
  */
 export function getLevelForScore(score: number, analysisLevel?: MenuSafetyLevel): MenuSafetyLevel {
   let levelFromScore: MenuSafetyLevel;
@@ -319,7 +350,13 @@ export function getLevelForScore(score: number, analysisLevel?: MenuSafetyLevel)
     : levelFromScore;
 }
 
-/** Caps a score so it cannot sit in a safer band than the resolved level. */
+/** Caps a score so it cannot sit in a safer band than the resolved level. 
+ * For example, a score of 85 with an analysisLevel of "caution" will be capped to 74. 
+ * This ensures that the numeric score and the overall safety level are consistent and do not contradict each other. 
+ * @param score The numeric score to cap.
+ * @param level The resolved MenuSafetyLevel that serves as the ceiling for the score.
+ * @returns The capped score that aligns with the safety level.
+*/
 export function capScoreForSafetyLevel(score: number, level: MenuSafetyLevel): number {
   const clamped = Math.max(0, Math.min(100, Math.round(score)));
   if (level === 'unsafe') return Math.min(clamped, 34);
@@ -331,6 +368,10 @@ export function capScoreForSafetyLevel(score: number, level: MenuSafetyLevel): n
 /**
  * Resolves overallSafety from score + optional AI/analysis ceiling, then caps the
  * numeric score so both fields always describe the same band.
+ * This is useful for cases where the AI analysis provides a ceiling that should not be exceeded by the numeric score.
+ * @param score The numeric score to align with the safety level.
+ * @param analysisLevel Optional ceiling for the safety level based on AI analysis.
+ * @returns An object containing the resolved overallSafety and the capped score.
  */
 export function alignScoreWithSafetyLevel(
   score: number,
@@ -342,14 +383,23 @@ export function alignScoreWithSafetyLevel(
     score: capScoreForSafetyLevel(score, overallSafety),
   };
 }
-
+/**
+ * Returns a human-readable title for the given safety level.
+ * @param level The MenuSafetyLevel for which to get the title.
+ * @returns A string representing the title for the safety level.
+ */
 function getSafetyTitle(level: MenuSafetyLevel): string {
   if (level === 'safe') return 'Strong GF signal';
   if (level === 'caution') return 'Use caution';
   if (level === 'unsafe') return 'High risk';
   return 'Needs verification';
 }
-
+/**
+ * Returns a fallback summary message for a restaurant based on its menu scan status.
+ * This is used when there is insufficient menu evidence to provide a detailed summary.
+ * @param restaurant The restaurant for which to get the fallback summary.
+ * @returns A string representing the fallback summary message.
+ */
 function getFallbackSummary(restaurant: Restaurant): string {
   if (restaurant.menuScanStatus === 'FETCHING') return 'Menu scan is still running.';
   if (restaurant.menuScanStatus === 'NO_MENU_CONTENT') return 'The page loaded, but no menu content was found.';

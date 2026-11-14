@@ -1,5 +1,9 @@
 /**
  * Calculates the distance between two geographical points using the Haversine formula.
+ * @param lat1 Latitude of the first point in decimal degrees.
+ * @param lon1 Longitude of the first point in decimal degrees.
+ * @param lat2 Latitude of the second point in decimal degrees.
+ * @param lon2 Longitude of the second point in decimal degrees.
  * @returns Distance in meters.
  */
 export function distanceBetween(

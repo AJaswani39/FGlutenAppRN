@@ -1,6 +1,6 @@
 import React from 'react';
 import { Text } from 'react-native';
-import TestRenderer, { act } from 'react-test-renderer';
+import { act, render, RenderResult, userEvent } from '@testing-library/react-native';
 import { describe, expect, it, jest } from '@jest/globals';
 import { ThemeProvider } from '../../context/ThemeContext';
 import { Restaurant } from '../../types/restaurant';
@@ -115,7 +115,7 @@ describe('RestaurantSummaryCard helper functions', () => {
 });
 
 describe('RestaurantSummaryCard component', () => {
-  function renderCard(props: {
+  async function renderCard(props: {
     restaurant: Restaurant;
     useMiles?: boolean;
     onPress?: () => void;
@@ -124,9 +124,9 @@ describe('RestaurantSummaryCard component', () => {
     onShare?: () => void;
   }) {
     const { useMiles = true, ...rest } = props;
-    let renderer!: TestRenderer.ReactTestRenderer;
-    act(() => {
-      renderer = TestRenderer.create(
+    let renderer!: RenderResult;
+    await act(async () => {
+      renderer = await render(
         <ThemeProvider initialIsDark={false}>
           <RestaurantSummaryCard useMiles={useMiles} {...rest} />
         </ThemeProvider>
@@ -135,92 +135,86 @@ describe('RestaurantSummaryCard component', () => {
     return renderer;
   }
 
-  it('renders restaurant name and address', () => {
-    const renderer = renderCard({
+  it('renders restaurant name and address', async () => {
+    const renderer = await renderCard({
       restaurant: createRestaurant({ name: 'Wildflour Bakery', address: '456 Oak Rd' }),
     });
-    const texts = renderer.root.findAllByType(Text).map((t) => t.props.children);
+    const texts = renderer.container.queryAll((node) => node.type === 'Text').map((t) => t.props.children);
     expect(texts).toContain('Wildflour Bakery');
     expect(texts).toContain('456 Oak Rd');
   });
 
-  it('renders fallback address when empty', () => {
-    const renderer = renderCard({
+  it('renders fallback address when empty', async () => {
+    const renderer = await renderCard({
       restaurant: createRestaurant({ address: '' }),
     });
-    const texts = renderer.root.findAllByType(Text).map((t) => t.props.children);
+    const texts = renderer.container.queryAll((node) => node.type === 'Text').map((t) => t.props.children);
     expect(texts).toContain('Address unavailable');
   });
 
-  it('formats distance in miles and km correctly', () => {
-    const milesRenderer = renderCard({
+  it('formats distance in miles and km correctly', async () => {
+    const milesRenderer = await renderCard({
       restaurant: createRestaurant({ distanceMeters: 1609 }),
       useMiles: true,
     });
-    const milesTexts = milesRenderer.root.findAllByType(Text).map((t) => t.props.children);
+    const milesTexts = milesRenderer.container.queryAll((node) => node.type === 'Text').map((t) => t.props.children);
     expect(milesTexts.some((txt) => typeof txt === 'string' && txt.includes('mi'))).toBe(true);
 
-    const kmRenderer = renderCard({
+    const kmRenderer = await renderCard({
       restaurant: createRestaurant({ distanceMeters: 1609 }),
       useMiles: false,
     });
-    const kmTexts = kmRenderer.root.findAllByType(Text).map((t) => t.props.children);
+    const kmTexts = kmRenderer.container.queryAll((node) => node.type === 'Text').map((t) => t.props.children);
     expect(kmTexts.some((txt) => typeof txt === 'string' && txt.includes('km'))).toBe(true);
   });
 
-  it('displays favorite badge override when set', () => {
-    const renderer = renderCard({
+  it('displays favorite badge override when set', async () => {
+    const renderer = await renderCard({
       restaurant: createRestaurant({ favoriteStatus: 'safe' }),
     });
-    const texts = renderer.root.findAllByType(Text).map((t) => t.props.children);
+    const texts = renderer.container.queryAll((node) => node.type === 'Text').map((t) => t.props.children);
     expect(texts).toContain('Safe');
   });
 
-  it('triggers onPress callback when container is tapped', () => {
+  it('triggers onPress callback when container is tapped', async () => {
     const onPressMock = jest.fn();
-    const renderer = renderCard({
+    const renderer = await renderCard({
       restaurant: createRestaurant(),
       onPress: onPressMock,
     });
 
-    const pressable = renderer.root.findByProps({ accessibilityRole: 'button' });
-    act(() => {
-      pressable.props.onPress();
-    });
+    const pressable = renderer.container.queryAll((node) => node.props.accessibilityRole === 'button')[0];
+    await userEvent.press(pressable);
 
     expect(onPressMock).toHaveBeenCalledTimes(1);
   });
 
-  it('renders retry button and triggers onRescan when scan failed', () => {
+  it('renders retry button and triggers onRescan when scan failed', async () => {
     const onRescanMock = jest.fn();
-    const renderer = renderCard({
+    const renderer = await renderCard({
       restaurant: createRestaurant({ menuScanStatus: 'FAILED' }),
       onRescan: onRescanMock,
     });
 
-    const retryBtn = renderer.root.findByProps({ accessibilityLabel: 'Retry menu scan' });
+    const retryBtn = renderer.container.queryAll((node) => node.props.accessibilityLabel === 'Retry menu scan')[0];
     expect(retryBtn).toBeDefined();
 
-    act(() => {
-      retryBtn.props.onPress({ stopPropagation: () => {} });
-    });
+    await userEvent.press(retryBtn);
 
     expect(onRescanMock).toHaveBeenCalledTimes(1);
   });
 
-  it('renders share button when onShare provided and shareable content exists', () => {
+  it('renders share button when onShare provided and shareable content exists', async () => {
     const onShareMock = jest.fn();
-    const renderer = renderCard({
+    const renderer = await renderCard({
       restaurant: createRestaurant({ rawMenuText: 'GF Pasta available' }),
       onShare: onShareMock,
     });
 
-    const shareBtn = renderer.root.findByProps({ accessibilityLabel: 'Share Gluten Free Bakery safety card' });
+    const shareBtn = renderer.container.queryAll((node) => node.props.accessibilityLabel === 'Share Gluten Free Bakery safety card')[0];
     expect(shareBtn).toBeDefined();
 
-    act(() => {
-      shareBtn.props.onPress({ stopPropagation: () => {} });
-    });
+    await userEvent.press(shareBtn);
 
     expect(onShareMock).toHaveBeenCalledTimes(1);
   });

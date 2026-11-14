@@ -232,6 +232,7 @@ describe('useRestaurantLoader', () => {
   });
 
   afterEach(() => {
+    jest.useRealTimers();
     jest.restoreAllMocks();
   });
 
@@ -511,6 +512,34 @@ describe('useRestaurantLoader', () => {
 
     expect(loader.startScans).not.toHaveBeenCalled();
     expect(loader.rawRestaurants.current).toEqual([]);
+  });
+
+  it('clears the location timeout when unmounted during a location request', async () => {
+    jest.useFakeTimers();
+    locationMock.getCurrentPositionAsync.mockReturnValue(new Promise(() => {}));
+    const loader = await renderLoader();
+    const setTimeoutSpy = jest.spyOn(global, 'setTimeout');
+    const clearTimeoutSpy = jest.spyOn(global, 'clearTimeout');
+
+    let pending!: Promise<void>;
+    await act(async () => {
+      pending = loader.loadNearby();
+      for (let i = 0; i < 10 && !locationMock.getCurrentPositionAsync.mock.calls.length; i += 1) {
+        await Promise.resolve();
+      }
+    });
+
+    expect(locationMock.getCurrentPositionAsync).toHaveBeenCalled();
+    const locationTimeoutIndex = setTimeoutSpy.mock.calls.findIndex(([, delay]) => delay === 10000);
+    expect(locationTimeoutIndex).not.toBe(-1);
+    const locationTimeout = setTimeoutSpy.mock.results[locationTimeoutIndex].value;
+
+    await loader.unmount();
+    await act(async () => {
+      await pending;
+    });
+
+    expect(clearTimeoutSpy).toHaveBeenCalledWith(locationTimeout);
   });
 
   it('swallows abort rejections from the in-flight request', async () => {

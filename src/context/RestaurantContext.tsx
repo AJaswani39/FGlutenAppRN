@@ -104,6 +104,7 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
   }, [filters]);
 
   useEffect(() => {
+    isMounted.current = true;
     return () => {
       isMounted.current = false;
     };

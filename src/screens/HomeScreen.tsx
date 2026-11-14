@@ -37,6 +37,7 @@ export default function HomeScreen() {
   const isMounted = useRef(true);
 
   useEffect(() => {
+    isMounted.current = true;
     return () => {
       // When the component unmounts, set isMounted to false to prevent state updates on an unmounted component.
       isMounted.current = false;

@@ -71,6 +71,7 @@ export default function MenuChatSheet({
   const scrollRef = useRef<ScrollView>(null);
 
   useEffect(() => {
+    isMounted.current = true;
     return () => {
       // Mark the component as unmounted to prevent state updates after unmount.
       isMounted.current = false;

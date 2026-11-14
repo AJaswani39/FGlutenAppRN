@@ -180,13 +180,23 @@ export function useRestaurantLoader({
           longitude = lastKnown.coords.longitude;
         } else {
           let locationTimeout: ReturnType<typeof setTimeout> | null = null;
+          let abortLocationWait: (() => void) | null = null;
           const location = await Promise.race([
             Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }),
             new Promise<Location.LocationObject>((_, reject) => {
               locationTimeout = setTimeout(() => reject(new Error('Location request timed out')), 10000);
+              abortLocationWait = () => reject(new Error('Location request aborted'));
+              if (loadController.signal.aborted) {
+                abortLocationWait();
+              } else {
+                loadController.signal.addEventListener('abort', abortLocationWait, { once: true });
+              }
             }),
           ]).finally(() => {
-            if (locationTimeout) clearTimeout(locationTimeout);
+            if (locationTimeout !== null) clearTimeout(locationTimeout);
+            if (abortLocationWait) {
+              loadController.signal.removeEventListener('abort', abortLocationWait);
+            }
           });
           if (!isActiveRequest(requestId)) return;
           latitude = location.coords.latitude;

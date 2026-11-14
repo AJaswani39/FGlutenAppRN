@@ -46,6 +46,7 @@ export default function RestaurantListScreen() {
   }, [filters.searchQuery]);
 
   useEffect(() => {
+    isMounted.current = true;
     return () => {
       isMounted.current = false;
     };

@@ -98,6 +98,7 @@ export default function MenuAnalysisSheet({ restaurant, onClose }: Props) {
   }, [restaurant.placeId, restaurant.rawMenuText]);
 
   useEffect(() => {
+    isMounted.current = true;
     // Initialize Puter AI with key from config.
     const config = getRuntimeConfig();
     PuterAiService.init(config.puterApiKey, config.aiProxyBaseUrl);

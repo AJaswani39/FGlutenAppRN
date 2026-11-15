@@ -11,20 +11,16 @@ import { FavoriteStatus, MenuScanProgress, Restaurant, RestaurantUiState, AiChat
 import { PersistenceService } from '../services/persistenceService';
 
 import { MenuAnalysisResult } from '../services/menuSafety';
-import { filterAndSortRestaurants, getRestaurantIdentityKey } from '../util/restaurantUtils';
+import { getRestaurantIdentityKey } from '../util/restaurantUtils';
 import { useFilters } from './FiltersContext';
 import { useSettings } from './SettingsContext';
 import { useRestaurantMutator } from './useRestaurantMutator';
 import { ScanOrchestrator, ScanOrchestratorConfig } from '../services/scanOrchestrator';
 import {
   EmptyResultsReason,
-  MENU_SCAN_TTL_MS,
   getAiProxyBaseUrl,
-  getCachedResultsMessage,
-  getCollectionReason,
   getMapsApiKey,
   getScanProgressForRestaurants,
-  resolveFilteredRestaurantUiState,
 } from './restaurantState';
 import { useRestaurantFavorites } from './useRestaurantFavorites';
 import { useRestaurantPersistence } from './useRestaurantPersistence';
@@ -110,7 +106,7 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
     };
   }, []);
 
-  const { menuScanCache, persistCache, flushPersistence, persistMenuScan } = useRestaurantPersistence({
+  const { menuScanCache, persistCache, persistMenuScan } = useRestaurantPersistence({
     rawRestaurants,
     userLat,
     userLng,
@@ -259,7 +255,7 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
       updateRestaurant(restaurant, (current) => ({
         ...current,
         favoriteStatus: status,
-      }));
+      }), { skipSavedRestaurantUpdate: true });
 
       refreshCollectionState();
     },

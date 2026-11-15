@@ -607,6 +607,36 @@ describe('RestaurantContext', () => {
     expect(getApi().restaurants.uiState.restaurants[0].favoriteStatus).toBe('safe');
   });
 
+  it('writes the saved restaurants database only once when adding a favorite', async () => {
+    const { getApi } = await renderHarness();
+    asyncStorageMock.setItem.mockClear();
+
+    await act(() => {
+      getApi().restaurants.setFavoriteStatus({
+        placeId: 'favorite-place',
+        name: 'Favorite Diner',
+        address: '321 River Rd',
+        latitude: 40.715,
+        longitude: -74.004,
+        rating: null,
+        openNow: null,
+        hasGFMenu: false,
+        gfMenu: [],
+        distanceMeters: 0,
+        menuUrl: null,
+        rawMenuText: null,
+        menuScanStatus: 'NOT_STARTED',
+        menuScanTimestamp: 0,
+        favoriteStatus: null,
+      }, 'safe');
+    });
+
+    const savedDbWrites = asyncStorageMock.setItem.mock.calls.filter(
+      ([key]) => key === 'restaurant_saved_db'
+    );
+    expect(savedDbWrites).toHaveLength(1);
+  });
+
   it('hydrates saved restaurants from cached results on startup', async () => {
     await AsyncStorage.setItem(
       'restaurant_favorites',

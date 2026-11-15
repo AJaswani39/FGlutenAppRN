@@ -1,5 +1,5 @@
 import { useCallback, RefObject } from 'react';
-import { MenuScanStatus, Restaurant, TERMINAL_SCAN_STATUSES } from '../types/restaurant';
+import { Restaurant, TERMINAL_SCAN_STATUSES } from '../types/restaurant';
 import { isSameRestaurantIdentity } from '../util/restaurantUtils';
 
 interface UseRestaurantMutatorDeps {
@@ -9,10 +9,14 @@ interface UseRestaurantMutatorDeps {
   persistMenuScan: (restaurant: Restaurant) => void;
 }
 
+interface MutationOptions {
+  skipSavedRestaurantUpdate?: boolean;
+}
+
 /**
- * Updates a matching restaurant in the live cache, mirroring the change into the
- * persistent favorites DB and triggering selective disk persistence only when a
- * terminal scan status, favorite, or AI field actually changed.
+ * Updates a matching restaurant in the live cache, optionally mirroring the
+ * change into the persistent favorites DB, and triggers selective disk
+ * persistence when a terminal scan status, favorite, or AI field changes.
  *
  * Extracted from `RestaurantProvider` so the provider no longer owns this
  * diffing/persistence logic inline.
@@ -24,7 +28,11 @@ export function useRestaurantMutator({
   persistMenuScan,
 }: UseRestaurantMutatorDeps) {
   return useCallback(
-    (target: Restaurant, updater: (restaurant: Restaurant) => Restaurant) => {
+    (
+      target: Restaurant,
+      updater: (restaurant: Restaurant) => Restaurant,
+      options: MutationOptions = {}
+    ) => {
       let updated = false;
       let worthPersisting = false;
       let shouldPersistScanCache = false;
@@ -62,7 +70,9 @@ export function useRestaurantMutator({
         return nextRestaurant;
       });
 
-      updateSavedRestaurant(target, updater);
+      if (!options.skipSavedRestaurantUpdate) {
+        updateSavedRestaurant(target, updater);
+      }
 
       if (worthPersisting) {
         persistCache();

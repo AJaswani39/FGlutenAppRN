@@ -97,6 +97,20 @@ describe('useRestaurantMutator', () => {
     expect(harness.updateSavedRestaurant).toHaveBeenCalled();
   });
 
+  it('can skip mirroring an update already handled by the favorites store', async () => {
+    const target = restaurant({ placeId: 'a' });
+    const harness = await renderMutator([target]);
+
+    harness.api(
+      target,
+      (current) => ({ ...current, favoriteStatus: 'safe' }),
+      { skipSavedRestaurantUpdate: true }
+    );
+
+    expect(harness.updateSavedRestaurant).not.toHaveBeenCalled();
+    expect(harness.persistCache).toHaveBeenCalledTimes(1);
+  });
+
   it('persists the cache when a scan reaches a terminal status', async () => {
     const target = restaurant({ placeId: 'a', menuScanStatus: 'FETCHING' });
     const harness = await renderMutator([target]);

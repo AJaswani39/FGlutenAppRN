@@ -16,15 +16,30 @@ jest.mock('../../context/RestaurantContext', () => ({
 }));
 
 const useRestaurantsMock = useRestaurants as jest.MockedFunction<typeof useRestaurants>;
+const retryFailedScansMock = jest.fn();
+const restaurantsContextValue: ReturnType<typeof useRestaurants> = {
+  uiState: {
+    status: 'idle',
+    restaurants: [],
+    message: null,
+    userLatitude: null,
+    userLongitude: null,
+    scanProgress: null,
+  },
+  savedRestaurants: [],
+  loadNearbyRestaurants: async () => undefined,
+  setFavoriteStatus: () => undefined,
+  requestMenuRescan: () => undefined,
+  requestInteractiveMenuRender: () => undefined,
+  retryFailedScans: retryFailedScansMock,
+  updateAiSession: () => undefined,
+  clearAllData: async () => undefined,
+};
 
 describe('ScanProgressBanner', () => {
-  const retryFailedScansMock = jest.fn();
-
   beforeEach(() => {
     jest.clearAllMocks();
-    useRestaurantsMock.mockReturnValue({
-      retryFailedScans: retryFailedScansMock,
-    } as any);
+    useRestaurantsMock.mockReturnValue(restaurantsContextValue);
   });
 
   async function renderBanner(progress: MenuScanProgress) {

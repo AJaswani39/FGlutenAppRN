@@ -2,7 +2,11 @@ import React from 'react';
 import { Text } from 'react-native';
 import { act, render, RenderResult } from '@testing-library/react-native';
 import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
-import NetInfo, { NetInfoChangeHandler } from '@react-native-community/netinfo';
+import NetInfo, {
+  NetInfoChangeHandler,
+  NetInfoState,
+  NetInfoStateType,
+} from '@react-native-community/netinfo';
 import { ThemeProvider } from '../../context/ThemeContext';
 import { NetworkBanner } from '../NetworkBanner';
 
@@ -11,12 +15,61 @@ jest.mock('react-native-safe-area-context', () => ({
 }));
 
 jest.mock('@react-native-community/netinfo', () => ({
+  NetInfoStateType: {
+    unknown: 'unknown',
+    none: 'none',
+    cellular: 'cellular',
+    wifi: 'wifi',
+    bluetooth: 'bluetooth',
+    ethernet: 'ethernet',
+    wimax: 'wimax',
+    vpn: 'vpn',
+    other: 'other',
+  },
   addEventListener: jest.fn(),
 }));
 
 const netInfoMock = NetInfo as typeof NetInfo & {
   addEventListener: jest.MockedFunction<typeof NetInfo.addEventListener>;
 };
+
+function disconnectedState(): NetInfoState {
+  return {
+    type: NetInfoStateType.none,
+    isConnected: false,
+    isInternetReachable: false,
+    details: null,
+  };
+}
+
+function wifiState(isInternetReachable: boolean): NetInfoState {
+  return {
+    type: NetInfoStateType.wifi,
+    isConnected: true,
+    isInternetReachable,
+    details: {
+      isConnectionExpensive: false,
+      ssid: null,
+      bssid: null,
+      strength: null,
+      ipAddress: null,
+      subnet: null,
+      frequency: null,
+      linkSpeed: null,
+      rxLinkSpeed: null,
+      txLinkSpeed: null,
+    },
+  };
+}
+
+function unknownState(): NetInfoState {
+  return {
+    type: NetInfoStateType.unknown,
+    isConnected: null,
+    isInternetReachable: null,
+    details: null,
+  };
+}
 
 describe('NetworkBanner', () => {
   let listeners: NetInfoChangeHandler[] = [];
@@ -69,12 +122,7 @@ describe('NetworkBanner', () => {
     const handler = listeners[0];
 
     await act(() => {
-      handler({
-        type: 'none',
-        isConnected: false,
-        isInternetReachable: false,
-        details: null,
-      } as any);
+      handler(disconnectedState());
     });
 
     const animatedView = renderer.container.queryAll((node) => node.props.pointerEvents === 'auto')[0];
@@ -86,12 +134,7 @@ describe('NetworkBanner', () => {
     const handler = listeners[0];
 
     await act(() => {
-      handler({
-        type: 'wifi',
-        isConnected: true,
-        isInternetReachable: true,
-        details: null,
-      } as any);
+      handler(wifiState(true));
     });
 
     const animatedView = renderer.container.queryAll((node) => node.props.pointerEvents === 'none')[0];
@@ -103,12 +146,7 @@ describe('NetworkBanner', () => {
     const handler = listeners[0];
 
     await act(() => {
-      handler({
-        type: 'wifi',
-        isConnected: true,
-        isInternetReachable: false,
-        details: null,
-      } as any);
+      handler(wifiState(false));
     });
 
     const animatedView = renderer.container.queryAll((node) => node.props.pointerEvents === 'auto')[0];
@@ -120,12 +158,7 @@ describe('NetworkBanner', () => {
     const handler = listeners[0];
 
     await act(() => {
-      handler({
-        type: 'unknown',
-        isConnected: null,
-        isInternetReachable: null,
-        details: null,
-      } as any);
+      handler(unknownState());
     });
 
     const animatedView = renderer.container.queryAll((node) => node.props.pointerEvents === 'none')[0];

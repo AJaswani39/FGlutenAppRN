@@ -1,10 +1,9 @@
 import React from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import NetInfo from '@react-native-community/netinfo';
+import NetInfo, { NetInfoState, NetInfoStateType } from '@react-native-community/netinfo';
 import { act, render, RenderResult } from '@testing-library/react-native';
 import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
 import * as Location from 'expo-location';
-import Constants from 'expo-constants';
 import { FiltersProvider, useFilters } from '../FiltersContext';
 import { RestaurantProvider, useRestaurants } from '../RestaurantContext';
 import { SettingsProvider, useSettings } from '../SettingsContext';
@@ -15,6 +14,11 @@ import { Restaurant } from '../../types/restaurant';
 jest.mock('@react-native-async-storage/async-storage');
 jest.mock('expo-location', () => ({
   Accuracy: { Balanced: 3 },
+  PermissionStatus: {
+    GRANTED: 'granted',
+    DENIED: 'denied',
+    UNDETERMINED: 'undetermined',
+  },
   requestForegroundPermissionsAsync: jest.fn(),
   getLastKnownPositionAsync: jest.fn(),
   getCurrentPositionAsync: jest.fn(),
@@ -57,11 +61,7 @@ const menuScannerMock = menuScanner as typeof menuScanner & {
   scanRestaurantMenu: jest.MockedFunction<typeof menuScanner.scanRestaurantMenu>;
   scanRestaurantMenuWithBrowser: jest.MockedFunction<typeof menuScanner.scanRestaurantMenuWithBrowser>;
 };
-const constantsMock = Constants as typeof Constants & {
-  expoConfig?: { extra?: { MAPS_API_KEY?: string; ANDROID_MAPS_API_KEY?: string; IOS_MAPS_API_KEY?: string } };
-};
-type FetchMock = jest.MockedFunction<(...args: Parameters<typeof fetch>) => Promise<any>>;
-const fetchMock = () => global.fetch as unknown as FetchMock;
+const fetchMock = () => jest.mocked(global.fetch);
 
 interface NearbyPlaceFixture {
   id: string;
@@ -93,14 +93,55 @@ function nearbyPlace({
 }
 
 function placesResponse(places: unknown[] = []) {
-  return {
-    ok: true,
-    json: async () => ({ places }),
-  };
+  return new Response(JSON.stringify({ places }), { status: 200 });
 }
 
 function mockNearbyPlacesResponse(places: unknown[] = []) {
   fetchMock().mockResolvedValue(placesResponse(places));
+}
+
+function mockPermissionResponse(granted: boolean): Location.LocationPermissionResponse {
+  return {
+    status: granted ? Location.PermissionStatus.GRANTED : Location.PermissionStatus.DENIED,
+    granted,
+    canAskAgain: true,
+    expires: 'never',
+  };
+}
+
+function mockLocationObject(latitude: number, longitude: number): Location.LocationObject {
+  return {
+    coords: {
+      latitude,
+      longitude,
+      altitude: 0,
+      accuracy: 10,
+      altitudeAccuracy: 0,
+      heading: 0,
+      speed: 0,
+    },
+    timestamp: Date.now(),
+  };
+}
+
+function mockNetworkState(isInternetReachable: boolean | null = true): NetInfoState {
+  return {
+    type: NetInfoStateType.wifi,
+    isConnected: true,
+    isInternetReachable,
+    details: {
+      isConnectionExpensive: false,
+      ssid: null,
+      bssid: null,
+      strength: null,
+      ipAddress: null,
+      subnet: null,
+      frequency: null,
+      linkSpeed: null,
+      rxLinkSpeed: null,
+      txLinkSpeed: null,
+    },
+  };
 }
 
 function cachedRestaurant(overrides: Partial<Restaurant> = {}): Restaurant {
@@ -200,23 +241,10 @@ describe('RestaurantContext', () => {
     storage.__reset();
     clearNearbySessionCache();
     jest.clearAllMocks();
-    constantsMock.expoConfig = {
-      extra: {
-        MAPS_API_KEY: 'test-key',
-        ANDROID_MAPS_API_KEY: 'android-test-key',
-        IOS_MAPS_API_KEY: 'ios-test-key',
-      },
-    } as any;
-    locationMock.requestForegroundPermissionsAsync.mockResolvedValue({ status: 'granted' } as any);
-    locationMock.getLastKnownPositionAsync.mockResolvedValue(null as any);
-    locationMock.getCurrentPositionAsync.mockResolvedValue({
-      coords: { latitude: 40.7128, longitude: -74.006 },
-    } as any);
-    netInfoMock.fetch.mockResolvedValue({
-      isConnected: true,
-      isInternetReachable: true,
-      type: 'wifi',
-    } as any);
+    locationMock.requestForegroundPermissionsAsync.mockResolvedValue(mockPermissionResponse(true));
+    locationMock.getLastKnownPositionAsync.mockResolvedValue(null);
+    locationMock.getCurrentPositionAsync.mockResolvedValue(mockLocationObject(40.7128, -74.006));
+    netInfoMock.fetch.mockResolvedValue(mockNetworkState());
     menuScannerMock.scanRestaurantMenu.mockImplementation(async ({ restaurant, scanStartedAt }) => ({
       menuUrl: restaurant.menuUrl,
       gfMenu: [],
@@ -247,11 +275,7 @@ describe('RestaurantContext', () => {
   });
 
   it('allows nearby loading when internet reachability is unknown', async () => {
-    netInfoMock.fetch.mockResolvedValue({
-      isConnected: true,
-      isInternetReachable: null,
-      type: 'wifi',
-    } as any);
+    netInfoMock.fetch.mockResolvedValue(mockNetworkState(null));
     mockNearbyPlacesResponse();
 
     const { getApi } = await renderHarness();
@@ -772,10 +796,7 @@ describe('RestaurantContext', () => {
         );
       }
 
-      return {
-        ok: true,
-        json: async () => ({}),
-      };
+      return new Response(JSON.stringify({}), { status: 200 });
     });
 
     const { getApi } = await renderHarness();
@@ -809,10 +830,7 @@ describe('RestaurantContext', () => {
         );
       }
 
-      return {
-        ok: true,
-        json: async () => ({}),
-      };
+      return new Response(JSON.stringify({}), { status: 200 });
     });
 
     const { getApi } = await renderHarness();
@@ -860,10 +878,7 @@ describe('RestaurantContext', () => {
         ]);
       }
 
-      return {
-        ok: true,
-        json: async () => ({}),
-      };
+      return new Response(JSON.stringify({}), { status: 200 });
     });
 
     const { getApi } = await renderHarness();
